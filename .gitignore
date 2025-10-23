@@ -1,3 +1,4 @@
+output/
 ssh.wasm
 tests.wasm
 wasm_exec.js
@@ -5,3 +6,4 @@ node_modules
 xterm.css
 xterm.js
 xterm.mjs
+js_tests/.npm-cache

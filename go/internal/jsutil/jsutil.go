@@ -26,11 +26,20 @@
 package jsutil
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"regexp"
 	"syscall/js"
 )
+
+func Uint32ArrayToBytes(in []uint32) []byte {
+	out := make([]byte, len(in)*4)
+	for i, v := range in {
+		binary.LittleEndian.PutUint32(out[i*4:(i+1)*4], v)
+	}
+	return out
+}
 
 var (
 	Uint8Array = js.Global().Get("Uint8Array")

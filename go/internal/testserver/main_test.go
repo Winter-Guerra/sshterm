@@ -29,11 +29,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
-	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -44,7 +44,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,15 +55,14 @@ import (
 	"github.com/chromedp/cdproto/webauthn"
 	"github.com/chromedp/chromedp"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
 	addr         = flag.String("addr", ":8443", "The TCP address to listen to")
 	docRoot      = flag.String("document-root", "", "The document root directory")
 	withChromeDP = flag.String("with-chromedp", "", "The url of the remote debugging port")
+	outputDir    = flag.String("output-dir", "", "Where the test output files are written")
 )
 
 func TestMain(m *testing.M) {
@@ -156,6 +157,7 @@ func TestSSHTerm(t *testing.T) {
 			return
 		}
 		now := time.Now().UTC()
+
 		cert := &ssh.Certificate{
 			Key:         pub,
 			CertType:    ssh.UserCert,
@@ -175,7 +177,19 @@ func TestSSHTerm(t *testing.T) {
 	})
 	fs := http.FileServer(http.Dir(*docRoot))
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		t.Logf("%s %s", req.Method, req.RequestURI)
 		w.Header().Set("Cache-Control", "no-store")
+		if req.URL.Path == "/tests.x11.config.json" {
+			b, err := os.ReadFile(filepath.Join(*docRoot, "tests.x11.config.json"))
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			key := bytes.TrimSpace(ssh.MarshalAuthorizedKey(sshServerWithCert.pubKey))
+			w.Header().Set("content-type", "application/json")
+			w.Write(bytes.Replace(b, []byte("===CAKEY==="), key, 1))
+			return
+		}
 		fs.ServeHTTP(w, req)
 	})
 
@@ -255,7 +269,7 @@ func TestSSHTerm(t *testing.T) {
 				//t.Logf("* console.%s call:", ev.Type)
 				//for _, arg := range ev.Args {
 				//	t.Logf("   %s - %s", arg.Type, arg.Value)
-				//}
+				//},
 			case *runtime.EventExceptionThrown:
 				t.Logf("Exception: * %s", ev.ExceptionDetails.Error())
 			case *webauthn.EventCredentialAdded, *webauthn.EventCredentialAsserted, *webauthn.EventCredentialDeleted, *webauthn.EventCredentialUpdated:
@@ -316,285 +330,228 @@ func TestSSHTerm(t *testing.T) {
 			t.FailNow()
 		}
 	})
-}
 
-var _ net.Conn = (*netConn)(nil)
+	t.Run("X11", func(t *testing.T) {
+		ctx, cancel = context.WithTimeout(t.Context(), 5*time.Minute)
+		defer cancel()
+		ctx, cancel = chromedp.NewRemoteAllocator(ctx, *withChromeDP)
+		defer cancel()
 
-type netConn struct {
-	conn *websocket.Conn
-	buf  []byte
-}
+		ctx, cancel = chromedp.NewContext(ctx,
+			chromedp.WithErrorf(t.Logf),
+			chromedp.WithLogf(t.Logf),
+		)
+		defer cancel()
 
-func (c *netConn) Close() error {
-	return c.conn.Close()
-}
-
-func (c *netConn) Read(b []byte) (int, error) {
-	if len(c.buf) == 0 {
-		_, p, err := c.conn.ReadMessage()
-		if err != nil {
-			return 0, err
-		}
-		c.buf = p
-	}
-	n := copy(b, c.buf)
-	c.buf = c.buf[n:]
-	return n, nil
-}
-
-func (c *netConn) Write(b []byte) (int, error) {
-	return len(b), c.conn.WriteMessage(websocket.BinaryMessage, b)
-}
-
-func (c *netConn) SetReadDeadline(t time.Time) error {
-	return c.conn.SetReadDeadline(t)
-}
-
-func (c *netConn) SetWriteDeadline(t time.Time) error {
-	return c.conn.SetWriteDeadline(t)
-}
-
-func (c *netConn) SetDeadline(t time.Time) error {
-	c.SetReadDeadline(t)
-	return c.SetWriteDeadline(t)
-}
-
-func (c *netConn) LocalAddr() net.Addr {
-	return c.conn.NetConn().LocalAddr()
-}
-
-func (c *netConn) RemoteAddr() net.Addr {
-	return c.conn.NetConn().RemoteAddr()
-}
-
-type sshServer struct {
-	t              *testing.T
-	mu             sync.Mutex
-	authorizedKeys map[string]bool
-	config         *ssh.ServerConfig
-	dir            string
-
-	authority ssh.Signer
-	signer    ssh.Signer
-	pubKey    ssh.PublicKey
-}
-
-func newSSHServer(t *testing.T, dir string, hostCert bool) (*sshServer, error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("ed25519.GenerateKey: %w", err)
-	}
-	sshPub, err := ssh.NewPublicKey(pub)
-	if err != nil {
-		return nil, fmt.Errorf("ssh.NewPublicKey: %w", err)
-	}
-	authority, err := ssh.NewSignerFromKey(priv)
-	if err != nil {
-		return nil, fmt.Errorf("ssh.NewSignerFromKey: %w", err)
-	}
-	signer := authority
-	if hostCert {
-		cert := &ssh.Certificate{
-			Key:      sshPub,
-			Serial:   0x12345,
-			CertType: ssh.HostCert,
-			KeyId:    "test-server",
-			ValidPrincipals: []string{
-				"test-server",
-			},
-		}
-		if err := cert.SignCert(rand.Reader, authority); err != nil {
-			t.Fatalf("unable to create signer cert: %v", err)
-		}
-		certSigner, err := ssh.NewCertSigner(cert, authority)
-		if err != nil {
-			return nil, fmt.Errorf("ssh.NewCertSigner: %w", err)
-		}
-		signer = certSigner
-	}
-
-	server := &sshServer{
-		t:              t,
-		authorizedKeys: make(map[string]bool),
-		dir:            dir,
-		authority:      authority,
-		signer:         signer,
-		pubKey:         sshPub,
-	}
-
-	certChecker := &ssh.CertChecker{
-		IsUserAuthority: func(auth ssh.PublicKey) bool {
-			return bytes.Equal(authority.PublicKey().Marshal(), auth.Marshal())
-		},
-		UserKeyFallback: func(c ssh.ConnMetadata, pubKey ssh.PublicKey) (*ssh.Permissions, error) {
-			server.mu.Lock()
-			defer server.mu.Unlock()
-			t.Logf("PublicKeyCallback: %q", pubKey.Marshal())
-			if server.authorizedKeys[string(pubKey.Marshal())] {
-				return &ssh.Permissions{
-					Extensions: map[string]string{
-						"pubkey-fp": ssh.FingerprintSHA256(pubKey),
-					},
-				}, nil
-			}
-			return nil, fmt.Errorf("unknown public key for %q", c.User())
-		},
-	}
-
-	config := &ssh.ServerConfig{
-		KeyboardInteractiveCallback: func(c ssh.ConnMetadata, client ssh.KeyboardInteractiveChallenge) (*ssh.Permissions, error) {
-			t.Logf("KeyboardInteractiveCallback")
-			answers, err := client("", "", []string{"Password: "}, []bool{false})
-			if err != nil {
-				return nil, err
-			}
-			if len(answers) == 1 && c.User() == "testuser" && string(answers[0]) == "password" {
-				return nil, nil
-			}
-			return nil, fmt.Errorf("keyboard interactive rejected for %q", c.User())
-		},
-
-		PublicKeyCallback: certChecker.Authenticate,
-	}
-	config.AddHostKey(signer)
-	server.config = config
-	return server, nil
-}
-
-func (s *sshServer) handle(nConn net.Conn) error {
-	_, chans, reqs, err := ssh.NewServerConn(nConn, s.config)
-	if err != nil {
-		return err
-	}
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	wg.Add(1)
-	go func() {
-		ssh.DiscardRequests(reqs)
-		wg.Done()
-	}()
-
-	for newChannel := range chans {
-		s.t.Logf("newChannel type: %s", newChannel.ChannelType())
-		switch newChannel.ChannelType() {
-		case "direct-tcpip":
-			s.handleDirectTCPIP(&wg, newChannel)
-		case "session":
-			s.handleSession(&wg, newChannel)
-		default:
-			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
-		}
-	}
-	return nil
-}
-
-type fakeConn struct {
-	io.ReadWriteCloser
-}
-
-func (fakeConn) SetReadDeadline(t time.Time) error {
-	return nil
-}
-
-func (fakeConn) SetWriteDeadline(t time.Time) error {
-	return nil
-}
-
-func (fakeConn) SetDeadline(t time.Time) error {
-	return nil
-}
-
-func (fakeConn) LocalAddr() net.Addr {
-	return &net.TCPAddr{}
-}
-
-func (fakeConn) RemoteAddr() net.Addr {
-	return &net.TCPAddr{}
-}
-
-func (s *sshServer) handleDirectTCPIP(wg *sync.WaitGroup, newChannel ssh.NewChannel) {
-	s.t.Logf("port-forward: %q", newChannel.ExtraData())
-	channel, requests, err := newChannel.Accept()
-	if err != nil {
-		s.t.Errorf("Could not accept channel: %v", err)
-		return
-	}
-	wg.Add(1)
-	go func(in <-chan *ssh.Request) {
-		ssh.DiscardRequests(in)
-		wg.Done()
-	}(requests)
-	s.handle(fakeConn{channel})
-}
-
-func (s *sshServer) handleSession(wg *sync.WaitGroup, newChannel ssh.NewChannel) {
-	channel, requests, err := newChannel.Accept()
-	if err != nil {
-		s.t.Errorf("Could not accept channel: %v", err)
-		return
-	}
-	wg.Add(1)
-	go func(in <-chan *ssh.Request) {
-		defer wg.Done()
-		for req := range in {
-			s.t.Logf("request type: %s", req.Type)
-			switch req.Type {
-			case "shell":
-				req.Reply(true, nil)
-				term := terminal.NewTerminal(channel, "remote> ")
-
-				wg.Add(1)
-				go func() {
-					defer func() {
-						channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
-						channel.Close()
-						wg.Done()
-					}()
-					for {
-						line, err := term.ReadLine()
-						if err != nil || line == "exit" {
-							break
-						}
+		chromedp.ListenTarget(ctx, func(ev any) {
+			switch ev := ev.(type) {
+			case *cdproto.Message:
+			case *runtime.EventConsoleAPICalled:
+				t.Logf("* console.%s call:", ev.Type)
+				for _, arg := range ev.Args {
+					t.Logf("   %s - %s", arg.Type, arg.Value)
+					if strings.Contains(arg.Value.String(), "ForwardX11 requested, but X11 is not enabled") {
+						t.Error("X11 not enabled")
+						cancel()
 					}
-				}()
-
-			case "exec":
-				req.Reply(true, nil)
-				if len(req.Payload) > 4 {
-					fmt.Fprintf(channel, "exec: %s\n", req.Payload[4:])
 				}
-				channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
-				channel.Close()
-
-			case "subsystem":
-				if len(req.Payload) < 4 || string(req.Payload[4:]) != "sftp" {
-					req.Reply(false, nil)
-					return
-				}
-				req.Reply(true, nil)
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					server, err := sftp.NewServer(channel, sftp.WithServerWorkingDirectory(s.dir))
-					if err != nil {
-						s.t.Error(err)
-						return
-					}
-					if err := server.Serve(); err != nil {
-						if err != io.EOF {
-							s.t.Error("sftp server completed with error:", err)
-							return
-						}
-					}
-					server.Close()
-					s.t.Log("sftp client exited session.")
-				}()
-
+			case *runtime.EventExceptionThrown:
+				t.Logf("Exception: * %s", ev.ExceptionDetails.Error())
 			default:
-				req.Reply(false, nil)
+			}
+		})
+		clearX11Operations()
+		// Navigate to the WASM app to display the X11 output
+		var buf []byte
+		var canvasOperationsJSON string
+
+		err = chromedp.Run(ctx,
+			chromedp.Navigate("https://devtest.local:8443/tests.html?x11"),
+			chromedp.WaitVisible("#x11-window-1-1"), // Wait for the X11 window to appear
+			chromedp.CaptureScreenshot(&buf),
+			chromedp.Evaluate(`JSON.stringify(window.getCanvasOperations())`, &canvasOperationsJSON),
+		)
+		if err != nil {
+			t.Fatalf("Failed to run chromedp actions: %v", err)
+		}
+		x11Ops := GetX11Operations()
+		var canvasOps []CanvasOperation
+		if err := json.Unmarshal([]byte(canvasOperationsJSON), &canvasOps); err != nil {
+			t.Fatalf("Failed to unmarshal canvas operations: %v", err)
+		}
+
+		compareOperations(t, x11Ops, canvasOps)
+
+		if *outputDir != "" {
+			screenshotPath := filepath.Join(*outputDir, "x11_screenshot.png")
+			if err := os.WriteFile(screenshotPath, buf, 0o644); err != nil {
+				t.Fatalf("Failed to save screenshot: %v", err)
+			}
+			t.Logf("X11 screenshot saved to %s", screenshotPath)
+		}
+		t.Log("X11 test completed")
+	})
+}
+
+// CanvasOperation represents a single canvas drawing operation captured from the frontend.
+type CanvasOperation struct {
+	Type        string `json:"type"`
+	Args        []any  `json:"args"`
+	FillStyle   string `json:"fillStyle"`
+	StrokeStyle string `json:"strokeStyle"`
+}
+
+func parseColorString(colorStr string) uint32 {
+	if strings.HasPrefix(colorStr, "#") {
+		// Parse hex color
+		color, err := strconv.ParseUint(colorStr[1:], 16, 32)
+		if err != nil {
+			return 0 // Should not happen in tests
+		}
+		return uint32(color)
+	} else if strings.HasPrefix(colorStr, "rgb") {
+		// Parse rgb(r, g, b) color
+		rgb := strings.TrimPrefix(colorStr, "rgb(")
+		rgb = strings.TrimSuffix(rgb, ")")
+		parts := strings.Split(rgb, ", ")
+		if len(parts) == 3 {
+			r, _ := strconv.Atoi(parts[0])
+			g, _ := strconv.Atoi(parts[1])
+			b, _ := strconv.Atoi(parts[2])
+			return uint32(r<<16 | g<<8 | b)
+		}
+	}
+	return 0 // Default or error color
+}
+
+func compareOperations(t *testing.T, x11Ops []X11Operation, canvasOps []CanvasOperation) {
+	if len(x11Ops) != len(canvasOps) {
+		t.Fatalf("Number of operations mismatch: X11=%d, Canvas=%d", len(x11Ops), len(canvasOps))
+	}
+
+	for i := 0; i < len(x11Ops); i++ {
+		x11Op := x11Ops[i]
+		canvasOp := canvasOps[i]
+
+		// Compare types
+		if x11Op.Type != canvasOp.Type {
+			t.Errorf("Operation type mismatch at index %d: X11=%s, Canvas=%s", i, x11Op.Type, canvasOp.Type)
+		}
+
+		// Compare colors (fillStyle or strokeStyle)
+		if x11Op.Color != 0 || canvasOp.FillStyle != "" || canvasOp.StrokeStyle != "" {
+			var canvasColor uint32
+			if canvasOp.FillStyle != "" {
+				canvasColor = parseColorString(canvasOp.FillStyle)
+			} else if canvasOp.StrokeStyle != "" {
+				canvasColor = parseColorString(canvasOp.StrokeStyle)
+			}
+
+			if x11Op.Color != canvasColor {
+				t.Errorf("Color mismatch at index %d for type %s: X11=#%06x, Canvas=%s%s (parsed to #%06x)", i, x11Op.Type, x11Op.Color, canvasOp.FillStyle, canvasOp.StrokeStyle, canvasColor)
 			}
 		}
-	}(requests)
+		// Compare arguments (simplified for now)
+
+		if len(x11Op.Args) != len(canvasOp.Args) {
+
+			t.Errorf("Argument count mismatch at index %d for type %s: X11=%d, Canvas=%d", i, x11Op.Type, len(x11Op.Args), len(canvasOp.Args))
+
+			continue
+
+		}
+
+		for j := 0; j < len(x11Op.Args); j++ {
+			switch canvasArg := canvasOp.Args[j].(type) {
+			case string:
+				if x11Op.Args[j] != canvasArg {
+					t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%s, Canvas=%s", i, j, x11Op.Type, x11Op.Args[j], canvasArg)
+				}
+			case float64, json.Number:
+				var numVal float64
+				switch v := canvasArg.(type) {
+				case float64:
+					numVal = v
+				case json.Number:
+					numVal, _ = v.Float64()
+				}
+				switch x11Val := x11Op.Args[j].(type) {
+				case uint16:
+					if int64(numVal) != int64(x11Val) {
+						t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%d, Canvas=%f", i, j, x11Op.Type, x11Val, numVal)
+					}
+				case uint32:
+					if int64(numVal) != int64(x11Val) {
+						t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%d, Canvas=%f", i, j, x11Op.Type, x11Val, numVal)
+					}
+				default:
+					if int64(numVal) != x11Op.Args[j] {
+						t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%d, Canvas=%f", i, j, x11Op.Type, x11Op.Args[j], numVal)
+					}
+				}
+			case []any:
+				x11Items, ok := x11Op.Args[j].([]any)
+				if !ok {
+					t.Errorf("Expected X11 arg to be []any for %s, got %T", x11Op.Type, x11Op.Args[j])
+					continue
+				}
+				if len(x11Items) != len(canvasArg) {
+					t.Errorf("%s items count mismatch at index %d: X11=%d, Canvas=%d", x11Op.Type, i, len(x11Items), len(canvasArg))
+					continue
+				}
+				for k := 0; k < len(x11Items); k++ {
+					switch x11Item := x11Items[k].(type) {
+					case map[string]any:
+						canvasItem := canvasArg[k].(map[string]any)
+
+						// Compare delta
+						x11Delta := x11Item["delta"].(int8)
+						canvasDelta := int8(canvasItem["delta"].(float64)) // JSON unmarshals numbers as float64
+						if x11Delta != canvasDelta {
+							t.Errorf("%s item delta mismatch at index %d, item %d: X11=%d, Canvas=%d", x11Op.Type, i, k, x11Delta, canvasDelta)
+						}
+
+						// Compare text
+						x11Text := x11Item["text"].(string)
+						canvasText := canvasItem["text"].(string)
+						if x11Text != canvasText {
+							t.Errorf("%s item text mismatch at index %d, item %d: X11=%s, Canvas=%s", x11Op.Type, i, k, x11Text, canvasText)
+						}
+					case []uint32:
+						canvasItem := canvasArg[k].([]uint32)
+						if !slices.Equal(x11Item, canvasItem) {
+							t.Errorf("%s item list mismatch at index %d, item %d: X11=%v, Canvas=%v", x11Op.Type, i, k, x11Item, canvasItem)
+						}
+					}
+				}
+			case map[string]interface{}: // Handle GC map
+				x11GC, ok := x11Op.Args[j].(map[string]interface{})
+				if !ok {
+					t.Errorf("Expected X11 arg to be map[string]interface{} for GC, got %T", x11Op.Args[j])
+					continue
+				}
+				for key, x11Val := range x11GC {
+					if canvasVal, ok := canvasArg[key]; ok {
+						if v, ok := canvasVal.(float64); ok {
+							if uint32(v) != x11Val.(uint32) {
+								t.Errorf("GC attribute mismatch at index %d, arg %d, key %s: X11=%d, Canvas=%f", i, j, key, x11Val, v)
+							}
+						} else if v, ok := canvasVal.(float64); ok {
+							if uint32(v) != x11Val.(uint32) {
+								t.Errorf("GC attribute mismatch at index %d, arg %d, key %s: X11=%d, Canvas=%f", i, j, key, x11Val, v)
+							}
+						} else if fmt.Sprintf("%v", x11Val) != fmt.Sprintf("%v", canvasVal) {
+							t.Errorf("GC attribute mismatch at index %d, arg %d, key %s: X11=%v, Canvas=%v", i, j, key, x11Val, canvasVal)
+						}
+					} else {
+						t.Errorf("Missing GC attribute in canvas operation at index %d, arg %d, key %s", i, j, key)
+					}
+				}
+			default:
+				t.Fatalf("Unexpected type for canvas arg: %T", canvasArg)
+			}
+		}
+
+	}
+
 }
