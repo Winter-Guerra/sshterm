@@ -25,7 +25,8 @@ func TestParseImageText8Request(t *testing.T) {
 	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
 	payload = append(payload, text...)
 
-	p := parseImageText8Request(binary.LittleEndian, payload)
+	p, err := parseImageText8Request(binary.LittleEndian, payload)
+	assert.NoError(t, err, "parseImageText8Request should not return an error")
 
 	if p.Drawable != drawable {
 		t.Errorf("Expected drawable %d, got %d", drawable, p.Drawable)
@@ -63,7 +64,8 @@ func TestParseImageText16Request(t *testing.T) {
 		payload = append(payload, buf...)
 	}
 
-	p := parseImageText16Request(binary.LittleEndian, payload)
+	p, err := parseImageText16Request(binary.LittleEndian, payload)
+	assert.NoError(t, err, "parseImageText16Request should not return an error")
 
 	assert.Equal(t, drawable, p.Drawable, "drawable mismatch")
 	assert.Equal(t, gc, p.Gc, "gc mismatch")
@@ -100,7 +102,8 @@ func TestParsePolyText8Request(t *testing.T) {
 	payload = append(payload, 'T', 'h', 'e', 'r', 'e') // text = "There"
 	payload = append(payload, 0)                       // padding for (1 byte n + 1 byte delta + 5 bytes string) = 7 bytes. Need 1 byte padding.
 
-	p := parsePolyText8Request(binary.LittleEndian, payload)
+	p, err := parsePolyText8Request(binary.LittleEndian, payload)
+	assert.NoError(t, err, "parsePolyText8Request should not return an error")
 
 	assert.Equal(t, drawable, p.Drawable, "drawable mismatch")
 	assert.Equal(t, gc, p.Gc, "gc mismatch")
@@ -142,7 +145,8 @@ func TestParsePolyText16Request(t *testing.T) {
 	payload = append(payload, 0x54, 0x00, 0x68, 0x00, 0x65, 0x00, 0x72, 0x00, 0x65, 0x00) // text = "There"
 	// Padding for (1 byte n + 1 byte delta + 10 bytes string) = 12 bytes. No padding needed.
 
-	p := parsePolyText16Request(binary.LittleEndian, payload)
+	p, err := parsePolyText16Request(binary.LittleEndian, payload)
+	assert.NoError(t, err, "parsePolyText16Request should not return an error")
 
 	assert.Equal(t, drawable, p.Drawable, "drawable mismatch")
 	assert.Equal(t, gc, p.Gc, "gc mismatch")
@@ -160,7 +164,8 @@ func TestParseQueryPointerRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody, 123)
-	p := parseQueryPointerRequest(order, reqBody)
+	p, err := parseQueryPointerRequest(order, reqBody)
+	assert.NoError(t, err, "parseQueryPointerRequest should not return an error")
 	assert.Equal(t, uint32(123), p.Drawable, "Drawable ID should be parsed correctly")
 
 }
@@ -178,7 +183,8 @@ func TestParseCopyAreaRequest(t *testing.T) {
 	order.PutUint16(reqBody[20:22], 100) // width
 	order.PutUint16(reqBody[22:24], 200) // height
 
-	p := parseCopyAreaRequest(order, reqBody)
+	p, err := parseCopyAreaRequest(order, reqBody)
+	assert.NoError(t, err, "parseCopyAreaRequest should not return an error")
 
 	assert.Equal(t, uint32(1), p.SrcDrawable, "srcDrawable should be parsed correctly")
 	assert.Equal(t, uint32(2), p.DstDrawable, "dstDrawable should be parsed correctly")
@@ -201,7 +207,8 @@ func TestParseGetImageRequest(t *testing.T) {
 	order.PutUint16(reqBody[10:12], 200)        // height
 	order.PutUint32(reqBody[12:16], 0xFFFFFFFF) // planeMask
 
-	p := parseGetImageRequest(order, 2, reqBody)
+	p, err := parseGetImageRequest(order, 2, reqBody)
+	assert.NoError(t, err, "parseGetImageRequest should not return an error")
 
 	assert.Equal(t, uint32(1), p.Drawable, "drawable should be parsed correctly")
 	assert.Equal(t, byte(2), p.Format, "format should be parsed correctly")
@@ -217,7 +224,8 @@ func TestParseGetAtomNameRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123) // atom
 
-	p := parseGetAtomNameRequest(order, reqBody)
+	p, err := parseGetAtomNameRequest(order, reqBody)
+	assert.NoError(t, err, "parseGetAtomNameRequest should not return an error")
 
 	assert.Equal(t, uint32(123), p.Atom, "atom should be parsed correctly")
 }
@@ -227,7 +235,8 @@ func TestParseListPropertiesRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123) // window
 
-	p := parseListPropertiesRequest(order, reqBody)
+	p, err := parseListPropertiesRequest(order, reqBody)
+	assert.NoError(t, err, "parseListPropertiesRequest should not return an error")
 
 	assert.Equal(t, uint32(123), p.Window, "window should be parsed correctly")
 }

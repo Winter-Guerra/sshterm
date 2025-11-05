@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 )
 
-
 type xCharInfo struct {
 	LeftSideBearing  int16
 	RightSideBearing int16
@@ -30,7 +29,7 @@ func boolToByte(b bool) byte {
 	return 0
 }
 
-// getWindowAttributesReply implements messageEncoder for GetWindowAttributes reply.
+// GetWindowAttributes: 3
 type getWindowAttributesReply struct {
 	sequence           uint16
 	backingStore       byte
@@ -74,7 +73,7 @@ func (r *getWindowAttributesReply) encodeMessage(order binary.ByteOrder) []byte 
 	return reply
 }
 
-// getGeometryReply implements messageEncoder for GetGeometry reply.
+// GetGeometry: 14
 type getGeometryReply struct {
 	sequence      uint16
 	depth         byte
@@ -100,7 +99,8 @@ func (r *getGeometryReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// internAtomReply implements messageEncoder for InternAtom reply.
+
+// InternAtom: 16
 type internAtomReply struct {
 	sequence uint16
 	atom     uint32
@@ -117,7 +117,7 @@ func (r *internAtomReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// getAtomNameReply implements messageEncoder for GetAtomName reply.
+// GetAtomName: 17
 type getAtomNameReply struct {
 	sequence   uint16
 	nameLength uint16
@@ -138,7 +138,7 @@ func (r *getAtomNameReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// getPropertyReply implements messageEncoder for GetProperty reply.
+// GetProperty: 20
 type getPropertyReply struct {
 	sequence              uint16
 	format                byte
@@ -166,7 +166,7 @@ func (r *getPropertyReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// listPropertiesReply implements messageEncoder for ListProperties reply.
+// ListProperties: 21
 type listPropertiesReply struct {
 	sequence      uint16
 	numProperties uint16
@@ -188,7 +188,7 @@ func (r *listPropertiesReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// getSelectionOwnerReply implements messageEncoder for GetSelectionOwner reply.
+// GetSelectionOwner: 23
 type getSelectionOwnerReply struct {
 	sequence uint16
 	owner    uint32
@@ -205,7 +205,7 @@ func (r *getSelectionOwnerReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// grabPointerReply implements messageEncoder for GrabPointer reply.
+// GrabPointer: 26
 type grabPointerReply struct {
 	sequence uint16
 	status   byte
@@ -221,7 +221,7 @@ func (r *grabPointerReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// grabKeyboardReply implements messageEncoder for GrabKeyboard reply.
+// GrabKeyboard: 31
 type grabKeyboardReply struct {
 	sequence uint16
 	status   byte
@@ -237,7 +237,7 @@ func (r *grabKeyboardReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// queryPointerReply implements messageEncoder for QueryPointer reply.
+// QueryPointer: 38
 type queryPointerReply struct {
 	sequence     uint16
 	sameScreen   bool
@@ -265,7 +265,7 @@ func (r *queryPointerReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// translateCoordsReply implements messageEncoder for TranslateCoords reply.
+// TranslateCoords: 40
 type translateCoordsReply struct {
 	sequence   uint16
 	sameScreen bool
@@ -286,7 +286,7 @@ func (r *translateCoordsReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// getInputFocusReply implements messageEncoder for GetInputFocus reply.
+// GetInputFocus: 43
 type getInputFocusReply struct {
 	sequence uint16
 	revertTo byte
@@ -304,7 +304,7 @@ func (r *getInputFocusReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// queryFontReply implements messageEncoder for QueryFont reply.
+// QueryFont: 47
 type queryFontReply struct {
 	sequence       uint16
 	minBounds      xCharInfo
@@ -377,7 +377,7 @@ func (r *queryFontReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// listFontsReply implements messageEncoder for ListFonts reply.
+// ListFonts: 50
 type listFontsReply struct {
 	sequence  uint16
 	numFonts  uint16
@@ -405,7 +405,7 @@ func (r *listFontsReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// getImageReply implements messageEncoder for GetImage reply.
+// GetImage: 73
 type getImageReply struct {
 	sequence  uint16
 	depth     byte
@@ -425,7 +425,31 @@ func (r *getImageReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// listInstalledColormapsReply implements messageEncoder for ListInstalledColormaps reply.
+// AllocColor: 84
+type allocColorReply struct {
+	sequence uint16
+	red      uint16
+	green    uint16
+	blue     uint16
+	pixel    uint32
+}
+
+func (r *allocColorReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	// byte 1 is unused
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
+	order.PutUint16(reply[8:10], r.red)
+	order.PutUint16(reply[10:12], r.green)
+	order.PutUint16(reply[12:14], r.blue)
+	// reply[14:16] is padding
+	order.PutUint32(reply[16:20], r.pixel)
+	// reply[20:32] is padding
+	return reply
+}
+
+// ListInstalledColormaps: 85
 type listInstalledColormapsReply struct {
 	sequence     uint16
 	numColormaps uint16
@@ -447,31 +471,7 @@ func (r *listInstalledColormapsReply) encodeMessage(order binary.ByteOrder) []by
 	return reply
 }
 
-// allocColorReply implements messageEncoder for AllocColor reply.
-type allocColorReply struct {
-	sequence uint16
-	red      uint16
-	green    uint16
-	blue     uint16
-	pixel    uint32
-}
-
-func (r *allocColorReply) encodeMessage(order binary.ByteOrder) []byte {
-	reply := make([]byte, 32)
-	reply[0] = 1 // Reply type
-	// byte 1 is unused
-	order.PutUint16(reply[2:4], r.sequence)
-	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
-	order.PutUint16(reply[8:10], r.red)
-	order.PutUint16(reply[10:12], r.green)
-	order.PutUint16(reply[12:14], r.blue)
-	// reply[14:16] is padding
-	order.PutUint32(reply[8:12], r.pixel)
-	// reply[20:32] is padding
-	return reply
-}
-
-// queryColorsReply implements messageEncoder for QueryColors reply.
+// QueryColors: 91
 type queryColorsReply struct {
 	sequence uint16
 	colors   []color
@@ -498,7 +498,7 @@ func (r *queryColorsReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// lookupColorReply implements messageEncoder for LookupColor reply.
+// LookupColor: 92
 type lookupColorReply struct {
 	sequence   uint16
 	red        uint16
@@ -525,7 +525,7 @@ func (r *lookupColorReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// queryBestSizeReply implements messageEncoder for QueryBestSize reply.
+// QueryBestSize: 97
 type queryBestSizeReply struct {
 	sequence uint16
 	width    uint16
@@ -544,7 +544,7 @@ func (r *queryBestSizeReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// queryExtensionReply implements messageEncoder for QueryExtension reply.
+// QueryExtension: 98
 type queryExtensionReply struct {
 	sequence    uint16
 	present     bool

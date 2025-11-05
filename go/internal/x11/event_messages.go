@@ -6,7 +6,8 @@ import (
 	"encoding/binary"
 )
 
-// keyEvent implements messageEncoder for KeyPress and KeyRelease events.
+// KeyPress: 2
+// KeyRelease: 3
 type keyEvent struct {
 	sequence       uint16
 	detail         byte // keycode
@@ -39,7 +40,7 @@ func (e *keyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// motionNotifyEvent implements messageEncoder for MotionNotify event.
+// MotionNotify: 6
 type motionNotifyEvent struct {
 	sequence       uint16
 	detail         byte
@@ -72,7 +73,7 @@ func (e *motionNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// exposeEvent implements messageEncoder for Expose event.
+// Expose: 12
 type exposeEvent struct {
 	sequence      uint16
 	window        uint32
@@ -96,29 +97,7 @@ func (e *exposeEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// colormapNotifyEvent implements messageEncoder for ColormapNotify event.
-type colormapNotifyEvent struct {
-	sequence uint16
-	window   uint32
-	colormap uint32
-	new      bool
-	state    byte
-}
-
-func (e *colormapNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
-	event := make([]byte, 32)
-	event[0] = ColormapNotify // ColormapNotify event code
-	// byte 1 is unused
-	order.PutUint16(event[2:4], e.sequence)
-	order.PutUint32(event[4:8], e.window)
-	order.PutUint32(event[8:12], e.colormap)
-	event[12] = boolToByte(e.new)
-	event[13] = e.state
-	// event[14:32] is unused
-	return event
-}
-
-// configureNotifyEvent implements messageEncoder for ConfigureNotify event.
+// ConfigureNotify: 22
 type configureNotifyEvent struct {
 	sequence         uint16
 	event            uint32
@@ -148,7 +127,7 @@ func (e *configureNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// selectionNotifyEvent implements messageEncoder for SelectionNotify event.
+// SelectionNotify: 31
 type selectionNotifyEvent struct {
 	sequence  uint16
 	requestor uint32
@@ -172,7 +151,29 @@ func (e *selectionNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// clientMessageEvent implements messageEncoder for ClientMessage event.
+// ColormapNotify: 32
+type colormapNotifyEvent struct {
+	sequence uint16
+	window   uint32
+	colormap uint32
+	new      bool
+	state    byte
+}
+
+func (e *colormapNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
+	event := make([]byte, 32)
+	event[0] = ColormapNotify // ColormapNotify event code
+	// byte 1 is unused
+	order.PutUint16(event[2:4], e.sequence)
+	order.PutUint32(event[4:8], e.window)
+	order.PutUint32(event[8:12], e.colormap)
+	event[12] = boolToByte(e.new)
+	event[13] = e.state
+	// event[14:32] is unused
+	return event
+}
+
+// ClientMessage: 33
 type clientMessageEvent struct {
 	sequence    uint16
 	format      byte
