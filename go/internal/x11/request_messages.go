@@ -656,7 +656,7 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 		return req, nil
 
 	case StoreNamedColor:
-		req, err := parseStoreNamedColorRequest(order, body)
+		req, err := parseStoreNamedColorRequest(order, data, body)
 		if err != nil {
 			return nil, err
 		}
@@ -2092,13 +2092,13 @@ type StoreNamedColorRequest struct {
 
 func (StoreNamedColorRequest) OpCode() reqCode { return StoreNamedColor }
 
-func parseStoreNamedColorRequest(order binary.ByteOrder, requestBody []byte) (*StoreNamedColorRequest, error) {
+func parseStoreNamedColorRequest(order binary.ByteOrder, data byte, requestBody []byte) (*StoreNamedColorRequest, error) {
 	req := &StoreNamedColorRequest{}
 	req.Cmap = order.Uint32(requestBody[0:4])
 	req.Pixel = order.Uint32(requestBody[4:8])
 	nameLen := order.Uint16(requestBody[8:10])
 	req.Name = string(requestBody[12 : 12+nameLen])
-	req.Flags = requestBody[12+nameLen]
+	req.Flags = data
 	return req, nil
 }
 
