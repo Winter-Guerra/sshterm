@@ -106,8 +106,8 @@ type MockX11Frontend struct {
 	MapWindowCalls                  []xID
 	UnmapWindowCalls                []xID
 	ConfigureWindowCalls            []*configureWindowCall
-	CreatedGCs                      map[xID]*GC
-	ChangedGCs                      map[xID]*GC
+	CreatedGCs                      map[xID]GC
+	ChangedGCs                      map[xID]GC
 	ChangedProperties               []*propertyChange
 	PutImageCalls                   []*putImageCall
 	PolyLineCalls                   []*polyLineCall
@@ -173,17 +173,17 @@ type polyText16Call struct {
 	items    []PolyText16Item
 }
 
-func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values *WindowAttributes) {
+func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values WindowAttributes) {
 	m.CreateWindowCalls = append(m.CreateWindowCalls, &window{xid: xid, parent: parent, x: int16(x), y: int16(y), width: uint16(width), height: uint16(height), depth: byte(depth), attributes: values})
 }
 
-func (m *MockX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values *WindowAttributes) {
+func (m *MockX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes) {
 	// Not implemented for mock
 }
 
-func (m *MockX11Frontend) GetWindowAttributes(xid xID) *WindowAttributes {
+func (m *MockX11Frontend) GetWindowAttributes(xid xID) WindowAttributes {
 	// Not implemented for mock
-	return nil
+	return WindowAttributes{}
 }
 
 func (m *MockX11Frontend) DestroyWindow(xid xID) {
@@ -206,39 +206,39 @@ func (m *MockX11Frontend) ConfigureWindow(xid xID, valueMask uint16, values []ui
 	m.ConfigureWindowCalls = append(m.ConfigureWindowCalls, &configureWindowCall{xid, valueMask, values})
 }
 
-func (w *MockX11Frontend) PutImage(drawable xID, gc *GC, depth uint8, width, height uint16, dstX, dstY int16, leftPad uint8, format uint8, imgData []byte) {
+func (w *MockX11Frontend) PutImage(drawable xID, gc GC, depth uint8, width, height uint16, dstX, dstY int16, leftPad uint8, format uint8, imgData []byte) {
 	w.PutImageCalls = append(w.PutImageCalls, &putImageCall{drawable, gc.Foreground, depth, width, height, dstX, dstY, leftPad, format, imgData})
 }
 
-func (m *MockX11Frontend) PolyLine(drawable xID, gc *GC, points []uint32) {
+func (m *MockX11Frontend) PolyLine(drawable xID, gc GC, points []uint32) {
 	m.PolyLineCalls = append(m.PolyLineCalls, &polyLineCall{drawable, gc.Foreground, points})
 }
 
-func (m *MockX11Frontend) PolyFillRectangle(drawable xID, gc *GC, rects []uint32) {
+func (m *MockX11Frontend) PolyFillRectangle(drawable xID, gc GC, rects []uint32) {
 	m.PolyFillRectangleCalls = append(m.PolyFillRectangleCalls, &polyFillRectCall{drawable, gc.Foreground, rects})
 }
 
-func (m *MockX11Frontend) FillPoly(drawable xID, gc *GC, points []uint32) {
+func (m *MockX11Frontend) FillPoly(drawable xID, gc GC, points []uint32) {
 	m.FillPolyCalls = append(m.FillPolyCalls, &fillPolyCall{drawable, gc.Foreground, points})
 }
 
-func (m *MockX11Frontend) PolySegment(drawable xID, gc *GC, segments []uint32) {
+func (m *MockX11Frontend) PolySegment(drawable xID, gc GC, segments []uint32) {
 	m.PolySegmentCalls = append(m.PolySegmentCalls, &polySegmentCall{drawable, gc.Foreground, segments})
 }
 
-func (m *MockX11Frontend) PolyPoint(drawable xID, gc *GC, points []uint32) {
+func (m *MockX11Frontend) PolyPoint(drawable xID, gc GC, points []uint32) {
 	m.PolyPointCalls = append(m.PolyPointCalls, &polyPointCall{drawable, gc.Foreground, points})
 }
 
-func (m *MockX11Frontend) PolyRectangle(drawable xID, gc *GC, rects []uint32) {
+func (m *MockX11Frontend) PolyRectangle(drawable xID, gc GC, rects []uint32) {
 	m.PolyRectangleCalls = append(m.PolyRectangleCalls, &polyRectCall{drawable, gc.Foreground, rects})
 }
 
-func (m *MockX11Frontend) PolyArc(drawable xID, gc *GC, arcs []uint32) {
+func (m *MockX11Frontend) PolyArc(drawable xID, gc GC, arcs []uint32) {
 	m.PolyArcCalls = append(m.PolyArcCalls, &polyArcCall{drawable, gc.Foreground, arcs})
 }
 
-func (m *MockX11Frontend) PolyFillArc(drawable xID, gc *GC, arcs []uint32) {
+func (m *MockX11Frontend) PolyFillArc(drawable xID, gc GC, arcs []uint32) {
 	m.PolyFillArcCalls = append(m.PolyFillArcCalls, &polyFillArcCall{drawable, gc.Foreground, arcs})
 }
 
@@ -246,7 +246,7 @@ func (m *MockX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 	m.ClearAreaCalls = append(m.ClearAreaCalls, &clearAreaCall{drawable, uint32(x), uint32(y), uint32(width), uint32(height)})
 }
 
-func (m *MockX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gc *GC, srcX, srcY, dstX, dstY, width, height int32) {
+func (m *MockX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gc GC, srcX, srcY, dstX, dstY, width, height int32) {
 	m.CopyAreaCalls = append(m.CopyAreaCalls, &copyAreaCall{srcDrawable, dstDrawable, gc.Foreground, uint32(srcX), uint32(srcY), uint32(dstX), uint32(dstY), uint32(width), uint32(height)})
 }
 
@@ -255,19 +255,19 @@ func (m *MockX11Frontend) GetImage(drawable xID, x, y, width, height int32, form
 	return m.GetImageReturn, nil
 }
 
-func (m *MockX11Frontend) ImageText8(drawable xID, gc *GC, x, y int32, text []byte) {
+func (m *MockX11Frontend) ImageText8(drawable xID, gc GC, x, y int32, text []byte) {
 	m.ImageText8Calls = append(m.ImageText8Calls, &imageText8Call{drawable, gc.Foreground, x, y, text})
 }
 
-func (m *MockX11Frontend) ImageText16(drawable xID, gc *GC, x, y int32, text []uint16) {
+func (m *MockX11Frontend) ImageText16(drawable xID, gc GC, x, y int32, text []uint16) {
 	m.ImageText16Calls = append(m.ImageText16Calls, &imageText16Call{drawable, gc.Foreground, x, y, text})
 }
 
-func (m *MockX11Frontend) PolyText8(drawable xID, gc *GC, x, y int32, items []PolyText8Item) {
+func (m *MockX11Frontend) PolyText8(drawable xID, gc GC, x, y int32, items []PolyText8Item) {
 	m.PolyText8Calls = append(m.PolyText8Calls, &polyText8Call{drawable, gc.Foreground, x, y, items})
 }
 
-func (m *MockX11Frontend) PolyText16(drawable xID, gc *GC, x, y int32, items []PolyText16Item) {
+func (m *MockX11Frontend) PolyText16(drawable xID, gc GC, x, y int32, items []PolyText16Item) {
 	m.PolyText16Calls = append(m.PolyText16Calls, &polyText16Call{drawable, gc.Foreground, x, y, items})
 }
 
@@ -362,16 +362,16 @@ func (m *MockX11Frontend) GetAtomName(atom uint32) string {
 	return m.GetAtomNameReturn
 }
 
-func (m *MockX11Frontend) CreateGC(id xID, gc *GC) {
+func (m *MockX11Frontend) CreateGC(id xID, gc GC) {
 	if m.CreatedGCs == nil {
-		m.CreatedGCs = make(map[xID]*GC)
+		m.CreatedGCs = make(map[xID]GC)
 	}
 	m.CreatedGCs[id] = gc
 }
 
-func (m *MockX11Frontend) ChangeGC(id xID, valueMask uint32, gc *GC) {
+func (m *MockX11Frontend) ChangeGC(id xID, valueMask uint32, gc GC) {
 	if m.ChangedGCs == nil {
-		m.ChangedGCs = make(map[xID]*GC)
+		m.ChangedGCs = make(map[xID]GC)
 	}
 	m.ChangedGCs[id] = gc
 }

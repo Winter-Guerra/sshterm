@@ -41,28 +41,28 @@ type Logger interface {
 
 // X11FrontendAPI is the interface for the X11 frontend.
 type X11FrontendAPI interface {
-	CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values *WindowAttributes)
-	ChangeWindowAttributes(xid xID, valueMask uint32, values *WindowAttributes)
-	GetWindowAttributes(xid xID) *WindowAttributes
+	CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values WindowAttributes)
+	ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes)
+	GetWindowAttributes(xid xID) WindowAttributes
 	ChangeProperty(xid xID, property, typeAtom, format uint32, data []byte)
-	CreateGC(xid xID, gc *GC)
-	ChangeGC(xid xID, valueMask uint32, gc *GC)
+	CreateGC(xid xID, gc GC)
+	ChangeGC(xid xID, valueMask uint32, gc GC)
 	DestroyWindow(xid xID)
 	DestroyAllWindowsForClient(clientID uint32)
 	MapWindow(xid xID)
 	UnmapWindow(xid xID)
 	ConfigureWindow(xid xID, valueMask uint16, values []uint32)
-	PutImage(drawable xID, gc *GC, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, data []byte)
-	PolyLine(drawable xID, gc *GC, points []uint32)
-	PolyFillRectangle(drawable xID, gc *GC, rects []uint32)
-	FillPoly(drawable xID, gc *GC, points []uint32)
-	PolySegment(drawable xID, gc *GC, segments []uint32)
-	PolyPoint(drawable xID, gc *GC, points []uint32)
-	PolyRectangle(drawable xID, gc *GC, rects []uint32)
-	PolyArc(drawable xID, gc *GC, arcs []uint32)
-	PolyFillArc(drawable xID, gc *GC, arcs []uint32)
+	PutImage(drawable xID, gc GC, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, data []byte)
+	PolyLine(drawable xID, gc GC, points []uint32)
+	PolyFillRectangle(drawable xID, gc GC, rects []uint32)
+	FillPoly(drawable xID, gc GC, points []uint32)
+	PolySegment(drawable xID, gc GC, segments []uint32)
+	PolyPoint(drawable xID, gc GC, points []uint32)
+	PolyRectangle(drawable xID, gc GC, rects []uint32)
+	PolyArc(drawable xID, gc GC, arcs []uint32)
+	PolyFillArc(drawable xID, gc GC, arcs []uint32)
 	ClearArea(drawable xID, x, y, width, height int32)
-	CopyArea(srcDrawable, dstDrawable xID, gc *GC, srcX, srcY, dstX, dstY, width, height int32)
+	CopyArea(srcDrawable, dstDrawable xID, gc GC, srcX, srcY, dstX, dstY, width, height int32)
 	GetImage(drawable xID, x, y, width, height int32, format uint32) ([]byte, error)
 	ReadClipboard() (string, error)
 	WriteClipboard(string) error
@@ -72,10 +72,10 @@ type X11FrontendAPI interface {
 	GetAtomName(atom uint32) string
 	ListProperties(window xID) []uint32
 	GetProperty(window xID, property uint32) ([]byte, uint32, uint32)
-	ImageText8(drawable xID, gc *GC, x, y int32, text []byte)
-	ImageText16(drawable xID, gc *GC, x, y int32, text []uint16)
-	PolyText8(drawable xID, gc *GC, x, y int32, items []PolyText8Item)
-	PolyText16(drawable xID, gc *GC, x, y int32, items []PolyText16Item)
+	ImageText8(drawable xID, gc GC, x, y int32, text []byte)
+	ImageText16(drawable xID, gc GC, x, y int32, text []uint16)
+	PolyText8(drawable xID, gc GC, x, y int32, items []PolyText8Item)
+	PolyText16(drawable xID, gc GC, x, y int32, items []PolyText16Item)
 	CreatePixmap(xid, drawable xID, width, height, depth uint32)
 	FreePixmap(xid xID)
 	CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, height, dstX, dstY uint32)
@@ -124,7 +124,7 @@ type window struct {
 	mapped        bool
 	depth         byte
 	children      []uint32
-	attributes    *WindowAttributes
+	attributes    WindowAttributes
 	colormap      xID
 }
 
@@ -144,7 +144,7 @@ type x11Server struct {
 	byteOrder          binary.ByteOrder
 	frontend           X11FrontendAPI
 	windows            map[xID]*window
-	gcs                map[xID]*GC
+	gcs                map[xID]GC
 	pixmaps            map[xID]bool
 	cursors            map[xID]bool
 	selections         map[xID]uint32
@@ -166,7 +166,7 @@ func (s *x11Server) UpdatePointerPosition(x, y int16) {
 }
 
 func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32) {
-	log.Printf("X11: SendMouseEvent xid=%s type=%s x=%d y=%d detail=%d", xid, eventType, x, y, detail)
+	debugf("X11: SendMouseEvent xid=%s type=%s x=%d y=%d detail=%d", xid, eventType, x, y, detail)
 	client, ok := s.clients[xid.client]
 	if !ok {
 		log.Print("X11: Failed to write mount event: client not found")
@@ -189,17 +189,17 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	}
 
 	if err := client.send(event); err != nil {
-		log.Printf("X11: Failed to write mouse event: %v", err)
+		debugf("X11: Failed to write mouse event: %v", err)
 	}
 }
 
 func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, keyCode int, altKey, ctrlKey, shiftKey, metaKey bool) {
 	// Implement sending keyboard event to client
 	// This will involve constructing an X11 event packet and writing it to client.conn
-	log.Printf("X11: SendKeyboardEvent xid=%s type=%s keyCode=%d alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, keyCode, altKey, ctrlKey, shiftKey, metaKey)
+	debugf("X11: SendKeyboardEvent xid=%s type=%s keyCode=%d alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, keyCode, altKey, ctrlKey, shiftKey, metaKey)
 	client, ok := s.clients[xid.client]
 	if !ok {
-		log.Printf("X11: SendKeyboardEvent unknown client %d", xid.client)
+		debugf("X11: SendKeyboardEvent unknown client %d", xid.client)
 		return
 	}
 
@@ -237,17 +237,17 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, keyCode int, al
 	} else if eventType == "keyup" {
 		event.encodeMessage(client.byteOrder)[0] = 3 // KeyRelease
 	} else {
-		log.Printf("X11: Unknown keyboard event type: %s", eventType)
+		debugf("X11: Unknown keyboard event type: %s", eventType)
 		return
 	}
 
 	if err := client.send(event); err != nil {
-		log.Printf("X11: Failed to write keyboard event: %v", err)
+		debugf("X11: Failed to write keyboard event: %v", err)
 	}
 }
 
 func (s *x11Server) sendConfigureNotifyEvent(windowID xID, x, y int16, width, height uint16) {
-	log.Printf("X11: Sending ConfigureNotify event for window %d", windowID)
+	debugf("X11: Sending ConfigureNotify event for window %d", windowID)
 	client, ok := s.clients[windowID.client]
 	if !ok {
 		log.Print("X11: Failed to write ConfigureNotify event: client not found")
@@ -268,15 +268,15 @@ func (s *x11Server) sendConfigureNotifyEvent(windowID xID, x, y int16, width, he
 	}
 
 	if err := client.send(event); err != nil {
-		log.Printf("X11: Failed to write ConfigureNotify event: %v", err)
+		debugf("X11: Failed to write ConfigureNotify event: %v", err)
 	}
 }
 
 func (s *x11Server) sendExposeEvent(windowID xID, x, y, width, height uint16) {
-	log.Printf("X11: Sending Expose event for window %s", windowID)
+	debugf("X11: Sending Expose event for window %s", windowID)
 	client, ok := s.clients[windowID.client]
 	if !ok {
-		log.Printf("X11: sendExposeEvent unknown client %d", windowID.client)
+		debugf("X11: sendExposeEvent unknown client %d", windowID.client)
 		return
 	}
 
@@ -291,15 +291,15 @@ func (s *x11Server) sendExposeEvent(windowID xID, x, y, width, height uint16) {
 	}
 
 	if err := client.send(event); err != nil {
-		log.Printf("X11: Failed to write Expose event: %v", err)
+		debugf("X11: Failed to write Expose event: %v", err)
 	}
 }
 
 func (s *x11Server) SendClientMessageEvent(windowID xID, messageTypeAtom uint32, data [20]byte) {
-	log.Printf("X11: Sending ClientMessage event for window %s", windowID)
+	debugf("X11: Sending ClientMessage event for window %s", windowID)
 	client, ok := s.clients[windowID.client]
 	if !ok {
-		log.Printf("X11: SendClientMessageEvent unknown client %d", windowID.client)
+		debugf("X11: SendClientMessageEvent unknown client %d", windowID.client)
 		return
 	}
 
@@ -312,14 +312,14 @@ func (s *x11Server) SendClientMessageEvent(windowID xID, messageTypeAtom uint32,
 	}
 
 	if err := client.send(event); err != nil {
-		log.Printf("X11: Failed to write ClientMessage event: %v", err)
+		debugf("X11: Failed to write ClientMessage event: %v", err)
 	}
 }
 
 func (s *x11Server) SendSelectionNotify(requestor xID, selection, target, property uint32, data []byte) {
 	client, ok := s.clients[requestor.client]
 	if !ok {
-		log.Printf("X11: SendSelectionNotify unknown client %d", requestor.client)
+		debugf("X11: SendSelectionNotify unknown client %d", requestor.client)
 		return
 	}
 
@@ -346,22 +346,22 @@ func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint32) {
 	}
 	if cm, ok := s.colormaps[colormap]; ok {
 		if color, ok := cm.pixels[pixel]; ok {
-			log.Printf("GetRGBColor: cmap:%s pixel:%x return %+v", colormap, pixel, color)
+			debugf("GetRGBColor: cmap:%s pixel:%x return %+v", colormap, pixel, color)
 			return uint32(color.Red), uint32(color.Green), uint32(color.Blue)
 		}
 		r = (pixel & 0xff0000) >> 16
 		g = (pixel & 0x00ff00) >> 8
 		b = (pixel & 0x0000ff)
-		log.Printf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
+		debugf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
 		return r, g, b
 	}
 	// Explicitly handle black and white pixels based on server's setup
 	if pixel == s.blackPixel {
-		log.Printf("GetRGBColor: cmap:%s pixel:%x return blackPixel", colormap, pixel)
+		debugf("GetRGBColor: cmap:%s pixel:%x return blackPixel", colormap, pixel)
 		return 0, 0, 0 // Black
 	}
 	if pixel == s.whitePixel {
-		log.Printf("GetRGBColor: cmap:%s pixel:%x return whitePixel", colormap, pixel)
+		debugf("GetRGBColor: cmap:%s pixel:%x return whitePixel", colormap, pixel)
 		return 0xFF, 0xFF, 0xFF // White
 	}
 	// For TrueColor visuals, the pixel value directly encodes RGB components.
@@ -369,11 +369,11 @@ func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint32) {
 		r = (pixel & s.rootVisual.redMask) >> calculateShift(s.rootVisual.redMask)
 		g = (pixel & s.rootVisual.greenMask) >> calculateShift(s.rootVisual.greenMask)
 		b = (pixel & s.rootVisual.blueMask) >> calculateShift(s.rootVisual.blueMask)
-		log.Printf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
+		debugf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
 		return r, g, b
 	}
 	// Default to black if not found
-	log.Printf("GetRGBColor: cmap:%s pixel:%x return black", colormap, pixel)
+	debugf("GetRGBColor: cmap:%s pixel:%x return black", colormap, pixel)
 	return 0, 0, 0
 }
 
@@ -405,6 +405,7 @@ func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
 	if _, err := io.ReadFull(client.conn, raw[4:]); err != nil {
 		return nil, 0, err
 	}
+	debugf("RAW REQUEST: %x", raw)
 	req, err := parseRequest(client.byteOrder, raw)
 	if err != nil {
 		return nil, 0, err
@@ -439,7 +440,7 @@ func (s *x11Server) serve(client *x11Client) {
 }
 
 func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (reply messageEncoder) {
-	log.Printf("X11: Received opcode: %d", req.OpCode())
+	debugf("X11: Received opcode: %d", req.OpCode())
 	defer func() {
 		if r := recover(); r != nil {
 			s.logger.Errorf("X11 Request Handler Panic: %v\n%s", r, debug.Stack())
@@ -596,7 +597,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *QueryPointerRequest:
 		xid := client.xID(p.Drawable)
-		log.Printf("X11: QueryPointer drawable=%d", xid)
+		debugf("X11: QueryPointer drawable=%d", xid)
 		return &queryPointerReply{
 			sequence:   seq,
 			sameScreen: true,
@@ -1021,7 +1022,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.AllowEvents(client.id, p.Mode, p.Time)
 
 	case *QueryBestSizeRequest:
-		log.Printf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", p.Class, p.Drawable, p.Width, p.Height)
+		debugf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", p.Class, p.Drawable, p.Width, p.Height)
 
 		return &queryBestSizeReply{
 			sequence: seq,
@@ -1056,7 +1057,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		delete(s.colormaps, xid)
 
 	case *QueryExtensionRequest:
-		log.Printf("X11: QueryExtension name=%s", p.Name)
+		debugf("X11: QueryExtension name=%s", p.Name)
 
 		return &queryExtensionReply{
 			sequence:    seq,
@@ -1219,7 +1220,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			if win.colormap == xid {
 				client, ok := s.clients[winID.client]
 				if !ok {
-					log.Printf("X11: InstallColormap unknown client %d", winID.client)
+					debugf("X11: InstallColormap unknown client %d", winID.client)
 					continue
 				}
 				event := &colormapNotifyEvent{
@@ -1249,7 +1250,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			if win.colormap == xid {
 				client, ok := s.clients[winID.client]
 				if !ok {
-					log.Printf("X11: UninstallColormap unknown client %d", winID.client)
+					debugf("X11: UninstallColormap unknown client %d", winID.client)
 					continue
 				}
 				event := &colormapNotifyEvent{
@@ -1277,7 +1278,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	default:
-		log.Printf("Unknown X11 request opcode: %d", p.OpCode())
+		debugf("Unknown X11 request opcode: %d", p.OpCode())
 	}
 	return nil
 }
@@ -1397,7 +1398,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client) {
 				x11ServerInstance = &x11Server{
 					logger:     logger,
 					windows:    make(map[xID]*window),
-					gcs:        make(map[xID]*GC),
+					gcs:        make(map[xID]GC),
 					pixmaps:    make(map[xID]bool),
 					cursors:    make(map[xID]bool),
 					selections: make(map[xID]uint32),

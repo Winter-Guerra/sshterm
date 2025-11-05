@@ -3,17 +3,8 @@
 package x11
 
 import (
-	"log"
 	"syscall/js"
 )
-
-func logf(format string, v ...interface{}) {
-	log.Printf(format, v...)
-}
-
-func (w *wasmX11Frontend) logf(format string, v ...interface{}) {
-	log.Printf(format, v...)
-}
 
 func (w *wasmX11Frontend) recordOperation(op CanvasOperation) {
 	for i, arg := range op.Args {
@@ -84,9 +75,17 @@ func (w *wasmX11Frontend) initCanvasOperations() {
 		ops := w.GetCanvasOperations()
 		jsOps := make([]interface{}, len(ops))
 		for i, op := range ops {
+			args := make([]any, 0, len(op.Args))
+			for _, arg := range op.Args {
+				if v, ok := arg.(GC); ok {
+					args = append(args, map[string]any{"Foreground": v.Foreground})
+					continue
+				}
+				args = append(args, arg)
+			}
 			jsOps[i] = map[string]interface{}{
 				"Type":        op.Type,
-				"Args":        op.Args,
+				"Args":        args,
 				"FillStyle":   op.FillStyle,
 				"StrokeStyle": op.StrokeStyle,
 			}

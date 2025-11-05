@@ -5,10 +5,59 @@ package x11
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestRequestParsing(t *testing.T) {
+	b, err := os.ReadFile("testdata/requests.json")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	var testdata []struct {
+		Raw  string `json:"raw"`
+		Want string `json:"want"`
+	}
+	if err := json.Unmarshal(b, &testdata); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	_, update := os.LookupEnv("UPDATE_TESTDATA")
+	for i, tc := range testdata {
+		req, err := hex.DecodeString(tc.Raw)
+		if err != nil {
+			t.Errorf("#%d %q: %v", i, tc.Raw, err)
+			continue
+		}
+		parsedReq, err := parseRequest(binary.LittleEndian, req)
+		if err != nil {
+			t.Errorf("#%d parseRequest(%q): %v", i, tc.Raw, err)
+			continue
+		}
+		got := fmt.Sprintf("%#v", parsedReq)
+		if update {
+			testdata[i].Want = got
+			continue
+		}
+		if got != tc.Want {
+			t.Errorf("parseRequest(%q) = %s, want %s", tc.Raw, got, tc.Want)
+		}
+	}
+	if update {
+		b, err := json.MarshalIndent(testdata, "", "  ")
+		if err != nil {
+			t.Fatalf("json: %v", err)
+		}
+		if err := os.WriteFile("testdata/requests.json", b, 0o644); err != nil {
+			t.Errorf("WriteFile: %v", err)
+		}
+	}
+}
 
 func TestParseImageText8Request(t *testing.T) {
 	// ImageText8 request: drawable, gc, x, y, text

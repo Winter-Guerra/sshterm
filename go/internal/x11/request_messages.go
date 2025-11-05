@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 )
 
 var (
@@ -22,7 +21,7 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 	if n := copy(reqHeader[:], raw); n != 4 {
 		return nil, fmt.Errorf("%w: header too short", errParseError)
 	}
-	log.Printf("X11: Raw request header: %x", reqHeader)
+	debugf("X11: Raw request header: %x", reqHeader)
 	length := order.Uint16(reqHeader[2:4])
 	if int(4*length) != len(raw) {
 		return nil, fmt.Errorf("%w: mismatch length %d != %d", errParseError, 4*length, len(raw))
@@ -923,7 +922,7 @@ type CreateWindowRequest struct {
 	Class       uint16
 	Visual      uint32
 	ValueMask   uint32
-	Values      *WindowAttributes
+	Values      WindowAttributes
 }
 
 func (CreateWindowRequest) OpCode() reqCode { return CreateWindow }
@@ -948,7 +947,7 @@ func parseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []b
 type ChangeWindowAttributesRequest struct {
 	Window    uint32
 	ValueMask uint32
-	Values    *WindowAttributes
+	Values    WindowAttributes
 }
 
 func (ChangeWindowAttributesRequest) OpCode() reqCode { return ChangeWindowAttributes }
@@ -1482,7 +1481,7 @@ type CreateGCRequest struct {
 	Cid       uint32
 	Drawable  uint32
 	ValueMask uint32
-	Values    *GC
+	Values    GC
 }
 
 func (CreateGCRequest) OpCode() reqCode { return CreateGC }
@@ -1499,7 +1498,7 @@ func parseCreateGCRequest(order binary.ByteOrder, requestBody []byte) (*CreateGC
 type ChangeGCRequest struct {
 	Gc        uint32
 	ValueMask uint32
-	Values    *GC
+	Values    GC
 }
 
 func (ChangeGCRequest) OpCode() reqCode { return ChangeGC }
@@ -2224,8 +2223,8 @@ func min(a, b int) int {
 	}
 	return b
 }
-func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) (*GC, int) {
-	gc := &GC{}
+func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) (GC, int) {
+	gc := GC{}
 	offset := 0
 	if valueMask&GCFunction != 0 {
 		gc.Function = uint32(valuesData[offset])
@@ -2321,8 +2320,9 @@ func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) 
 	}
 	return gc, offset
 }
-func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData []byte) (*WindowAttributes, int) {
-	wa := &WindowAttributes{}
+
+func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData []byte) (WindowAttributes, int) {
+	wa := WindowAttributes{}
 	offset := 0
 	if valueMask&CWBackPixmap != 0 {
 		wa.BackgroundPixmap = order.Uint32(valuesData[offset : offset+4])
