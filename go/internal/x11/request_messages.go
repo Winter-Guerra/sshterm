@@ -4,7 +4,879 @@ package x11
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
+	"log"
 )
+
+var (
+	errParseError = errors.New("x11: request parsing error")
+)
+
+type request interface {
+	OpCode() reqCode
+}
+
+func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
+	var reqHeader [4]byte
+	if n := copy(reqHeader[:], raw); n != 4 {
+		return nil, fmt.Errorf("%w: header too short", errParseError)
+	}
+	log.Printf("X11: Raw request header: %x", reqHeader)
+	length := order.Uint16(reqHeader[2:4])
+	if int(4*length) != len(raw) {
+		return nil, fmt.Errorf("%w: mismatch length %d != %d", errParseError, 4*length, len(raw))
+	}
+
+	opcode := reqCode(reqHeader[0])
+	data := reqHeader[1]
+	body := raw[4:]
+
+	switch opcode {
+	case CreateWindow:
+		req, err := parseCreateWindowRequest(order, data, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ChangeWindowAttributes:
+		req, err := parseChangeWindowAttributesRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case GetWindowAttributes:
+		req, err := parseGetWindowAttributesRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case DestroyWindow:
+	//	req, err := parseDestroyWindowRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case DestroySubwindows:
+	//	req, err := parseDestroySubwindowsRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ChangeSaveSet:
+	//	req, err := parseChangeSaveSetRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ReparentWindow:
+	//	req, err := parseReparentWindowRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case MapWindow:
+		req, err := parseMapWindowRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case MapSubwindows:
+		req, err := parseMapSubwindowsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case UnmapWindow:
+		req, err := parseUnmapWindowRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case UnmapSubwindows:
+		req, err := parseUnmapSubwindowsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ConfigureWindow:
+		req, err := parseConfigureWindowRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case CirculateWindow:
+	//	req, err := parseCirculateWindowRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case GetGeometry:
+		req, err := parseGetGeometryRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case QueryTree:
+	//	req, err := parseQueryTreeRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case InternAtom:
+		req, err := parseInternAtomRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case GetAtomName:
+		req, err := parseGetAtomNameRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ChangeProperty:
+		req, err := parseChangePropertyRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case DeleteProperty:
+		req, err := parseDeletePropertyRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case GetProperty:
+		req, err := parseGetPropertyRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ListProperties:
+		req, err := parseListPropertiesRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case SetSelectionOwner:
+		req, err := parseSetSelectionOwnerRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case GetSelectionOwner:
+		req, err := parseGetSelectionOwnerRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ConvertSelection:
+		req, err := parseConvertSelectionRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case SendEvent:
+		req, err := parseSendEventRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case GrabPointer:
+		req, err := parseGrabPointerRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case UngrabPointer:
+		req, err := parseUngrabPointerRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case GrabButton:
+	//	req, err := parseGrabButtonRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case UngrabButton:
+	//	req, err := parseUngrabButtonRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ChangeActivePointerGrab:
+	//	req, err := parseChangeActivePointerGrabRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case GrabKeyboard:
+		req, err := parseGrabKeyboardRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case UngrabKeyboard:
+		req, err := parseUngrabKeyboardRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case GrabKey:
+	//	req, err := parseGrabKeyRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case UngrabKey:
+	//	req, err := parseUngrabKeyRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case AllowEvents:
+		req, err := parseAllowEventsRequest(order, data, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case GrabServer:
+	//	req, err := parseGrabServerRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case UngrabServer:
+	//	req, err := parseUngrabServerRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case QueryPointer:
+		req, err := parseQueryPointerRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case GetMotionEvents:
+	//	req, err := parseGetMotionEventsRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case TranslateCoords:
+		req, err := parseTranslateCoordsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case WarpPointer:
+		req, err := parseWarpPointerRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case SetInputFocus:
+		req, err := parseSetInputFocusRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case GetInputFocus:
+		req, err := parseGetInputFocusRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case QueryKeymap:
+	//	req, err := parseQueryKeymapRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case OpenFont:
+		req, err := parseOpenFontRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case CloseFont:
+		req, err := parseCloseFontRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case QueryFont:
+		req, err := parseQueryFontRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case QueryTextExtents:
+	//	req, err := parseQueryTextExtentsRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case ListFonts:
+		req, err := parseListFontsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case ListFontsWithInfo:
+	//	req, err := parseListFontsWithInfoRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case SetFontPath:
+	//	req, err := parseSetFontPathRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case GetFontPath:
+	//	req, err := parseGetFontPathRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case CreatePixmap:
+		req, err := parseCreatePixmapRequest(order, data, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case FreePixmap:
+		req, err := parseFreePixmapRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case CreateGC:
+		req, err := parseCreateGCRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ChangeGC:
+		req, err := parseChangeGCRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case CopyGC:
+		req, err := parseCopyGCRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case SetDashes:
+	//	req, err := parseSetDashesRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case SetClipRectangles:
+	//	req, err := parseSetClipRectanglesRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case FreeGC:
+		req, err := parseFreeGCRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ClearArea:
+		req, err := parseClearAreaRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case CopyArea:
+		req, err := parseCopyAreaRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case CopyPlane:
+	//	req, err := parseCopyPlaneRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case PolyPoint:
+		req, err := parsePolyPointRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolyLine:
+		req, err := parsePolyLineRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolySegment:
+		req, err := parsePolySegmentRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolyRectangle:
+		req, err := parsePolyRectangleRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolyArc:
+		req, err := parsePolyArcRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case FillPoly:
+		req, err := parseFillPolyRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolyFillRectangle:
+		req, err := parsePolyFillRectangleRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolyFillArc:
+		req, err := parsePolyFillArcRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PutImage:
+		req, err := parsePutImageRequest(order, data, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case GetImage:
+		req, err := parseGetImageRequest(order, data, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolyText8:
+		req, err := parsePolyText8Request(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case PolyText16:
+		req, err := parsePolyText16Request(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ImageText8:
+		req, err := parseImageText8Request(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ImageText16:
+		req, err := parseImageText16Request(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case CreateColormap:
+		req, err := parseCreateColormapRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case FreeColormap:
+		req, err := parseFreeColormapRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case CopyColormapAndFree:
+	//	req, err := parseCopyColormapAndFreeRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case InstallColormap:
+		req, err := parseInstallColormapRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case UninstallColormap:
+		req, err := parseUninstallColormapRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case ListInstalledColormaps:
+		req, err := parseListInstalledColormapsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case AllocColor:
+		req, err := parseAllocColorRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case AllocNamedColor:
+		req, err := parseAllocNamedColorRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case AllocColorCells:
+	//	req, err := parseAllocColorCellsRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case AllocColorPlanes:
+	//	req, err := parseAllocColorPlanesRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case FreeColors:
+		req, err := parseFreeColorsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case StoreColors:
+		req, err := parseStoreColorsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case StoreNamedColor:
+		req, err := parseStoreNamedColorRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case QueryColors:
+		req, err := parseQueryColorsRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case LookupColor:
+		req, err := parseLookupColorRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case CreateCursor:
+	//	req, err := parseCreateCursorRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case CreateGlyphCursor:
+		req, err := parseCreateGlyphCursorRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case FreeCursor:
+		req, err := parseFreeCursorRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case RecolorCursor:
+	//	req, err := parseRecolorCursorRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case QueryBestSize:
+		req, err := parseQueryBestSizeRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	case QueryExtension:
+		req, err := parseQueryExtensionRequest(order, body)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case ListExtensions:
+	//	req, err := parseListExtensionsRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ChangeKeyboardMapping:
+	//	req, err := parseChangeKeyboardMappingRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case GetKeyboardMapping:
+	//	req, err := parseGetKeyboardMappingRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ChangeKeyboardControl:
+	//	req, err := parseChangeKeyboardControlRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case GetKeyboardControl:
+	//	req, err := parseGetKeyboardControlRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	case Bell:
+		req, err := parseBellRequest(data)
+		if err != nil {
+			return nil, err
+		}
+		return req, nil
+
+	//case ChangePointerControl:
+	//	req, err := parseChangePointerControlRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case GetPointerControl:
+	//	req, err := parseGetPointerControlRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case SetScreenSaver:
+	//	req, err := parseSetScreenSaverRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case GetScreenSaver:
+	//	req, err := parseGetScreenSaverRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ChangeHosts:
+	//	req, err := parseChangeHostsRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ListHosts:
+	//	req, err := parseListHostsRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case SetAccessControl:
+	//	req, err := parseSetAccessControlRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case SetCloseDownMode:
+	//	req, err := parseSetCloseDownModeRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case KillClient:
+	//	req, err := parseKillClientRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case RotateProperties:
+	//	req, err := parseRotatePropertiesRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case ForceScreenSaver:
+	//	req, err := parseForceScreenSaverRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case SetPointerMapping:
+	//	req, err := parseSetPointerMappingRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case GetPointerMapping:
+	//	req, err := parseGetPointerMappingRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case SetModifierMapping:
+	//	req, err := parseSetModifierMappingRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case GetModifierMapping:
+	//	req, err := parseGetModifierMappingRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	//case NoOperation:
+	//	req, err := parseNoOperationRequest(order, body)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return req, nil
+
+	default:
+		return nil, fmt.Errorf("x11: unhandled opcode %d", opcode)
+	}
+}
 
 // auxiliary data structures
 
@@ -40,6 +912,7 @@ type PolyText16Item struct {
 // request messages
 
 type CreateWindowRequest struct {
+	Depth       uint8
 	Drawable    uint32
 	Parent      uint32
 	X           int16
@@ -53,8 +926,11 @@ type CreateWindowRequest struct {
 	Values      *WindowAttributes
 }
 
-func parseCreateWindowRequest(order binary.ByteOrder, requestBody []byte) (*CreateWindowRequest, error) {
+func (CreateWindowRequest) OpCode() reqCode { return CreateWindow }
+
+func parseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte) (*CreateWindowRequest, error) {
 	req := &CreateWindowRequest{}
+	req.Depth = data
 	req.Drawable = order.Uint32(requestBody[0:4])
 	req.Parent = order.Uint32(requestBody[4:8])
 	req.X = int16(order.Uint16(requestBody[8:10]))
@@ -75,6 +951,8 @@ type ChangeWindowAttributesRequest struct {
 	Values    *WindowAttributes
 }
 
+func (ChangeWindowAttributesRequest) OpCode() reqCode { return ChangeWindowAttributes }
+
 func parseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []byte) (*ChangeWindowAttributesRequest, error) {
 	req := &ChangeWindowAttributesRequest{}
 	req.Window = order.Uint32(requestBody[0:4])
@@ -83,9 +961,37 @@ func parseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []by
 	return req, nil
 }
 
+type CopyGCRequest struct {
+	SrcGC uint32
+	DstGC uint32
+}
+
+func (CopyGCRequest) OpCode() reqCode { return CopyGC }
+
+func parseCopyGCRequest(order binary.ByteOrder, requestBody []byte) (*CopyGCRequest, error) {
+	req := &CopyGCRequest{}
+	req.SrcGC = order.Uint32(requestBody[0:4])
+	req.DstGC = order.Uint32(requestBody[4:8])
+	return req, nil
+}
+
+type FreeGCRequest struct {
+	GC uint32
+}
+
+func (FreeGCRequest) OpCode() reqCode { return FreeGC }
+
+func parseFreeGCRequest(order binary.ByteOrder, requestBody []byte) (*FreeGCRequest, error) {
+	req := &FreeGCRequest{}
+	req.GC = order.Uint32(requestBody[0:4])
+	return req, nil
+}
+
 type GetWindowAttributesRequest struct {
 	Drawable uint32
 }
+
+func (GetWindowAttributesRequest) OpCode() reqCode { return GetWindowAttributes }
 
 func parseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte) (*GetWindowAttributesRequest, error) {
 	req := &GetWindowAttributesRequest{}
@@ -97,8 +1003,22 @@ type MapWindowRequest struct {
 	Window uint32
 }
 
+func (MapWindowRequest) OpCode() reqCode { return MapWindow }
+
 func parseMapWindowRequest(order binary.ByteOrder, requestBody []byte) (*MapWindowRequest, error) {
 	req := &MapWindowRequest{}
+	req.Window = order.Uint32(requestBody[0:4])
+	return req, nil
+}
+
+type MapSubwindowsRequest struct {
+	Window uint32
+}
+
+func (MapSubwindowsRequest) OpCode() reqCode { return MapSubwindows }
+
+func parseMapSubwindowsRequest(order binary.ByteOrder, requestBody []byte) (*MapSubwindowsRequest, error) {
+	req := &MapSubwindowsRequest{}
 	req.Window = order.Uint32(requestBody[0:4])
 	return req, nil
 }
@@ -107,8 +1027,22 @@ type UnmapWindowRequest struct {
 	Window uint32
 }
 
+func (UnmapWindowRequest) OpCode() reqCode { return UnmapWindow }
+
 func parseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte) (*UnmapWindowRequest, error) {
 	req := &UnmapWindowRequest{}
+	req.Window = order.Uint32(requestBody[0:4])
+	return req, nil
+}
+
+type UnmapSubwindowsRequest struct {
+	Window uint32
+}
+
+func (UnmapSubwindowsRequest) OpCode() reqCode { return UnmapSubwindows }
+
+func parseUnmapSubwindowsRequest(order binary.ByteOrder, requestBody []byte) (*UnmapSubwindowsRequest, error) {
+	req := &UnmapSubwindowsRequest{}
 	req.Window = order.Uint32(requestBody[0:4])
 	return req, nil
 }
@@ -118,6 +1052,8 @@ type ConfigureWindowRequest struct {
 	ValueMask uint16
 	Values    []uint32
 }
+
+func (ConfigureWindowRequest) OpCode() reqCode { return ConfigureWindow }
 
 func parseConfigureWindowRequest(order binary.ByteOrder, requestBody []byte) (*ConfigureWindowRequest, error) {
 	req := &ConfigureWindowRequest{}
@@ -133,6 +1069,8 @@ type GetGeometryRequest struct {
 	Drawable uint32
 }
 
+func (GetGeometryRequest) OpCode() reqCode { return GetGeometry }
+
 func parseGetGeometryRequest(order binary.ByteOrder, requestBody []byte) (*GetGeometryRequest, error) {
 	req := &GetGeometryRequest{}
 	req.Drawable = order.Uint32(requestBody[0:4])
@@ -144,6 +1082,8 @@ type InternAtomRequest struct {
 	OnlyIfExists bool
 }
 
+func (InternAtomRequest) OpCode() reqCode { return InternAtom }
+
 func parseInternAtomRequest(order binary.ByteOrder, requestBody []byte) (*InternAtomRequest, error) {
 	req := &InternAtomRequest{}
 	nameLen := order.Uint16(requestBody[0:2])
@@ -154,6 +1094,8 @@ func parseInternAtomRequest(order binary.ByteOrder, requestBody []byte) (*Intern
 type GetAtomNameRequest struct {
 	Atom uint32
 }
+
+func (GetAtomNameRequest) OpCode() reqCode { return GetAtomName }
 
 func parseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte) (*GetAtomNameRequest, error) {
 	req := &GetAtomNameRequest{}
@@ -168,6 +1110,8 @@ type ChangePropertyRequest struct {
 	Format   byte
 	Data     []byte
 }
+
+func (ChangePropertyRequest) OpCode() reqCode { return ChangeProperty }
 
 func parseChangePropertyRequest(order binary.ByteOrder, requestBody []byte) (*ChangePropertyRequest, error) {
 	req := &ChangePropertyRequest{}
@@ -185,6 +1129,8 @@ type DeletePropertyRequest struct {
 	Property uint32
 }
 
+func (DeletePropertyRequest) OpCode() reqCode { return DeleteProperty }
+
 func parseDeletePropertyRequest(order binary.ByteOrder, requestBody []byte) (*DeletePropertyRequest, error) {
 	req := &DeletePropertyRequest{}
 	req.Window = order.Uint32(requestBody[0:4])
@@ -201,6 +1147,8 @@ type GetPropertyRequest struct {
 	Length   uint32
 }
 
+func (GetPropertyRequest) OpCode() reqCode { return GetProperty }
+
 func parseGetPropertyRequest(order binary.ByteOrder, requestBody []byte) (*GetPropertyRequest, error) {
 	req := &GetPropertyRequest{}
 	req.Window = order.Uint32(requestBody[0:4])
@@ -215,6 +1163,8 @@ type ListPropertiesRequest struct {
 	Window uint32
 }
 
+func (ListPropertiesRequest) OpCode() reqCode { return ListProperties }
+
 func parseListPropertiesRequest(order binary.ByteOrder, requestBody []byte) (*ListPropertiesRequest, error) {
 	req := &ListPropertiesRequest{}
 	req.Window = order.Uint32(requestBody[0:4])
@@ -227,6 +1177,8 @@ type SetSelectionOwnerRequest struct {
 	Time      uint32
 }
 
+func (SetSelectionOwnerRequest) OpCode() reqCode { return SetSelectionOwner }
+
 func parseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte) (*SetSelectionOwnerRequest, error) {
 	req := &SetSelectionOwnerRequest{}
 	req.Owner = order.Uint32(requestBody[0:4])
@@ -238,6 +1190,8 @@ func parseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte) (
 type GetSelectionOwnerRequest struct {
 	Selection uint32
 }
+
+func (GetSelectionOwnerRequest) OpCode() reqCode { return GetSelectionOwner }
 
 func parseGetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte) (*GetSelectionOwnerRequest, error) {
 	req := &GetSelectionOwnerRequest{}
@@ -252,6 +1206,8 @@ type ConvertSelectionRequest struct {
 	Property  uint32
 	Time      uint32
 }
+
+func (ConvertSelectionRequest) OpCode() reqCode { return ConvertSelection }
 
 func parseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte) (*ConvertSelectionRequest, error) {
 	req := &ConvertSelectionRequest{}
@@ -269,6 +1225,8 @@ type SendEventRequest struct {
 	EventMask   uint32
 	EventData   []byte
 }
+
+func (SendEventRequest) OpCode() reqCode { return SendEvent }
 
 func parseSendEventRequest(order binary.ByteOrder, requestBody []byte) (*SendEventRequest, error) {
 	req := &SendEventRequest{}
@@ -289,6 +1247,8 @@ type GrabPointerRequest struct {
 	Time         uint32
 }
 
+func (GrabPointerRequest) OpCode() reqCode { return GrabPointer }
+
 func parseGrabPointerRequest(order binary.ByteOrder, requestBody []byte) (*GrabPointerRequest, error) {
 	req := &GrabPointerRequest{}
 	req.GrabWindow = order.Uint32(requestBody[0:4])
@@ -305,6 +1265,8 @@ type UngrabPointerRequest struct {
 	Time uint32
 }
 
+func (UngrabPointerRequest) OpCode() reqCode { return UngrabPointer }
+
 func parseUngrabPointerRequest(order binary.ByteOrder, requestBody []byte) (*UngrabPointerRequest, error) {
 	req := &UngrabPointerRequest{}
 	req.Time = order.Uint32(requestBody[0:4])
@@ -319,6 +1281,8 @@ type GrabKeyboardRequest struct {
 	KeyboardMode byte
 }
 
+func (GrabKeyboardRequest) OpCode() reqCode { return GrabKeyboard }
+
 func parseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte) (*GrabKeyboardRequest, error) {
 	req := &GrabKeyboardRequest{}
 	req.GrabWindow = order.Uint32(requestBody[0:4])
@@ -332,6 +1296,8 @@ type UngrabKeyboardRequest struct {
 	Time uint32
 }
 
+func (UngrabKeyboardRequest) OpCode() reqCode { return UngrabKeyboard }
+
 func parseUngrabKeyboardRequest(order binary.ByteOrder, requestBody []byte) (*UngrabKeyboardRequest, error) {
 	req := &UngrabKeyboardRequest{}
 	req.Time = order.Uint32(requestBody[0:4])
@@ -343,6 +1309,8 @@ type AllowEventsRequest struct {
 	Time uint32
 }
 
+func (AllowEventsRequest) OpCode() reqCode { return AllowEvents }
+
 func parseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []byte) (*AllowEventsRequest, error) {
 	req := &AllowEventsRequest{}
 	req.Mode = data
@@ -353,6 +1321,8 @@ func parseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []by
 type QueryPointerRequest struct {
 	Drawable uint32
 }
+
+func (QueryPointerRequest) OpCode() reqCode { return QueryPointer }
 
 func parseQueryPointerRequest(order binary.ByteOrder, requestBody []byte) (*QueryPointerRequest, error) {
 	req := &QueryPointerRequest{}
@@ -366,6 +1336,8 @@ type TranslateCoordsRequest struct {
 	SrcX      int16
 	SrcY      int16
 }
+
+func (TranslateCoordsRequest) OpCode() reqCode { return TranslateCoords }
 
 func parseTranslateCoordsRequest(order binary.ByteOrder, requestBody []byte) (*TranslateCoordsRequest, error) {
 	req := &TranslateCoordsRequest{}
@@ -387,6 +1359,8 @@ type WarpPointerRequest struct {
 	DstY      int16
 }
 
+func (WarpPointerRequest) OpCode() reqCode { return WarpPointer }
+
 func parseWarpPointerRequest(order binary.ByteOrder, payload []byte) (*WarpPointerRequest, error) {
 	req := &WarpPointerRequest{}
 	req.DstX = int16(order.Uint16(payload[12:14]))
@@ -400,6 +1374,8 @@ type SetInputFocusRequest struct {
 	Time     uint32
 }
 
+func (SetInputFocusRequest) OpCode() reqCode { return SetInputFocus }
+
 func parseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte) (*SetInputFocusRequest, error) {
 	req := &SetInputFocusRequest{}
 	req.Focus = order.Uint32(requestBody[0:4])
@@ -410,6 +1386,8 @@ func parseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte) (*Set
 
 type GetInputFocusRequest struct{}
 
+func (GetInputFocusRequest) OpCode() reqCode { return GetInputFocus }
+
 func parseGetInputFocusRequest(order binary.ByteOrder, requestBody []byte) (*GetInputFocusRequest, error) {
 	return &GetInputFocusRequest{}, nil
 }
@@ -418,6 +1396,8 @@ type OpenFontRequest struct {
 	Fid  uint32
 	Name string
 }
+
+func (OpenFontRequest) OpCode() reqCode { return OpenFont }
 
 func parseOpenFontRequest(order binary.ByteOrder, requestBody []byte) (*OpenFontRequest, error) {
 	req := &OpenFontRequest{}
@@ -431,6 +1411,8 @@ type CloseFontRequest struct {
 	Fid uint32
 }
 
+func (CloseFontRequest) OpCode() reqCode { return CloseFont }
+
 func parseCloseFontRequest(order binary.ByteOrder, requestBody []byte) (*CloseFontRequest, error) {
 	req := &CloseFontRequest{}
 	req.Fid = order.Uint32(requestBody[0:4])
@@ -440,6 +1422,8 @@ func parseCloseFontRequest(order binary.ByteOrder, requestBody []byte) (*CloseFo
 type QueryFontRequest struct {
 	Fid uint32
 }
+
+func (QueryFontRequest) OpCode() reqCode { return QueryFont }
 
 func parseQueryFontRequest(order binary.ByteOrder, requestBody []byte) (*QueryFontRequest, error) {
 	req := &QueryFontRequest{}
@@ -451,6 +1435,8 @@ type ListFontsRequest struct {
 	MaxNames uint16
 	Pattern  string
 }
+
+func (ListFontsRequest) OpCode() reqCode { return ListFonts }
 
 func parseListFontsRequest(order binary.ByteOrder, requestBody []byte) (*ListFontsRequest, error) {
 	req := &ListFontsRequest{}
@@ -468,6 +1454,8 @@ type CreatePixmapRequest struct {
 	Depth    byte
 }
 
+func (CreatePixmapRequest) OpCode() reqCode { return CreatePixmap }
+
 func parseCreatePixmapRequest(order binary.ByteOrder, data byte, payload []byte) (*CreatePixmapRequest, error) {
 	req := &CreatePixmapRequest{}
 	req.Depth = data
@@ -482,6 +1470,8 @@ type FreePixmapRequest struct {
 	Pid uint32
 }
 
+func (FreePixmapRequest) OpCode() reqCode { return FreePixmap }
+
 func parseFreePixmapRequest(order binary.ByteOrder, requestBody []byte) (*FreePixmapRequest, error) {
 	req := &FreePixmapRequest{}
 	req.Pid = order.Uint32(requestBody[0:4])
@@ -494,6 +1484,8 @@ type CreateGCRequest struct {
 	ValueMask uint32
 	Values    *GC
 }
+
+func (CreateGCRequest) OpCode() reqCode { return CreateGC }
 
 func parseCreateGCRequest(order binary.ByteOrder, requestBody []byte) (*CreateGCRequest, error) {
 	req := &CreateGCRequest{}
@@ -509,6 +1501,8 @@ type ChangeGCRequest struct {
 	ValueMask uint32
 	Values    *GC
 }
+
+func (ChangeGCRequest) OpCode() reqCode { return ChangeGC }
 
 func parseChangeGCRequest(order binary.ByteOrder, requestBody []byte) (*ChangeGCRequest, error) {
 	req := &ChangeGCRequest{}
@@ -526,6 +1520,8 @@ type ClearAreaRequest struct {
 	Width     uint16
 	Height    uint16
 }
+
+func (ClearAreaRequest) OpCode() reqCode { return ClearArea }
 
 func parseClearAreaRequest(order binary.ByteOrder, requestBody []byte) (*ClearAreaRequest, error) {
 	req := &ClearAreaRequest{}
@@ -549,6 +1545,8 @@ type CopyAreaRequest struct {
 	Height      uint16
 }
 
+func (CopyAreaRequest) OpCode() reqCode { return CopyArea }
+
 func parseCopyAreaRequest(order binary.ByteOrder, requestBody []byte) (*CopyAreaRequest, error) {
 	req := &CopyAreaRequest{}
 	req.SrcDrawable = order.Uint32(requestBody[0:4])
@@ -568,6 +1566,8 @@ type PolyPointRequest struct {
 	Gc          uint32
 	Coordinates []uint32
 }
+
+func (PolyPointRequest) OpCode() reqCode { return PolyPoint }
 
 func parsePolyPointRequest(order binary.ByteOrder, requestBody []byte) (*PolyPointRequest, error) {
 	req := &PolyPointRequest{}
@@ -589,6 +1589,8 @@ type PolyLineRequest struct {
 	Coordinates []uint32
 }
 
+func (PolyLineRequest) OpCode() reqCode { return PolyLine }
+
 func parsePolyLineRequest(order binary.ByteOrder, requestBody []byte) (*PolyLineRequest, error) {
 	req := &PolyLineRequest{}
 	req.Drawable = order.Uint32(requestBody[0:4])
@@ -608,6 +1610,8 @@ type PolySegmentRequest struct {
 	Gc       uint32
 	Segments []uint32
 }
+
+func (PolySegmentRequest) OpCode() reqCode { return PolySegment }
 
 func parsePolySegmentRequest(order binary.ByteOrder, requestBody []byte) (*PolySegmentRequest, error) {
 	req := &PolySegmentRequest{}
@@ -631,6 +1635,8 @@ type PolyRectangleRequest struct {
 	Rectangles []uint32
 }
 
+func (PolyRectangleRequest) OpCode() reqCode { return PolyRectangle }
+
 func parsePolyRectangleRequest(order binary.ByteOrder, requestBody []byte) (*PolyRectangleRequest, error) {
 	req := &PolyRectangleRequest{}
 	req.Drawable = order.Uint32(requestBody[0:4])
@@ -652,6 +1658,8 @@ type PolyArcRequest struct {
 	Gc       uint32
 	Arcs     []uint32
 }
+
+func (PolyArcRequest) OpCode() reqCode { return PolyArc }
 
 func parsePolyArcRequest(order binary.ByteOrder, requestBody []byte) (*PolyArcRequest, error) {
 	req := &PolyArcRequest{}
@@ -678,6 +1686,8 @@ type FillPolyRequest struct {
 	Coordinates []uint32
 }
 
+func (FillPolyRequest) OpCode() reqCode { return FillPoly }
+
 func parseFillPolyRequest(order binary.ByteOrder, requestBody []byte) (*FillPolyRequest, error) {
 	req := &FillPolyRequest{}
 	req.Drawable = order.Uint32(requestBody[0:4])
@@ -697,6 +1707,8 @@ type PolyFillRectangleRequest struct {
 	Gc         uint32
 	Rectangles []uint32
 }
+
+func (PolyFillRectangleRequest) OpCode() reqCode { return PolyFillRectangle }
 
 func parsePolyFillRectangleRequest(order binary.ByteOrder, requestBody []byte) (*PolyFillRectangleRequest, error) {
 	req := &PolyFillRectangleRequest{}
@@ -719,6 +1731,8 @@ type PolyFillArcRequest struct {
 	Gc       uint32
 	Arcs     []uint32
 }
+
+func (PolyFillArcRequest) OpCode() reqCode { return PolyFillArc }
 
 func parsePolyFillArcRequest(order binary.ByteOrder, requestBody []byte) (*PolyFillArcRequest, error) {
 	req := &PolyFillArcRequest{}
@@ -751,6 +1765,8 @@ type PutImageRequest struct {
 	Data     []byte
 }
 
+func (PutImageRequest) OpCode() reqCode { return PutImage }
+
 func parsePutImageRequest(order binary.ByteOrder, data byte, requestBody []byte) (*PutImageRequest, error) {
 	req := &PutImageRequest{}
 	req.Format = data
@@ -776,6 +1792,8 @@ type GetImageRequest struct {
 	Format    byte
 }
 
+func (GetImageRequest) OpCode() reqCode { return GetImage }
+
 func parseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte) (*GetImageRequest, error) {
 	req := &GetImageRequest{}
 	req.Format = data
@@ -795,6 +1813,8 @@ type PolyText8Request struct {
 	Y        int16
 	Items    []PolyText8Item
 }
+
+func (PolyText8Request) OpCode() reqCode { return PolyText8 }
 
 func parsePolyText8Request(order binary.ByteOrder, requestBody []byte) (*PolyText8Request, error) {
 	req := &PolyText8Request{}
@@ -830,6 +1850,8 @@ type PolyText16Request struct {
 	Y        int16
 	Items    []PolyText16Item
 }
+
+func (PolyText16Request) OpCode() reqCode { return PolyText16 }
 
 func parsePolyText16Request(order binary.ByteOrder, requestBody []byte) (*PolyText16Request, error) {
 	req := &PolyText16Request{}
@@ -869,6 +1891,8 @@ type ImageText8Request struct {
 	Text     []byte
 }
 
+func (ImageText8Request) OpCode() reqCode { return ImageText8 }
+
 func parseImageText8Request(order binary.ByteOrder, requestBody []byte) (*ImageText8Request, error) {
 	req := &ImageText8Request{}
 	req.Drawable = order.Uint32(requestBody[0:4])
@@ -886,6 +1910,8 @@ type ImageText16Request struct {
 	Y        int16
 	Text     []uint16
 }
+
+func (ImageText16Request) OpCode() reqCode { return ImageText16 }
 
 func parseImageText16Request(order binary.ByteOrder, requestBody []byte) (*ImageText16Request, error) {
 	req := &ImageText16Request{}
@@ -906,6 +1932,8 @@ type CreateColormapRequest struct {
 	Visual uint32
 }
 
+func (CreateColormapRequest) OpCode() reqCode { return CreateColormap }
+
 func parseCreateColormapRequest(order binary.ByteOrder, payload []byte) (*CreateColormapRequest, error) {
 	req := &CreateColormapRequest{}
 	req.Alloc = payload[0]
@@ -919,6 +1947,8 @@ type FreeColormapRequest struct {
 	Cmap uint32
 }
 
+func (FreeColormapRequest) OpCode() reqCode { return FreeColormap }
+
 func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte) (*FreeColormapRequest, error) {
 	req := &FreeColormapRequest{}
 	req.Cmap = order.Uint32(requestBody[0:4])
@@ -928,6 +1958,8 @@ func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte) (*Free
 type InstallColormapRequest struct {
 	Cmap uint32
 }
+
+func (InstallColormapRequest) OpCode() reqCode { return InstallColormap }
 
 func parseInstallColormapRequest(order binary.ByteOrder, requestBody []byte) (*InstallColormapRequest, error) {
 	req := &InstallColormapRequest{}
@@ -939,6 +1971,8 @@ type UninstallColormapRequest struct {
 	Cmap uint32
 }
 
+func (UninstallColormapRequest) OpCode() reqCode { return UninstallColormap }
+
 func parseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte) (*UninstallColormapRequest, error) {
 	req := &UninstallColormapRequest{}
 	req.Cmap = order.Uint32(requestBody[0:4])
@@ -948,6 +1982,8 @@ func parseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte) (
 type ListInstalledColormapsRequest struct {
 	Window uint32
 }
+
+func (ListInstalledColormapsRequest) OpCode() reqCode { return ListInstalledColormaps }
 
 func parseListInstalledColormapsRequest(order binary.ByteOrder, requestBody []byte) (*ListInstalledColormapsRequest, error) {
 	req := &ListInstalledColormapsRequest{}
@@ -961,6 +1997,8 @@ type AllocColorRequest struct {
 	Green uint16
 	Blue  uint16
 }
+
+func (AllocColorRequest) OpCode() reqCode { return AllocColor }
 
 func parseAllocColorRequest(order binary.ByteOrder, payload []byte) (*AllocColorRequest, error) {
 	req := &AllocColorRequest{}
@@ -979,6 +2017,8 @@ type AllocNamedColorRequest struct {
 	MajorOp  reqCode
 }
 
+func (AllocNamedColorRequest) OpCode() reqCode { return AllocNamedColor }
+
 func parseAllocNamedColorRequest(order binary.ByteOrder, payload []byte) (*AllocNamedColorRequest, error) {
 	req := &AllocNamedColorRequest{}
 	req.Cmap = xID{local: order.Uint32(payload[0:4])}
@@ -992,6 +2032,8 @@ type FreeColorsRequest struct {
 	PlaneMask uint32
 	Pixels    []uint32
 }
+
+func (FreeColorsRequest) OpCode() reqCode { return FreeColors }
 
 func parseFreeColorsRequest(order binary.ByteOrder, requestBody []byte) (*FreeColorsRequest, error) {
 	req := &FreeColorsRequest{}
@@ -1015,6 +2057,8 @@ type StoreColorsRequest struct {
 		Flags byte
 	}
 }
+
+func (StoreColorsRequest) OpCode() reqCode { return StoreColors }
 
 func parseStoreColorsRequest(order binary.ByteOrder, requestBody []byte) (*StoreColorsRequest, error) {
 	req := &StoreColorsRequest{}
@@ -1047,6 +2091,8 @@ type StoreNamedColorRequest struct {
 	Flags byte
 }
 
+func (StoreNamedColorRequest) OpCode() reqCode { return StoreNamedColor }
+
 func parseStoreNamedColorRequest(order binary.ByteOrder, requestBody []byte) (*StoreNamedColorRequest, error) {
 	req := &StoreNamedColorRequest{}
 	req.Cmap = order.Uint32(requestBody[0:4])
@@ -1061,6 +2107,8 @@ type QueryColorsRequest struct {
 	Cmap   xID
 	Pixels []uint32
 }
+
+func (QueryColorsRequest) OpCode() reqCode { return QueryColors }
 
 func parseQueryColorsRequest(order binary.ByteOrder, requestBody []byte) (*QueryColorsRequest, error) {
 	req := &QueryColorsRequest{}
@@ -1078,6 +2126,8 @@ type LookupColorRequest struct {
 	Name string
 }
 
+func (LookupColorRequest) OpCode() reqCode { return LookupColor }
+
 func parseLookupColorRequest(order binary.ByteOrder, payload []byte) (*LookupColorRequest, error) {
 	req := &LookupColorRequest{}
 	req.Cmap = order.Uint32(payload[0:4])
@@ -1087,14 +2137,16 @@ func parseLookupColorRequest(order binary.ByteOrder, payload []byte) (*LookupCol
 }
 
 type CreateGlyphCursorRequest struct {
-	Cid         uint32
-	SourceFont  uint32
-	MaskFont    uint32
-	SourceChar  uint16
-	MaskChar    uint16
-	ForeColor   [3]uint16
-	BackColor   [3]uint16
+	Cid        uint32
+	SourceFont uint32
+	MaskFont   uint32
+	SourceChar uint16
+	MaskChar   uint16
+	ForeColor  [3]uint16
+	BackColor  [3]uint16
 }
+
+func (CreateGlyphCursorRequest) OpCode() reqCode { return CreateGlyphCursor }
 
 func parseCreateGlyphCursorRequest(order binary.ByteOrder, requestBody []byte) (*CreateGlyphCursorRequest, error) {
 	req := &CreateGlyphCursorRequest{}
@@ -1116,6 +2168,8 @@ type FreeCursorRequest struct {
 	Cursor uint32
 }
 
+func (FreeCursorRequest) OpCode() reqCode { return FreeCursor }
+
 func parseFreeCursorRequest(order binary.ByteOrder, requestBody []byte) (*FreeCursorRequest, error) {
 	req := &FreeCursorRequest{}
 	req.Cursor = order.Uint32(requestBody[0:4])
@@ -1129,6 +2183,8 @@ type QueryBestSizeRequest struct {
 	Height   uint16
 }
 
+func (QueryBestSizeRequest) OpCode() reqCode { return QueryBestSize }
+
 func parseQueryBestSizeRequest(order binary.ByteOrder, requestBody []byte) (*QueryBestSizeRequest, error) {
 	req := &QueryBestSizeRequest{}
 	req.Drawable = order.Uint32(requestBody[0:4])
@@ -1141,6 +2197,8 @@ type QueryExtensionRequest struct {
 	Name string
 }
 
+func (QueryExtensionRequest) OpCode() reqCode { return QueryExtension }
+
 func parseQueryExtensionRequest(order binary.ByteOrder, requestBody []byte) (*QueryExtensionRequest, error) {
 	req := &QueryExtensionRequest{}
 	nameLen := order.Uint16(requestBody[0:2])
@@ -1151,6 +2209,8 @@ func parseQueryExtensionRequest(order binary.ByteOrder, requestBody []byte) (*Qu
 type BellRequest struct {
 	Percent int8
 }
+
+func (BellRequest) OpCode() reqCode { return Bell }
 
 func parseBellRequest(requestBody byte) (*BellRequest, error) {
 	req := &BellRequest{}

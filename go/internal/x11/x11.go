@@ -116,15 +116,6 @@ type CanvasOperation struct {
 	StrokeStyle string `json:"strokeStyle"`
 }
 
-// request represents an X11 request.
-type request struct {
-	opcode   reqCode
-	data     byte
-	length   uint16
-	sequence uint16
-	body     []byte
-}
-
 type window struct {
 	xid           xID
 	parent        uint32
@@ -403,24 +394,23 @@ func (s *x11Server) rootWindowID() uint32 {
 	return 0
 }
 
-func (s *x11Server) readRequest(client *x11Client) (*request, error) {
-	var reqHeader [4]byte
-	if _, err := io.ReadFull(client.conn, reqHeader[:]); err != nil {
-		return nil, err
+func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
+	var header [4]byte
+	if _, err := io.ReadFull(client.conn, header[:]); err != nil {
+		return nil, 0, err
 	}
-	log.Printf("X11: Raw request header: %x", reqHeader)
+	length := client.byteOrder.Uint16(header[2:4])
+	raw := make([]byte, 4*length)
+	copy(raw, header[:])
+	if _, err := io.ReadFull(client.conn, raw[4:]); err != nil {
+		return nil, 0, err
+	}
+	req, err := parseRequest(client.byteOrder, raw)
+	if err != nil {
+		return nil, 0, err
+	}
 	client.sequence++
-	req := &request{
-		opcode:   reqCode(reqHeader[0]),
-		data:     reqHeader[1],
-		length:   client.byteOrder.Uint16(reqHeader[2:4]),
-		sequence: client.sequence,
-	}
-	req.body = make([]byte, (req.length*4)-4)
-	if _, err := io.ReadFull(client.conn, req.body); err != nil {
-		return nil, err
-	}
-	return req, nil
+	return req, client.sequence, nil
 }
 
 func (s *x11Server) cleanupClient(client *x11Client) {
@@ -432,14 +422,14 @@ func (s *x11Server) serve(client *x11Client) {
 	defer client.conn.Close()
 	defer s.cleanupClient(client)
 	for {
-		req, err := s.readRequest(client)
+		req, seq, err := s.readRequest(client)
 		if err != nil {
 			if err != io.EOF {
 				s.logger.Errorf("Failed to read X11 request: %v", err)
 			}
 			break
 		}
-		reply := s.handleRequest(client, req)
+		reply := s.handleRequest(client, req, seq)
 		if reply != nil {
 			if err := client.send(reply); err != nil {
 				s.logger.Errorf("Failed to write reply: %v", err)
@@ -448,35 +438,30 @@ func (s *x11Server) serve(client *x11Client) {
 	}
 }
 
-func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messageEncoder) {
-	log.Printf("X11: Received opcode: %d", req.opcode)
+func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (reply messageEncoder) {
+	log.Printf("X11: Received opcode: %d", req.OpCode())
 	defer func() {
 		if r := recover(); r != nil {
 			s.logger.Errorf("X11 Request Handler Panic: %v\n%s", r, debug.Stack())
 			// Construct a generic X11 error reply (Request error)
 			reply = client.sendError(&GenericError{
-				seq:      req.sequence,
-				badValue: uint32(req.opcode),
+				seq:      seq,
+				badValue: uint32(req.OpCode()),
 				minorOp:  0,
-				majorOp:  req.opcode,
+				majorOp:  req.OpCode(),
 				code:     1, // Request error code
 			})
 		}
 	}()
 
-	switch req.opcode {
-	case CreateWindow:
-		p, err := parseCreateWindowRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse CreateWindowRequest: %v", err)
-			return nil
-		}
+	switch p := req.(type) {
+	case *CreateWindowRequest:
 		xid := client.xID(p.Drawable)
 		parentXID := client.xID(p.Parent)
 		// Check if the window ID is already in use
 		if _, exists := s.windows[xid]; exists {
 			s.logger.Errorf("X11: CreateWindow: ID %d already in use", xid)
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Drawable, majorOp: CreateWindow, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Drawable, majorOp: CreateWindow, code: IDChoiceError})
 		}
 
 		newWindow := &window{
@@ -486,7 +471,7 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			y:          p.Y,
 			width:      p.Width,
 			height:     p.Height,
-			depth:      byte(req.data),
+			depth:      p.Depth,
 			children:   []uint32{},
 			attributes: p.Values,
 		}
@@ -501,21 +486,16 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		if parentWindow, ok := s.windows[parentXID]; ok {
 			parentWindow.children = append(parentWindow.children, p.Drawable)
 		}
-		s.frontend.CreateWindow(xid, p.Parent, uint32(p.X), uint32(p.Y), uint32(p.Width), uint32(p.Height), uint32(req.data), p.ValueMask, p.Values)
+		s.frontend.CreateWindow(xid, p.Parent, uint32(p.X), uint32(p.Y), uint32(p.Width), uint32(p.Height), uint32(p.Depth), p.ValueMask, p.Values)
 
-	case GetWindowAttributes:
-		p, err := parseGetWindowAttributesRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GetWindowAttributesRequest: %v", err)
-			return nil
-		}
+	case *GetWindowAttributesRequest:
 		xid := client.xID(p.Drawable)
 		w, ok := s.windows[xid]
 		if !ok {
 			return nil
 		}
 		return &getWindowAttributesReply{
-			sequence:           req.sequence,
+			sequence:           seq,
 			backingStore:       byte(w.attributes.BackingStore),
 			visualID:           s.visualID,
 			class:              1, // Class: InputOutput
@@ -532,34 +512,19 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			yourEventMask:      w.attributes.EventMask, // Assuming client's event mask is the same for now
 			doNotPropagateMask: 0,                      // Not explicitly stored in window attributes
 		}
-	case DestroyWindow:
-		p, err := parseMapWindowRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse DestroyWindow (as MapWindowRequest): %v", err)
-			return nil
-		}
-		xid := client.xID(p.Window)
-		delete(s.windows, xid)
-		s.frontend.DestroyWindow(xid)
+	//case *DestroyWindowRequest:
+	//	xid := client.xID(p.Window)
+	//	delete(s.windows, xid)
+	//	s.frontend.DestroyWindow(xid)
 
-	case UnmapWindow:
-		p, err := parseUnmapWindowRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse UnmapWindowRequest: %v", err)
-			return nil
-		}
+	case *UnmapWindowRequest:
 		xid := client.xID(p.Window)
 		if w, ok := s.windows[xid]; ok {
 			w.mapped = false
 		}
 		s.frontend.UnmapWindow(xid)
 
-	case MapWindow:
-		p, err := parseMapWindowRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse MapWindowRequest: %v", err)
-			return nil
-		}
+	case *MapWindowRequest:
 		xid := client.xID(p.Window)
 		if w, ok := s.windows[xid]; ok {
 			w.mapped = true
@@ -567,12 +532,7 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			s.sendExposeEvent(xid, 0, 0, w.width, w.height)
 		}
 
-	case MapSubwindows:
-		p, err := parseMapWindowRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse MapSubwindows (as MapWindowRequest): %v", err)
-			return nil
-		}
+	case *MapSubwindowsRequest:
 		xid := client.xID(p.Window)
 		if parentWindow, ok := s.windows[xid]; ok {
 			for _, childID := range parentWindow.children {
@@ -585,28 +545,18 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			}
 		}
 
-	case ConfigureWindow:
-		p, err := parseConfigureWindowRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ConfigureWindowRequest: %v", err)
-			return nil
-		}
+	case *ConfigureWindowRequest:
 		xid := client.xID(p.Window)
 		s.frontend.ConfigureWindow(xid, p.ValueMask, p.Values)
 
-	case GetGeometry:
-		p, err := parseGetGeometryRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GetGeometryRequest: %v", err)
-			return nil
-		}
+	case *GetGeometryRequest:
 		xid := client.xID(p.Drawable)
 		w, ok := s.windows[xid]
 		if !ok {
 			return nil
 		}
 		return &getGeometryReply{
-			sequence:    req.sequence,
+			sequence:    seq,
 			depth:       w.depth,
 			root:        s.rootWindowID(),
 			x:           w.x,
@@ -615,65 +565,40 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			height:      w.height,
 			borderWidth: 0, // Border width is not stored in window struct, assuming 0 for now
 		}
-	case QueryTree:
-		// Not implemented yet
 
-	case InternAtom:
-		p, err := parseInternAtomRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse InternAtomRequest: %v", err)
-			return nil
-		}
+	//case *QueryTreeRequest:
+
+	case *InternAtomRequest:
 		atomID := s.frontend.GetAtom(client.id, p.Name)
 
 		return &internAtomReply{
-			sequence: req.sequence,
+			sequence: seq,
 			atom:     atomID,
 		}
 
-	case GetAtomName:
-		p, err := parseGetAtomNameRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GetAtomNameRequest: %v", err)
-			return nil
-		}
+	case *GetAtomNameRequest:
 		name := s.frontend.GetAtomName(p.Atom)
 		return &getAtomNameReply{
-			sequence:   req.sequence,
+			sequence:   seq,
 			nameLength: uint16(len(name)),
 			name:       name,
 		}
 
-	case ChangeProperty:
-		p, err := parseChangePropertyRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ChangePropertyRequest: %v", err)
-			return nil
-		}
+	case *ChangePropertyRequest:
 		xid := client.xID(p.Window)
 		s.frontend.ChangeProperty(xid, p.Property, p.Type, uint32(p.Format), p.Data)
 
-	case SendEvent:
-		p, err := parseSendEventRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse SendEventRequest: %v", err)
-			return nil
-		}
+	case *SendEventRequest:
 		// The X11 client sends an event to another client.
 		// We need to forward this event to the appropriate frontend.
 		// For now, we'll just log it and pass it to the frontend.
 		s.frontend.SendEvent(&x11RawEvent{data: p.EventData})
 
-	case QueryPointer:
-		p, err := parseQueryPointerRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse QueryPointerRequest: %v", err)
-			return nil
-		}
+	case *QueryPointerRequest:
 		xid := client.xID(p.Drawable)
 		log.Printf("X11: QueryPointer drawable=%d", xid)
 		return &queryPointerReply{
-			sequence:   req.sequence,
+			sequence:   seq,
 			sameScreen: true,
 			root:       s.rootWindowID(),
 			child:      p.Drawable,
@@ -683,43 +608,29 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			winY:       s.pointerY, // Assuming pointer is always in the window for now
 			mask:       0,          // No buttons pressed
 		}
-	case ListProperties:
-		p, err := parseListPropertiesRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ListPropertiesRequest: %v", err)
-			return nil
-		}
+
+	case *ListPropertiesRequest:
 		xid := client.xID(p.Window)
 		atoms := s.frontend.ListProperties(xid)
 		return &listPropertiesReply{
-			sequence:      req.sequence,
+			sequence:      seq,
 			numProperties: uint16(len(atoms)),
 			atoms:         atoms,
 		}
 
-	case CreateGC:
-		p, err := parseCreateGCRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse CreateGCRequest: %v", err)
-			return nil
-		}
+	case *CreateGCRequest:
 		xid := client.xID(p.Cid)
 
 		// Check if the GC ID is already in use
 		if _, exists := s.gcs[xid]; exists {
 			s.logger.Errorf("X11: CreateGC: ID %s already in use", xid)
-			return client.sendError(&GenericError{seq: req.sequence, badValue: xid.local, majorOp: CreateGC, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: xid.local, majorOp: CreateGC, code: IDChoiceError})
 		}
 
 		s.gcs[xid] = p.Values
 		s.frontend.CreateGC(xid, p.Values)
 
-	case ChangeGC:
-		p, err := parseChangeGCRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ChangeGCRequest: %v", err)
-			return nil
-		}
+	case *ChangeGCRequest:
 		xid := client.xID(p.Gc)
 		if existingGC, ok := s.gcs[xid]; ok {
 			if p.ValueMask&GCFunction != 0 {
@@ -794,159 +705,93 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		}
 		s.frontend.ChangeGC(xid, p.ValueMask, p.Values)
 
-	case ClearArea:
-		p, err := parseClearAreaRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ClearAreaRequest: %v", err)
-			return nil
-		}
+	case *ClearAreaRequest:
 		s.frontend.ClearArea(client.xID(p.Window), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
 
-	case CopyArea:
-		p, err := parseCopyAreaRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse CopyAreaRequest: %v", err)
-			return nil
-		}
+	case *CopyAreaRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.CopyArea(client.xID(p.SrcDrawable), client.xID(p.DstDrawable), gc, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
 
-	case PolyPoint:
-		p, err := parsePolyPointRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyPointRequest: %v", err)
-			return nil
-		}
+	case *PolyPointRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyPoint(client.xID(p.Drawable), gc, p.Coordinates)
 
-	case PolyLine:
-		p, err := parsePolyLineRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyLineRequest: %v", err)
-			return nil
-		}
+	case *PolyLineRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyLine(client.xID(p.Drawable), gc, p.Coordinates)
 
-	case PolySegment:
-		p, err := parsePolySegmentRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolySegmentRequest: %v", err)
-			return nil
-		}
+	case *PolySegmentRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolySegment(client.xID(p.Drawable), gc, p.Segments)
 
-	case PolyArc:
-		p, err := parsePolyArcRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyArcRequest: %v", err)
-			return nil
-		}
+	case *PolyArcRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyArc(client.xID(p.Drawable), gc, p.Arcs)
 
-	case PolyRectangle:
-		p, err := parsePolyRectangleRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyRectangleRequest: %v", err)
-			return nil
-		}
+	case *PolyRectangleRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyRectangle(client.xID(p.Drawable), gc, p.Rectangles)
 
-	case FillPoly:
-		p, err := parseFillPolyRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse FillPolyRequest: %v", err)
-			return nil
-		}
+	case *FillPolyRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.FillPoly(client.xID(p.Drawable), gc, p.Coordinates)
 
-	case PolyFillRectangle:
-		p, err := parsePolyFillRectangleRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyFillRectangleRequest: %v", err)
-			return nil
-		}
+	case *PolyFillRectangleRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyFillRectangle(client.xID(p.Drawable), gc, p.Rectangles)
 
-	case PolyFillArc:
-		p, err := parsePolyFillArcRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyFillArcRequest: %v", err)
-			return nil
-		}
+	case *PolyFillArcRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyFillArc(client.xID(p.Drawable), gc, p.Arcs)
 
-	case PutImage:
-		log.Printf("X11: Server received PutImage request")
-		p, err := parsePutImageRequest(s.byteOrder, req.data, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PutImageRequest: %v", err)
-			return nil
-		}
+	case *PutImageRequest:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PutImage(client.xID(p.Drawable), gc, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
 
-	case GetImage:
-		p, err := parseGetImageRequest(s.byteOrder, req.data, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GetImageRequest: %v", err)
-			return nil
-		}
+	case *GetImageRequest:
 		imgData, err := s.frontend.GetImage(client.xID(p.Drawable), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height), p.PlaneMask)
 		if err != nil {
 			s.logger.Errorf("Failed to get image: %v", err)
 			return nil
 		}
 		return &getImageReply{
-			sequence:  req.sequence,
+			sequence:  seq,
 			depth:     24, // Assuming 24-bit depth for now
 			visualID:  s.visualID,
 			imageData: imgData,
 		}
-	case GetProperty:
-		p, err := parseGetPropertyRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GetPropertyRequest: %v", err)
-			return nil
-		}
 
+	case *GetPropertyRequest:
 		data, typ, format := s.frontend.GetProperty(client.xID(p.Window), p.Property)
 
 		// Handle offset and length
@@ -975,7 +820,7 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		}
 
 		return &getPropertyReply{
-			sequence:              req.sequence,
+			sequence:              seq,
 			format:                byte(format),
 			propertyType:          typ,
 			bytesAfter:            uint32(bytesAfter),
@@ -983,111 +828,65 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			value:                 propData,
 		}
 
-	case ImageText8:
-		p, err := parseImageText8Request(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ImageText8Request: %v", err)
-			return nil
-		}
+	case *ImageText8Request:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.ImageText8(client.xID(p.Drawable), gc, int32(p.X), int32(p.Y), p.Text)
 
-	case ImageText16:
-		p, err := parseImageText16Request(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ImageText16Request: %v", err)
-			return nil
-		}
+	case *ImageText16Request:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.ImageText16(client.xID(p.Drawable), gc, int32(p.X), int32(p.Y), p.Text)
 
-	case PolyText8:
-		p, err := parsePolyText8Request(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyText8Request: %v", err)
-			return nil
-		}
+	case *PolyText8Request:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyText8(client.xID(p.Drawable), gc, int32(p.X), int32(p.Y), p.Items)
 
-	case PolyText16:
-		p, err := parsePolyText16Request(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse PolyText16Request: %v", err)
-			return nil
-		}
+	case *PolyText16Request:
 		gc, ok := s.gcs[client.xID(p.Gc)]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyText16(client.xID(p.Drawable), gc, int32(p.X), int32(p.Y), p.Items)
 
-	case Bell:
-		p, err := parseBellRequest(req.data)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse BellRequest: %v", err)
-			return nil
-		}
+	case *BellRequest:
 		s.frontend.Bell(p.Percent)
 
-	case CreatePixmap:
-		p, err := parseCreatePixmapRequest(s.byteOrder, req.data, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse CreatePixmapRequest: %v", err)
-			return nil
-		}
+	case *CreatePixmapRequest:
 		xid := client.xID(p.Pid)
 
 		// Check if the pixmap ID is already in use
 		if _, exists := s.pixmaps[xid]; exists {
 			s.logger.Errorf("X11: CreatePixmap: ID %s already in use", xid)
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Pid, majorOp: CreatePixmap, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Pid, majorOp: CreatePixmap, code: IDChoiceError})
 		}
 
 		s.pixmaps[xid] = true // Mark pixmap ID as used
 		s.frontend.CreatePixmap(xid, client.xID(p.Drawable), uint32(p.Width), uint32(p.Height), uint32(p.Depth))
 
-	case FreePixmap:
-		p, err := parseFreePixmapRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse FreePixmapRequest: %v", err)
-			return nil
-		}
+	case *FreePixmapRequest:
 		xid := client.xID(p.Pid)
 		delete(s.pixmaps, xid)
 		s.frontend.FreePixmap(xid)
 
-	case CreateGlyphCursor:
-		p, err := parseCreateGlyphCursorRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse CreateGlyphCursorRequest: %v", err)
-			return nil
-		}
-
+	case *CreateGlyphCursorRequest:
 		// Check if the cursor ID is already in use
 		if _, exists := s.cursors[client.xID(p.Cid)]; exists {
 			s.logger.Errorf("X11: CreateGlyphCursor: ID %d already in use", p.Cid)
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Cid, majorOp: CreateGlyphCursor, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cid, majorOp: CreateGlyphCursor, code: IDChoiceError})
 		}
 
 		s.cursors[client.xID(p.Cid)] = true
 		s.frontend.CreateCursorFromGlyph(p.Cid, p.SourceChar)
 
-	case ChangeWindowAttributes:
-		p, err := parseChangeWindowAttributesRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ChangeWindowAttributesRequest: %v", err)
-			return nil
-		}
+	case *ChangeWindowAttributesRequest:
 		xid := client.xID(p.Window)
 		if w, ok := s.windows[xid]; ok {
 			if p.ValueMask&CWBackPixmap != 0 {
@@ -1139,31 +938,21 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		}
 		s.frontend.ChangeWindowAttributes(xid, p.ValueMask, p.Values)
 
-	case CopyGC:
-		srcGC := client.xID(s.byteOrder.Uint32(req.body[0:4]))
-		dstGC := client.xID(s.byteOrder.Uint32(req.body[4:8]))
+	case *CopyGCRequest:
+		srcGC := client.xID(p.SrcGC)
+		dstGC := client.xID(p.DstGC)
 		s.frontend.CopyGC(srcGC, dstGC)
 
-	case FreeGC:
-		gcID := client.xID(s.byteOrder.Uint32(req.body[0:4]))
+	case *FreeGCRequest:
+		gcID := client.xID(p.GC)
 		s.frontend.FreeGC(gcID)
 
-	case FreeCursor:
-		p, err := parseFreeCursorRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse FreeCursorRequest: %v", err)
-			return nil
-		}
+	case *FreeCursorRequest:
 		xid := client.xID(p.Cursor)
 		delete(s.cursors, xid)
 		s.frontend.FreeCursor(xid)
 
-	case TranslateCoords:
-		p, err := parseTranslateCoordsRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse TranslateCoordsRequest: %v", err)
-			return nil
-		}
+	case *TranslateCoordsRequest:
 		srcWindow := client.xID(p.SrcWindow)
 		dstWindow := client.xID(p.DstWindow)
 
@@ -1179,122 +968,72 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		dstY := src.y + p.SrcY - dst.y
 
 		return &translateCoordsReply{
-			sequence:   req.sequence,
+			sequence:   seq,
 			sameScreen: true,
 			child:      0, // No child for now
 			dstX:       dstX,
 			dstY:       dstY,
 		}
 
-	case GetInputFocus:
+	case *GetInputFocusRequest:
 		return &getInputFocusReply{
-			sequence: req.sequence,
+			sequence: seq,
 			revertTo: 1, // RevertToParent
 			focus:    s.frontend.GetFocusWindow(client.id).local,
 		}
 
-	case SetSelectionOwner:
-		p, err := parseSetSelectionOwnerRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse SetSelectionOwnerRequest: %v", err)
-			return nil
-		}
+	case *SetSelectionOwnerRequest:
 		s.selections[client.xID(p.Selection)] = p.Owner
 
-	case GetSelectionOwner:
-		p, err := parseGetSelectionOwnerRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GetSelectionOwnerRequest: %v", err)
-			return nil
-		}
+	case *GetSelectionOwnerRequest:
 		owner := s.selections[client.xID(p.Selection)]
 		return &getSelectionOwnerReply{
-			sequence: req.sequence,
+			sequence: seq,
 			owner:    owner,
 		}
 
-	case ConvertSelection:
-		p, err := parseConvertSelectionRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ConvertSelectionRequest: %v", err)
-			return nil
-		}
+	case *ConvertSelectionRequest:
 		s.frontend.ConvertSelection(p.Selection, p.Target, p.Property, client.xID(p.Requestor))
 
-	case GrabPointer:
-		p, err := parseGrabPointerRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GrabPointerRequest: %v", err)
-			return nil
-		}
+	case *GrabPointerRequest:
 		grabWindow := client.xID(p.GrabWindow)
 		status := s.frontend.GrabPointer(grabWindow, p.OwnerEvents, p.EventMask, p.PointerMode, p.KeyboardMode, p.ConfineTo, p.Cursor, p.Time)
 		return &grabPointerReply{
-			sequence: req.sequence,
+			sequence: seq,
 			status:   status,
 		}
 
-	case UngrabPointer:
-		p, err := parseUngrabPointerRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse UngrabPointerRequest: %v", err)
-			return nil
-		}
+	case *UngrabPointerRequest:
 		s.frontend.UngrabPointer(p.Time)
 
-	case GrabKeyboard:
-		p, err := parseGrabKeyboardRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse GrabKeyboardRequest: %v", err)
-			return nil
-		}
+	case *GrabKeyboardRequest:
 		grabWindow := client.xID(p.GrabWindow)
 		status := s.frontend.GrabKeyboard(grabWindow, p.OwnerEvents, p.Time, p.PointerMode, p.KeyboardMode)
 		return &grabKeyboardReply{
-			sequence: req.sequence,
+			sequence: seq,
 			status:   status,
 		}
 
-	case UngrabKeyboard:
-		p, err := parseUngrabKeyboardRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse UngrabKeyboardRequest: %v", err)
-			return nil
-		}
+	case *UngrabKeyboardRequest:
 		s.frontend.UngrabKeyboard(p.Time)
 
-	case AllowEvents:
-		p, err := parseAllowEventsRequest(s.byteOrder, req.data, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse AllowEventsRequest: %v", err)
-			return nil
-		}
+	case *AllowEventsRequest:
 		s.frontend.AllowEvents(client.id, p.Mode, p.Time)
 
-	case QueryBestSize:
-		p, err := parseQueryBestSizeRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse QueryBestSizeRequest: %v", err)
-			return nil
-		}
+	case *QueryBestSizeRequest:
 		log.Printf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", p.Class, p.Drawable, p.Width, p.Height)
 
 		return &queryBestSizeReply{
-			sequence: req.sequence,
+			sequence: seq,
 			width:    p.Width,
 			height:   p.Height,
 		}
 
-	case CreateColormap:
-		p, err := parseCreateColormapRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse CreateColormapRequest: %v", err)
-			return nil
-		}
+	case *CreateColormapRequest:
 		xid := client.xID(p.Mid)
 
 		if _, exists := s.colormaps[xid]; exists {
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Mid, majorOp: CreateColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Mid, majorOp: CreateColormap, code: ColormapError})
 		}
 
 		newColormap := &colormap{
@@ -1309,47 +1048,32 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 
 		s.colormaps[xid] = newColormap
 
-	case FreeColormap:
-		p, err := parseFreeColormapRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse FreeColormapRequest: %v", err)
-			return nil
-		}
+	case *FreeColormapRequest:
 		xid := client.xID(p.Cmap)
 		if _, ok := s.colormaps[xid]; !ok {
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Cmap, majorOp: FreeColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap, majorOp: FreeColormap, code: ColormapError})
 		}
 		delete(s.colormaps, xid)
 
-	case QueryExtension:
-		p, err := parseQueryExtensionRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse QueryExtensionRequest: %v", err)
-			return nil
-		}
+	case *QueryExtensionRequest:
 		log.Printf("X11: QueryExtension name=%s", p.Name)
 
 		return &queryExtensionReply{
-			sequence:    req.sequence,
+			sequence:    seq,
 			present:     false,
 			majorOpcode: 0,
 			firstEvent:  0,
 			firstError:  0,
 		}
 
-	case StoreNamedColor:
+	case *StoreNamedColorRequest:
 		log.Print("StoreNamedColor: not implemented")
 
-	case StoreColors:
-		p, err := parseStoreColorsRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse StoreColorsRequest: %v", err)
-			return nil
-		}
+	case *StoreColorsRequest:
 		xid := client.xID(p.Cmap)
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Cmap, majorOp: StoreColors, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap, majorOp: StoreColors, code: ColormapError})
 		}
 
 		for _, item := range p.Items {
@@ -1370,22 +1094,12 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			cm.pixels[item.Pixel] = c
 		}
 
-	case AllocNamedColor:
-		p, err := parseAllocNamedColorRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse AllocNamedColorRequest: %v", err)
-			return nil
-		}
-		p.Sequence = req.sequence
-		p.MajorOp = req.opcode
+	case *AllocNamedColorRequest:
+		p.Sequence = seq
+		p.MajorOp = p.OpCode()
 		return s.handleAllocNamedColor(client, p)
 
-	case QueryColors:
-		p, err := parseQueryColorsRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse QueryColorsRequest: %v", err)
-			return nil
-		}
+	case *QueryColorsRequest:
 		cmapID := p.Cmap
 		pixels := p.Pixels
 
@@ -1393,32 +1107,27 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		for _, pixel := range pixels {
 			color, ok := s.colormaps[cmapID].pixels[pixel]
 			if !ok {
-				return client.sendError(&GenericError{seq: req.sequence, badValue: pixel, majorOp: QueryColors, code: ValueError})
+				return client.sendError(&GenericError{seq: seq, badValue: pixel, majorOp: QueryColors, code: ValueError})
 			}
 			colors = append(colors, color)
 		}
 
 		return &queryColorsReply{
-			sequence: req.sequence,
+			sequence: seq,
 			colors:   colors,
 		}
 
-	case LookupColor:
-		p, err := parseLookupColorRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse LookupColorRequest: %v", err)
-			return nil
-		}
+	case *LookupColorRequest:
 		cmapID := xID{local: p.Cmap}
 
 		color, ok := lookupColor(p.Name)
 		if !ok {
 			// TODO: This should be BadName, not BadColor
-			return client.sendError(&GenericError{seq: req.sequence, badValue: cmapID.local, majorOp: LookupColor, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: cmapID.local, majorOp: LookupColor, code: ColormapError})
 		}
 
 		return &lookupColorReply{
-			sequence:   req.sequence,
+			sequence:   seq,
 			red:        scale8to16(color.Red),
 			green:      scale8to16(color.Green),
 			blue:       scale8to16(color.Blue),
@@ -1427,17 +1136,11 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			exactBlue:  scale8to16(color.Blue),
 		}
 
-	case AllocColor:
-		p, err := parseAllocColorRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse AllocColorRequest: %v", err)
-			return nil
-		}
-
+	case *AllocColorRequest:
 		xid := client.xID(p.Cmap)
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Cmap, majorOp: AllocColor, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap, majorOp: AllocColor, code: ColormapError})
 		}
 
 		// Simple allocation for TrueColor: construct pixel value from RGB
@@ -1449,54 +1152,33 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		cm.pixels[pixel] = color{Red: p.Red, Green: p.Green, Blue: p.Blue}
 
 		return &allocColorReply{
-			sequence: req.sequence,
+			sequence: seq,
 			red:      p.Red,
 			green:    p.Green,
 			blue:     p.Blue,
 			pixel:    pixel,
 		}
 
-	case ListFonts:
-		p, err := parseListFontsRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ListFontsRequest: %v", err)
-			return nil
-		}
-
+	case *ListFontsRequest:
 		fontNames := s.frontend.ListFonts(p.MaxNames, p.Pattern)
 
 		return &listFontsReply{
-			sequence:  req.sequence,
+			sequence:  seq,
 			numFonts:  uint16(len(fontNames)),
 			fontNames: fontNames,
 		}
 
-	case OpenFont:
-		p, err := parseOpenFontRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse OpenFontRequest: %v", err)
-			return nil
-		}
+	case *OpenFontRequest:
 		s.frontend.OpenFont(client.xID(p.Fid), p.Name)
 
-	case CloseFont:
-		p, err := parseCloseFontRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse CloseFontRequest: %v", err)
-			return nil
-		}
+	case *CloseFontRequest:
 		s.frontend.CloseFont(client.xID(p.Fid))
 
-	case QueryFont:
-		p, err := parseQueryFontRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse QueryFontRequest: %v", err)
-			return nil
-		}
+	case *QueryFontRequest:
 		minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, charInfos := s.frontend.QueryFont(client.xID(p.Fid))
 
 		return &queryFontReply{
-			sequence:       req.sequence,
+			sequence:       seq,
 			minBounds:      minBounds,
 			maxBounds:      maxBounds,
 			minCharOrByte2: minCharOrByte2,
@@ -1513,32 +1195,22 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 			charInfos:      charInfos,
 		}
 
-	case FreeColors:
-		p, err := parseFreeColorsRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse FreeColorsRequest: %v", err)
-			return nil
-		}
+	case *FreeColorsRequest:
 		xid := client.xID(p.Cmap)
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Cmap, majorOp: FreeColors, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap, majorOp: FreeColors, code: ColormapError})
 		}
 
 		for _, pixel := range p.Pixels {
 			delete(cm.pixels, pixel)
 		}
 
-	case InstallColormap:
-		p, err := parseInstallColormapRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse InstallColormapRequest: %v", err)
-			return nil
-		}
+	case *InstallColormapRequest:
 		xid := client.xID(p.Cmap)
 		_, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Cmap, majorOp: InstallColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap, majorOp: InstallColormap, code: ColormapError})
 		}
 
 		s.installedColormap = xid
@@ -1562,16 +1234,11 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		}
 		return nil
 
-	case UninstallColormap:
-		p, err := parseUninstallColormapRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse UninstallColormapRequest: %v", err)
-			return nil
-		}
+	case *UninstallColormapRequest:
 		xid := client.xID(p.Cmap)
 		_, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: req.sequence, badValue: p.Cmap, majorOp: UninstallColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap, majorOp: UninstallColormap, code: ColormapError})
 		}
 
 		if s.installedColormap == xid {
@@ -1597,27 +1264,20 @@ func (s *x11Server) handleRequest(client *x11Client, req *request) (reply messag
 		}
 		return nil
 
-	case ListInstalledColormaps:
-		_, err := parseListInstalledColormapsRequest(s.byteOrder, req.body)
-		if err != nil {
-			s.logger.Errorf("X11: Failed to parse ListInstalledColormapsRequest: %v", err)
-			return nil
-		}
-		// windowID := p.Window // Not used for now
-
+	case *ListInstalledColormapsRequest:
 		var colormaps []uint32
 		if s.installedColormap.local != 0 {
 			colormaps = append(colormaps, s.installedColormap.local)
 		}
 
 		return &listInstalledColormapsReply{
-			sequence:     req.sequence,
+			sequence:     seq,
 			numColormaps: uint16(len(colormaps)),
 			colormaps:    colormaps,
 		}
 
 	default:
-		log.Printf("Unknown X11 request opcode: %d", req.opcode)
+		log.Printf("Unknown X11 request opcode: %d", p.OpCode())
 	}
 	return nil
 }
