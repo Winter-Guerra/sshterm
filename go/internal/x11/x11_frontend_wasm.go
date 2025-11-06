@@ -1317,6 +1317,94 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gc GC, x, y int32, items []Pol
 	}
 }
 
+func (w *wasmX11Frontend) SetDashes(gc xID, dashOffset uint16, dashes []byte) {
+	debugf("X11: SetDashes (not implemented)")
+}
+
+func (w *wasmX11Frontend) SetClipRectangles(gc xID, clippingX, clippingY int16, rectangles []Rectangle, ordering byte) {
+	debugf("X11: SetClipRectangles (not implemented)")
+}
+
+func (w *wasmX11Frontend) RecolorCursor(cursor xID, foreColor, backColor [3]uint16) {
+	debugf("X11: RecolorCursor (not implemented)")
+}
+
+func (w *wasmX11Frontend) SetPointerMapping(pMap []byte) (byte, error) {
+	debugf("X11: SetPointerMapping (not implemented)")
+	return 0, nil
+}
+
+func (w *wasmX11Frontend) GetPointerMapping() ([]byte, error) {
+	debugf("X11: GetPointerMapping (not implemented)")
+	return nil, nil
+}
+
+func (w *wasmX11Frontend) GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error) {
+	debugf("X11: GetKeyboardMapping (not implemented)")
+	return nil, nil
+}
+
+func (w *wasmX11Frontend) ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32) {
+	debugf("X11: ChangeKeyboardMapping (not implemented)")
+}
+
+func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
+	debugf("X11: ChangeKeyboardControl (not implemented)")
+}
+
+func (w *wasmX11Frontend) GetKeyboardControl() (KeyboardControl, error) {
+	debugf("X11: GetKeyboardControl (not implemented)")
+	return KeyboardControl{}, nil
+}
+
+func (w *wasmX11Frontend) SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte) {
+	debugf("X11: SetScreenSaver (not implemented)")
+}
+
+func (w *wasmX11Frontend) GetScreenSaver() (timeout, interval int16, preferBlank, allowExpose byte, err error) {
+	debugf("X11: GetScreenSaver (not implemented)")
+	return 0, 0, 0, 0, nil
+}
+
+func (w *wasmX11Frontend) ChangeHosts(mode byte, host Host) {
+	debugf("X11: ChangeHosts (not implemented)")
+}
+
+func (w *wasmX11Frontend) ListHosts() ([]Host, error) {
+	debugf("X11: ListHosts (not implemented)")
+	return nil, nil
+}
+
+func (w *wasmX11Frontend) SetAccessControl(mode byte) {
+	debugf("X11: SetAccessControl (not implemented)")
+}
+
+func (w *wasmX11Frontend) SetCloseDownMode(mode byte) {
+	debugf("X11: SetCloseDownMode (not implemented)")
+}
+
+func (w *wasmX11Frontend) KillClient(resource uint32) {
+	debugf("X11: KillClient (not implemented)")
+}
+
+func (w *wasmX11Frontend) RotateProperties(window xID, delta int16, atoms []Atom) {
+	debugf("X11: RotateProperties (not implemented)")
+}
+
+func (w *wasmX11Frontend) ForceScreenSaver(mode byte) {
+	debugf("X11: ForceScreenSaver (not implemented)")
+}
+
+func (w *wasmX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error) {
+	debugf("X11: SetModifierMapping (not implemented)")
+	return 0, nil
+}
+
+func (w *wasmX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCodes []KeyCode, err error) {
+	debugf("X11: GetModifierMapping (not implemented)")
+	return 0, nil, nil
+}
+
 func (w *wasmX11Frontend) PolyText16(drawable xID, gc GC, x, y int32, items []PolyText16Item) {
 	debugf("X11: polyText16 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
 	color := "??????"

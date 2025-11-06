@@ -815,3 +815,164 @@ func (v *visualType) marshal(buf *bytes.Buffer, order binary.ByteOrder) {
 	binary.Write(buf, order, v.blueMask)
 	buf.Write([]byte{0, 0, 0, 0}) // 4 bytes of padding
 }
+
+// SetPointerMapping: 116
+type setPointerMappingReply struct {
+	sequence uint16
+	status   byte
+}
+
+func (r *setPointerMappingReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	reply[1] = r.status
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0)
+	return reply
+}
+
+// GetPointerMapping: 117
+type getPointerMappingReply struct {
+	sequence uint16
+	length   byte
+	pMap     []byte
+}
+
+func (r *getPointerMappingReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32+len(r.pMap))
+	reply[0] = 1 // Reply type
+	reply[1] = r.length
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32((len(r.pMap)+3)/4))
+	copy(reply[32:], r.pMap)
+	return reply
+}
+
+// GetKeyboardMapping: 101
+type getKeyboardMappingReply struct {
+	sequence uint16
+	keySyms  []uint32
+}
+
+func (r *getKeyboardMappingReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32+len(r.keySyms)*4)
+	reply[0] = 1 // Reply type
+	reply[1] = byte(len(r.keySyms))
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32(len(r.keySyms)))
+	for i, keySym := range r.keySyms {
+		order.PutUint32(reply[32+i*4:], keySym)
+	}
+	return reply
+}
+
+// GetKeyboardControl: 103
+type getKeyboardControlReply struct {
+	sequence         uint16
+	keyClickPercent  byte
+	bellPercent      byte
+	bellPitch        uint16
+	bellDuration     uint16
+	ledMask          uint32
+	globalAutoRepeat byte
+	autoRepeats      [32]byte
+}
+
+func (r *getKeyboardControlReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	reply[1] = 5
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 5)
+	reply[8] = r.keyClickPercent
+	reply[9] = r.bellPercent
+	order.PutUint16(reply[10:12], r.bellPitch)
+	order.PutUint16(reply[12:14], r.bellDuration)
+	order.PutUint32(reply[16:20], r.ledMask)
+	reply[20] = r.globalAutoRepeat
+	copy(reply[21:53], r.autoRepeats[:])
+	return reply
+}
+
+// GetScreenSaver: 108
+type getScreenSaverReply struct {
+	sequence    uint16
+	timeout     uint16
+	interval    uint16
+	preferBlank byte
+	allowExpose byte
+}
+
+func (r *getScreenSaverReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0)
+	order.PutUint16(reply[8:10], r.timeout)
+	order.PutUint16(reply[10:12], r.interval)
+	reply[12] = r.preferBlank
+	reply[13] = r.allowExpose
+	return reply
+}
+
+// ListHosts: 110
+type listHostsReply struct {
+	sequence uint16
+	numHosts uint16
+	hosts    []Host
+}
+
+func (r *listHostsReply) encodeMessage(order binary.ByteOrder) []byte {
+	var data []byte
+	for _, host := range r.hosts {
+		data = append(data, host.Family)
+		data = append(data, 0, 0, 0) // padding
+		order.PutUint16(data, uint16(len(host.Data)))
+		data = append(data, host.Data...)
+		pad := (4 - (len(host.Data) % 4)) % 4
+		data = append(data, make([]byte, pad)...)
+	}
+	reply := make([]byte, 32+len(data))
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32(len(data)/4))
+	order.PutUint16(reply[8:10], r.numHosts)
+	copy(reply[32:], data)
+	return reply
+}
+
+// SetModifierMapping: 118
+type setModifierMappingReply struct {
+	sequence uint16
+	status   byte
+}
+
+func (r *setModifierMappingReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	reply[1] = r.status
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0)
+	return reply
+}
+
+// GetModifierMapping: 119
+type getModifierMappingReply struct {
+	sequence            uint16
+	keyCodesPerModifier byte
+	keyCodes            []KeyCode
+}
+
+func (r *getModifierMappingReply) encodeMessage(order binary.ByteOrder) []byte {
+	keyCodes := make([]byte, len(r.keyCodes))
+	for i, kc := range r.keyCodes {
+		keyCodes[i] = byte(kc)
+	}
+	reply := make([]byte, 32+len(keyCodes))
+	reply[0] = 1 // Reply type
+	reply[1] = r.keyCodesPerModifier
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32((len(keyCodes)+3)/4))
+	copy(reply[32:], keyCodes)
+	return reply
+}

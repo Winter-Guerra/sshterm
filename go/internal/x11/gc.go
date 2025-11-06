@@ -29,6 +29,18 @@ const (
 	GCArcMode           = 1 << 22
 )
 
+// Constants for Keyboard Control
+const (
+	KBKeyClickPercent = 1 << 0
+	KBBellPercent     = 1 << 1
+	KBBellPitch       = 1 << 2
+	KBBellDuration    = 1 << 3
+	KBLed             = 1 << 4
+	KBLedMode         = 1 << 5
+	KBKey             = 1 << 6
+	KBAutoRepeatMode  = 1 << 7
+)
+
 // GC represents a Graphics Context.
 // See: https://www.x.org/releases/X11R7.6/doc/xproto/x11protocol.html#requests:CreateGC
 type GC struct {

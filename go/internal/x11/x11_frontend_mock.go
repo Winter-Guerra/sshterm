@@ -406,3 +406,71 @@ func (m *MockX11Frontend) AllowEvents(clientID uint32, mode byte, time uint32) {
 func (m *MockX11Frontend) SendConfigureAndExposeEvent(windowID xID, x, y int16, width, height uint16) {
 	// Dummy implementation for mock
 }
+
+func (m *MockX11Frontend) SetDashes(gc xID, dashOffset uint16, dashes []byte) {
+}
+
+func (m *MockX11Frontend) SetClipRectangles(gc xID, clippingX, clippingY int16, rectangles []Rectangle, ordering byte) {
+}
+
+func (m *MockX11Frontend) RecolorCursor(cursor xID, foreColor, backColor [3]uint16) {
+}
+
+func (m *MockX11Frontend) SetPointerMapping(pMap []byte) (byte, error) {
+	return 0, nil
+}
+
+func (m *MockX11Frontend) GetPointerMapping() ([]byte, error) {
+	return nil, nil
+}
+
+func (m *MockX11Frontend) GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error) {
+	return nil, nil
+}
+
+func (m *MockX11Frontend) ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32) {
+}
+
+func (m *MockX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
+}
+
+func (m *MockX11Frontend) GetKeyboardControl() (KeyboardControl, error) {
+	return KeyboardControl{}, nil
+}
+
+func (m *MockX11Frontend) SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte) {
+}
+
+func (m *MockX11Frontend) GetScreenSaver() (timeout, interval int16, preferBlank, allowExpose byte, err error) {
+	return 0, 0, 0, 0, nil
+}
+
+func (m *MockX11Frontend) ChangeHosts(mode byte, host Host) {
+}
+
+func (m *MockX11Frontend) ListHosts() ([]Host, error) {
+	return nil, nil
+}
+
+func (m *MockX11Frontend) SetAccessControl(mode byte) {
+}
+
+func (m *MockX11Frontend) SetCloseDownMode(mode byte) {
+}
+
+func (m *MockX11Frontend) KillClient(resource uint32) {
+}
+
+func (m *MockX11Frontend) RotateProperties(window xID, delta int16, atoms []Atom) {
+}
+
+func (m *MockX11Frontend) ForceScreenSaver(mode byte) {
+}
+
+func (m *MockX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error) {
+	return 0, nil
+}
+
+func (m *MockX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCodes []KeyCode, err error) {
+	return 0, nil, nil
+}
