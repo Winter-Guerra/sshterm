@@ -369,13 +369,13 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 		return parseNoOperationRequest(order, body)
 
 	case AllocColorCells:
-		return parseAllocColorCellsRequest(order, raw)
+		return parseAllocColorCellsRequest(order, data, body)
 
 	case AllocColorPlanes:
-		return parseAllocColorPlanesRequest(order, raw)
+		return parseAllocColorPlanesRequest(order, data, body)
 
 	case CreateCursor:
-		return parseCreateCursorRequest(order, raw)
+		return parseCreateCursorRequest(order, body)
 
 	case CopyPlane:
 		return parseCopyPlaneRequest(order, body)
@@ -3016,38 +3016,86 @@ func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData 
 
 // AllocColorCells: 86
 type AllocColorCellsRequest struct {
-	// TODO: Implement
+	Contiguous bool
+	Cmap       Colormap
+	Colors     uint16
+	Planes     uint16
 }
 
 func (r *AllocColorCellsRequest) OpCode() reqCode { return AllocColorCells }
 
-func parseAllocColorCellsRequest(order binary.ByteOrder, raw []byte) (*AllocColorCellsRequest, error) {
-	// TODO: Implement
-	return &AllocColorCellsRequest{}, nil
+func parseAllocColorCellsRequest(order binary.ByteOrder, data byte, body []byte) (*AllocColorCellsRequest, error) {
+	if len(body) < 8 {
+		return nil, fmt.Errorf("%w: alloc color cells request too short", errParseError)
+	}
+	req := &AllocColorCellsRequest{}
+	req.Contiguous = data != 0
+	req.Cmap = Colormap(order.Uint32(body[0:4]))
+	req.Colors = order.Uint16(body[4:6])
+	req.Planes = order.Uint16(body[6:8])
+	return req, nil
 }
 
 // AllocColorPlanes: 87
 type AllocColorPlanesRequest struct {
-	// TODO: Implement
+	Contiguous bool
+	Cmap       Colormap
+	Colors     uint16
+	Reds       uint16
+	Greens     uint16
+	Blues      uint16
 }
 
 func (r *AllocColorPlanesRequest) OpCode() reqCode { return AllocColorPlanes }
 
-func parseAllocColorPlanesRequest(order binary.ByteOrder, raw []byte) (*AllocColorPlanesRequest, error) {
-	// TODO: Implement
-	return &AllocColorPlanesRequest{}, nil
+func parseAllocColorPlanesRequest(order binary.ByteOrder, data byte, body []byte) (*AllocColorPlanesRequest, error) {
+	if len(body) < 12 {
+		return nil, fmt.Errorf("%w: alloc color planes request too short", errParseError)
+	}
+	req := &AllocColorPlanesRequest{}
+	req.Contiguous = data != 0
+	req.Cmap = Colormap(order.Uint32(body[0:4]))
+	req.Colors = order.Uint16(body[4:6])
+	req.Reds = order.Uint16(body[6:8])
+	req.Greens = order.Uint16(body[8:10])
+	req.Blues = order.Uint16(body[10:12])
+	return req, nil
 }
 
 // reqCodeCreateCursor:
 type CreateCursorRequest struct {
-	// TODO: Implement
+	Cid       Cursor
+	Source    Pixmap
+	Mask      Pixmap
+	ForeRed   uint16
+	ForeGreen uint16
+	ForeBlue  uint16
+	BackRed   uint16
+	BackGreen uint16
+	BackBlue  uint16
+	X         uint16
+	Y         uint16
 }
 
 func (r *CreateCursorRequest) OpCode() reqCode { return CreateCursor }
 
-func parseCreateCursorRequest(order binary.ByteOrder, raw []byte) (*CreateCursorRequest, error) {
-	// TODO: Implement
-	return &CreateCursorRequest{}, nil
+func parseCreateCursorRequest(order binary.ByteOrder, body []byte) (*CreateCursorRequest, error) {
+	if len(body) < 28 {
+		return nil, fmt.Errorf("%w: create cursor request too short", errParseError)
+	}
+	req := &CreateCursorRequest{}
+	req.Cid = Cursor(order.Uint32(body[0:4]))
+	req.Source = Pixmap(order.Uint32(body[4:8]))
+	req.Mask = Pixmap(order.Uint32(body[8:12]))
+	req.ForeRed = order.Uint16(body[12:14])
+	req.ForeGreen = order.Uint16(body[14:16])
+	req.ForeBlue = order.Uint16(body[16:18])
+	req.BackRed = order.Uint16(body[18:20])
+	req.BackGreen = order.Uint16(body[20:22])
+	req.BackBlue = order.Uint16(body[22:24])
+	req.X = order.Uint16(body[24:26])
+	req.Y = order.Uint16(body[26:28])
+	return req, nil
 }
 
 // reqCodeCopyPlane:

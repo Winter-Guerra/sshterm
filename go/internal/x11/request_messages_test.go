@@ -160,6 +160,11 @@ func TestRequestParsingErrors(t *testing.T) {
 		{KillClient, make([]byte, 3)},
 		{RotateProperties, make([]byte, 7)},
 		{SetModifierMapping, make([]byte, 0)},
+		{AllocColorPlanes, make([]byte, 11)},
+		{CreateCursor, make([]byte, 27)},
+		{CopyPlane, make([]byte, 27)},
+		{ChangePointerControl, make([]byte, 7)},
+		{AllocColorCells, make([]byte, 7)},
 	}
 
 	for _, tc := range testCases {
@@ -1394,4 +1399,53 @@ func TestParseSetModifierMappingRequest(t *testing.T) {
 	assert.NoError(t, err, "parseSetModifierMappingRequest should not return an error")
 	assert.Equal(t, byte(2), p.KeyCodesPerModifier, "KeyCodesPerModifier should be parsed correctly")
 	assert.Equal(t, []KeyCode{1, 2, 3, 4}, p.KeyCodes, "KeyCodes should be parsed correctly")
+}
+
+func TestAllocColorPlanesRequest(t *testing.T) {
+	order := binary.LittleEndian
+	reqBody := make([]byte, 12)
+	order.PutUint32(reqBody[0:4], 123)
+	order.PutUint16(reqBody[4:6], 10)
+	order.PutUint16(reqBody[6:8], 20)
+	order.PutUint16(reqBody[8:10], 30)
+	order.PutUint16(reqBody[10:12], 40)
+
+	p, err := parseAllocColorPlanesRequest(order, 1, reqBody)
+	assert.NoError(t, err, "parseAllocColorPlanesRequest should not return an error")
+	assert.True(t, p.Contiguous, "Contiguous should be true")
+	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
+	assert.Equal(t, uint16(10), p.Colors, "Colors should be parsed correctly")
+	assert.Equal(t, uint16(20), p.Reds, "Reds should be parsed correctly")
+	assert.Equal(t, uint16(30), p.Greens, "Greens should be parsed correctly")
+	assert.Equal(t, uint16(40), p.Blues, "Blues should be parsed correctly")
+}
+
+func TestParseCreateCursorRequest(t *testing.T) {
+	order := binary.LittleEndian
+	reqBody := make([]byte, 28)
+	order.PutUint32(reqBody[0:4], 1)
+	order.PutUint32(reqBody[4:8], 2)
+	order.PutUint32(reqBody[8:12], 3)
+	order.PutUint16(reqBody[12:14], 10)
+	order.PutUint16(reqBody[14:16], 20)
+	order.PutUint16(reqBody[16:18], 30)
+	order.PutUint16(reqBody[18:20], 40)
+	order.PutUint16(reqBody[20:22], 50)
+	order.PutUint16(reqBody[22:24], 60)
+	order.PutUint16(reqBody[24:26], 5)
+	order.PutUint16(reqBody[26:28], 15)
+
+	p, err := parseCreateCursorRequest(order, reqBody)
+	assert.NoError(t, err, "parseCreateCursorRequest should not return an error")
+	assert.Equal(t, Cursor(1), p.Cid, "Cid should be parsed correctly")
+	assert.Equal(t, Pixmap(2), p.Source, "Source should be parsed correctly")
+	assert.Equal(t, Pixmap(3), p.Mask, "Mask should be parsed correctly")
+	assert.Equal(t, uint16(10), p.ForeRed, "ForeRed should be parsed correctly")
+	assert.Equal(t, uint16(20), p.ForeGreen, "ForeGreen should be parsed correctly")
+	assert.Equal(t, uint16(30), p.ForeBlue, "ForeBlue should be parsed correctly")
+	assert.Equal(t, uint16(40), p.BackRed, "BackRed should be parsed correctly")
+	assert.Equal(t, uint16(50), p.BackGreen, "BackGreen should be parsed correctly")
+	assert.Equal(t, uint16(60), p.BackBlue, "BackBlue should be parsed correctly")
+	assert.Equal(t, uint16(5), p.X, "X should be parsed correctly")
+	assert.Equal(t, uint16(15), p.Y, "Y should be parsed correctly")
 }
