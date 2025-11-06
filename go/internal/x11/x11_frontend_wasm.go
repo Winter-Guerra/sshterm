@@ -529,7 +529,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 		resizeMouseUp:   resizeMouseUp,
 	}
 	if values.Colormap != 0 {
-		w.windows[xid].colormap = xID{client: xid.client, local: values.Colormap}
+		w.windows[xid].colormap = xID{client: xid.client, local: uint32(values.Colormap)}
 	}
 
 	parentDiv.Call("appendChild", windowDiv)
@@ -2064,7 +2064,7 @@ func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, valu
 	if winInfo, ok := w.windows[xid]; ok {
 		style := winInfo.div.Get("style")
 		if valueMask&CWColormap != 0 {
-			winInfo.colormap = xID{client: xid.client, local: values.Colormap}
+			winInfo.colormap = xID{client: xid.client, local: uint32(values.Colormap)}
 		}
 		if valueMask&CWBackPixel != 0 {
 			r, g, b := w.GetRGBColor(winInfo.colormap, values.BackgroundPixel)
@@ -2077,7 +2077,7 @@ func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, valu
 			style.Set("borderColor", borderColor)
 		}
 		if valueMask&CWCursor != 0 {
-			w.SetWindowCursor(xid, xID{client: xid.client, local: values.Cursor})
+			w.SetWindowCursor(xid, xID{client: xid.client, local: uint32(values.Cursor)})
 		}
 	}
 	w.recordOperation(CanvasOperation{
