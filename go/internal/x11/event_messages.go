@@ -162,7 +162,7 @@ type colormapNotifyEvent struct {
 
 func (e *colormapNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
-	event[0] = ColormapNotify // ColormapNotify event code
+	event[0] = ColormapNotifyCode // ColormapNotify event code
 	// byte 1 is unused
 	order.PutUint16(event[2:4], e.sequence)
 	order.PutUint32(event[4:8], e.window)

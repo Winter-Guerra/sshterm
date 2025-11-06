@@ -482,7 +482,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		// Check if the window ID is already in use
 		if _, exists := s.windows[xid]; exists {
 			s.logger.Errorf("X11: CreateWindow: ID %d already in use", xid)
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Drawable), majorOp: CreateWindow, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Drawable), majorOp: CreateWindow, code: IDChoiceErrorCode})
 		}
 
 		newWindow := &window{
@@ -645,7 +645,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		// Check if the GC ID is already in use
 		if _, exists := s.gcs[xid]; exists {
 			s.logger.Errorf("X11: CreateGC: ID %s already in use", xid)
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(xid.local), majorOp: CreateGC, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(xid.local), majorOp: CreateGC, code: IDChoiceErrorCode})
 		}
 
 		s.gcs[xid] = p.Values
@@ -886,7 +886,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		// Check if the pixmap ID is already in use
 		if _, exists := s.pixmaps[xid]; exists {
 			s.logger.Errorf("X11: CreatePixmap: ID %s already in use", xid)
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Pid), majorOp: CreatePixmap, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Pid), majorOp: CreatePixmap, code: IDChoiceErrorCode})
 		}
 
 		s.pixmaps[xid] = true // Mark pixmap ID as used
@@ -901,7 +901,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		// Check if the cursor ID is already in use
 		if _, exists := s.cursors[client.xID(uint32(p.Cid))]; exists {
 			s.logger.Errorf("X11: CreateGlyphCursor: ID %d already in use", p.Cid)
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cid), majorOp: CreateGlyphCursor, code: IDChoiceError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cid), majorOp: CreateGlyphCursor, code: IDChoiceErrorCode})
 		}
 
 		s.cursors[client.xID(uint32(p.Cid))] = true
@@ -1054,7 +1054,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		xid := client.xID(uint32(p.Mid))
 
 		if _, exists := s.colormaps[xid]; exists {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Mid), majorOp: CreateColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Mid), majorOp: CreateColormap, code: ColormapErrorCode})
 		}
 
 		newColormap := &colormap{
@@ -1072,7 +1072,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 	case *FreeColormapRequest:
 		xid := client.xID(uint32(p.Cmap))
 		if _, ok := s.colormaps[xid]; !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColormap, code: ColormapErrorCode})
 		}
 		delete(s.colormaps, xid)
 
@@ -1094,7 +1094,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		xid := client.xID(uint32(p.Cmap))
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreColors, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreColors, code: ColormapErrorCode})
 		}
 
 		for _, item := range p.Items {
@@ -1128,7 +1128,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		for _, pixel := range pixels {
 			color, ok := s.colormaps[cmapID].pixels[pixel]
 			if !ok {
-				return client.sendError(&GenericError{seq: seq, badValue: pixel, majorOp: QueryColors, code: ValueError})
+				return client.sendError(&GenericError{seq: seq, badValue: pixel, majorOp: QueryColors, code: ValueErrorCode})
 			}
 			colors = append(colors, color)
 		}
@@ -1144,7 +1144,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		color, ok := lookupColor(p.Name)
 		if !ok {
 			// TODO: This should be BadName, not BadColor
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(cmapID.local), majorOp: LookupColor, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(cmapID.local), majorOp: LookupColor, code: ColormapErrorCode})
 		}
 
 		return &lookupColorReply{
@@ -1161,7 +1161,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		xid := client.xID(uint32(p.Cmap))
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: AllocColor, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: AllocColor, code: ColormapErrorCode})
 		}
 
 		// Simple allocation for TrueColor: construct pixel value from RGB
@@ -1220,7 +1220,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		xid := client.xID(uint32(p.Cmap))
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColors, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColors, code: ColormapErrorCode})
 		}
 
 		for _, pixel := range p.Pixels {
@@ -1231,7 +1231,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		xid := client.xID(uint32(p.Cmap))
 		_, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: InstallColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: InstallColormap, code: ColormapErrorCode})
 		}
 
 		s.installedColormap = xid
@@ -1259,7 +1259,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		xid := client.xID(uint32(p.Cmap))
 		_, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: UninstallColormap, code: ColormapError})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: UninstallColormap, code: ColormapErrorCode})
 		}
 
 		if s.installedColormap == xid {
@@ -1390,24 +1390,14 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 func (s *x11Server) handleAllocNamedColor(client *x11Client, p *AllocNamedColorRequest) messageEncoder {
 	if _, ok := s.colormaps[p.Cmap]; !ok {
-		return client.sendError(&BadColor{
-			seq:      p.Sequence,
-			badValue: p.Cmap.local,
-			minorOp:  p.MinorOp,
-			majorOp:  p.MajorOp,
-		})
+		return client.sendError(NewError(ColormapErrorCode, p.Sequence, p.Cmap.local, p.MinorOp, p.MajorOp))
 	}
 
 	name := string(p.Name)
 	rgb, ok := lookupColor(name)
 	if !ok {
 		// TODO: This should be BadName, not BadColor
-		return client.sendError(&BadColor{
-			seq:      p.Sequence,
-			badValue: p.Cmap.local, // TODO: This should be the atom for the name, not the colormap
-			minorOp:  p.MinorOp,
-			majorOp:  p.MajorOp,
-		})
+		return client.sendError(NewError(15, p.Sequence, 0, p.MinorOp, p.MajorOp))
 	}
 
 	exactRed := scale8to16(rgb.Red)

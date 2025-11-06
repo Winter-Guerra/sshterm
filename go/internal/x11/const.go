@@ -128,14 +128,14 @@ const (
 )
 
 const (
-	ValueError     byte = 2
-	ColormapError  byte = 12
-	IDChoiceError  byte = 14
-	WindowError    byte = 3
-	GContextError  byte = 13
-	PixmapError    byte = 17
-	CursorError    byte = 16
-	ColormapNotify byte = 13
+	ValueErrorCode      byte = 2
+	ColormapErrorCode   byte = 12
+	IDChoiceErrorCode   byte = 14
+	WindowErrorCode     byte = 3
+	GContextErrorCode   byte = 13
+	PixmapErrorCode     byte = 4
+	CursorErrorCode     byte = 6
+	ColormapNotifyCode byte = 13
 )
 
 const (

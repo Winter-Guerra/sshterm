@@ -188,6 +188,83 @@ func (r *listPropertiesReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// QueryTextExtents: 48
+type queryTextExtentsReply struct {
+	sequence        uint16
+	drawDirection   byte
+	fontAscent      int16
+	fontDescent     int16
+	overallAscent   int16
+	overallDescent  int16
+	overallWidth    int32
+	overallLeft     int32
+	overallRight    int32
+}
+
+func (r *queryTextExtentsReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	reply[1] = r.drawDirection
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0)
+	order.PutUint16(reply[8:10], uint16(r.fontAscent))
+	order.PutUint16(reply[10:12], uint16(r.fontDescent))
+	order.PutUint16(reply[12:14], uint16(r.overallAscent))
+	order.PutUint16(reply[14:16], uint16(r.overallDescent))
+	order.PutUint32(reply[16:20], uint32(r.overallWidth))
+	order.PutUint32(reply[20:24], uint32(r.overallLeft))
+	order.PutUint32(reply[24:28], uint32(r.overallRight))
+	return reply
+}
+
+// ListExtensions: 99
+type listExtensionsReply struct {
+	sequence uint16
+	nNames   byte
+	names    []string
+}
+
+func (r *listExtensionsReply) encodeMessage(order binary.ByteOrder) []byte {
+	var data []byte
+	for _, name := range r.names {
+		data = append(data, byte(len(name)))
+		data = append(data, name...)
+	}
+	reply := make([]byte, 32+len(data))
+	reply[0] = 1 // Reply type
+	reply[1] = r.nNames
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32((len(data)+3)/4))
+	copy(reply[32:], data)
+	return reply
+}
+
+// GetMotionEvents: 39
+type getMotionEventsReply struct {
+	sequence uint16
+	nEvents  uint32
+	events   []TimeCoord
+}
+
+type TimeCoord struct {
+	Time uint32
+	X, Y int16
+}
+
+func (r *getMotionEventsReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32+len(r.events)*8)
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32(len(r.events)*2))
+	order.PutUint32(reply[8:12], r.nEvents)
+	for i, event := range r.events {
+		order.PutUint32(reply[32+i*8:], event.Time)
+		order.PutUint16(reply[32+i*8+4:], uint16(event.X))
+		order.PutUint16(reply[32+i*8+6:], uint16(event.Y))
+	}
+	return reply
+}
+
 // GetSelectionOwner: 23
 type getSelectionOwnerReply struct {
 	sequence uint16
@@ -974,5 +1051,173 @@ func (r *getModifierMappingReply) encodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.sequence)
 	order.PutUint32(reply[4:8], uint32((len(keyCodes)+3)/4))
 	copy(reply[32:], keyCodes)
+	return reply
+}
+
+// GetPointerControl: 106
+type getPointerControlReply struct {
+	sequence           uint16
+	accelNumerator     uint16
+	accelDenominator   uint16
+	threshold          uint16
+	doAccel            bool
+	doThreshold        bool
+}
+
+// QueryKeymap: 44
+type queryKeymapReply struct {
+	sequence uint16
+	keys     [32]byte
+}
+
+func (r *queryKeymapReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 40)
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 2)
+	copy(reply[8:], r.keys[:])
+	return reply
+}
+
+// GetFontPath: 52
+type getFontPathReply struct {
+	sequence uint16
+	nPaths   uint16
+	paths    []string
+}
+
+func (r *getFontPathReply) encodeMessage(order binary.ByteOrder) []byte {
+	var data []byte
+	for _, path := range r.paths {
+		data = append(data, byte(len(path)))
+		data = append(data, path...)
+	}
+	p := (4 - (len(data) % 4)) % 4
+	totalLen := 32 + len(data) + p
+
+	reply := make([]byte, totalLen)
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32((len(data)+p)/4))
+	order.PutUint16(reply[8:10], r.nPaths)
+	copy(reply[32:], data)
+	return reply
+}
+
+
+// ListFontsWithInfo: 50
+type listFontsWithInfoReply struct {
+	sequence     uint16
+	nameLength   byte
+	minBounds    xCharInfo
+	maxBounds    xCharInfo
+	minChar      uint16
+	maxChar      uint16
+	defaultChar  uint16
+	nFontProps   uint16
+	drawDirection byte
+	minByte1     byte
+	maxByte1     byte
+	allCharsExist bool
+	fontAscent   int16
+	fontDescent  int16
+	nReplies     uint32
+	fontProps    []FontProp
+	fontName     string
+}
+
+type FontProp struct {
+	Name  uint32
+	Value uint32
+}
+
+func (r *listFontsWithInfoReply) encodeMessage(order binary.ByteOrder) []byte {
+	fontNameBytes := []byte(r.fontName)
+	fontNameLen := len(fontNameBytes)
+	p := (4 - (fontNameLen % 4)) % 4
+	totalLen := 60 + len(r.fontProps)*8 + fontNameLen + p
+
+	reply := make([]byte, totalLen)
+	reply[0] = 1 // Reply type
+	reply[1] = r.nameLength
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32((totalLen-32)/4))
+
+	// min-bounds
+	order.PutUint16(reply[8:10], uint16(r.minBounds.LeftSideBearing))
+	order.PutUint16(reply[10:12], uint16(r.minBounds.RightSideBearing))
+	order.PutUint16(reply[12:14], r.minBounds.CharacterWidth)
+	order.PutUint16(reply[14:16], uint16(r.minBounds.Ascent))
+	order.PutUint16(reply[16:18], uint16(r.minBounds.Descent))
+	order.PutUint16(reply[18:20], r.minBounds.Attributes)
+
+	// max-bounds
+	order.PutUint16(reply[24:26], uint16(r.maxBounds.LeftSideBearing))
+	order.PutUint16(reply[26:28], uint16(r.maxBounds.RightSideBearing))
+	order.PutUint16(reply[28:30], r.maxBounds.CharacterWidth)
+	order.PutUint16(reply[30:32], uint16(r.maxBounds.Ascent))
+	order.PutUint16(reply[32:34], uint16(r.maxBounds.Descent))
+	order.PutUint16(reply[34:36], r.maxBounds.Attributes)
+
+	order.PutUint16(reply[40:42], r.minChar)
+	order.PutUint16(reply[42:44], r.maxChar)
+	order.PutUint16(reply[44:46], r.defaultChar)
+	order.PutUint16(reply[46:48], r.nFontProps)
+	reply[48] = r.drawDirection
+	reply[49] = r.minByte1
+	reply[50] = r.maxByte1
+	reply[51] = boolToByte(r.allCharsExist)
+	order.PutUint16(reply[52:54], uint16(r.fontAscent))
+	order.PutUint16(reply[54:56], uint16(r.fontDescent))
+	order.PutUint32(reply[56:60], r.nReplies)
+
+	offset := 60
+	for _, prop := range r.fontProps {
+		order.PutUint32(reply[offset:offset+4], prop.Name)
+		order.PutUint32(reply[offset+4:offset+8], prop.Value)
+		offset += 8
+	}
+
+	copy(reply[offset:], fontNameBytes)
+	return reply
+}
+
+// QueryTree: 15
+type queryTreeReply struct {
+	sequence   uint16
+	root       uint32
+	parent     uint32
+	nChildren  uint16
+	children   []uint32
+}
+
+func (r *queryTreeReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32+len(r.children)*4)
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32(len(r.children)))
+	order.PutUint32(reply[8:12], r.root)
+	order.PutUint32(reply[12:16], r.parent)
+	order.PutUint16(reply[16:18], r.nChildren)
+	for i, child := range r.children {
+		order.PutUint32(reply[32+i*4:], child)
+	}
+	return reply
+}
+
+func (r *getPointerControlReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0)
+	order.PutUint16(reply[8:10], r.accelNumerator)
+	order.PutUint16(reply[10:12], r.accelDenominator)
+	order.PutUint16(reply[12:14], r.threshold)
+	if r.doAccel {
+		reply[14] = 1
+	}
+	if r.doThreshold {
+		reply[15] = 1
+	}
 	return reply
 }
