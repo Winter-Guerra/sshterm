@@ -99,7 +99,6 @@ func (r *getGeometryReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-
 // InternAtom: 16
 type internAtomReply struct {
 	sequence uint16
@@ -190,15 +189,15 @@ func (r *listPropertiesReply) encodeMessage(order binary.ByteOrder) []byte {
 
 // QueryTextExtents: 48
 type queryTextExtentsReply struct {
-	sequence        uint16
-	drawDirection   byte
-	fontAscent      int16
-	fontDescent     int16
-	overallAscent   int16
-	overallDescent  int16
-	overallWidth    int32
-	overallLeft     int32
-	overallRight    int32
+	sequence       uint16
+	drawDirection  byte
+	fontAscent     int16
+	fontDescent    int16
+	overallAscent  int16
+	overallDescent int16
+	overallWidth   int32
+	overallLeft    int32
+	overallRight   int32
 }
 
 func (r *queryTextExtentsReply) encodeMessage(order binary.ByteOrder) []byte {
@@ -1056,12 +1055,12 @@ func (r *getModifierMappingReply) encodeMessage(order binary.ByteOrder) []byte {
 
 // GetPointerControl: 106
 type getPointerControlReply struct {
-	sequence           uint16
-	accelNumerator     uint16
-	accelDenominator   uint16
-	threshold          uint16
-	doAccel            bool
-	doThreshold        bool
+	sequence         uint16
+	accelNumerator   uint16
+	accelDenominator uint16
+	threshold        uint16
+	doAccel          bool
+	doThreshold      bool
 }
 
 // QueryKeymap: 44
@@ -1104,26 +1103,25 @@ func (r *getFontPathReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-
 // ListFontsWithInfo: 50
 type listFontsWithInfoReply struct {
-	sequence     uint16
-	nameLength   byte
-	minBounds    xCharInfo
-	maxBounds    xCharInfo
-	minChar      uint16
-	maxChar      uint16
-	defaultChar  uint16
-	nFontProps   uint16
+	sequence      uint16
+	nameLength    byte
+	minBounds     xCharInfo
+	maxBounds     xCharInfo
+	minChar       uint16
+	maxChar       uint16
+	defaultChar   uint16
+	nFontProps    uint16
 	drawDirection byte
-	minByte1     byte
-	maxByte1     byte
+	minByte1      byte
+	maxByte1      byte
 	allCharsExist bool
-	fontAscent   int16
-	fontDescent  int16
-	nReplies     uint32
-	fontProps    []FontProp
-	fontName     string
+	fontAscent    int16
+	fontDescent   int16
+	nReplies      uint32
+	fontProps     []FontProp
+	fontName      string
 }
 
 type FontProp struct {
@@ -1184,11 +1182,11 @@ func (r *listFontsWithInfoReply) encodeMessage(order binary.ByteOrder) []byte {
 
 // QueryTree: 15
 type queryTreeReply struct {
-	sequence   uint16
-	root       uint32
-	parent     uint32
-	nChildren  uint16
-	children   []uint32
+	sequence  uint16
+	root      uint32
+	parent    uint32
+	nChildren uint16
+	children  []uint32
 }
 
 func (r *queryTreeReply) encodeMessage(order binary.ByteOrder) []byte {

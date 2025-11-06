@@ -307,11 +307,11 @@ func TestParseListPropertiesRequest(t *testing.T) {
 func TestParseChangeWindowAttributesRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := make([]byte, 8)
-	order.PutUint32(reqBody[0:4], 123)                               // window
-	order.PutUint32(reqBody[4:8], uint32(CWBackPixel|CWCursor))       // valueMask
+	order.PutUint32(reqBody[0:4], 123)                          // window
+	order.PutUint32(reqBody[4:8], uint32(CWBackPixel|CWCursor)) // valueMask
 	reqBody = append(reqBody, make([]byte, 8)...)
-	order.PutUint32(reqBody[8:12], 0xFF00FF)                         // background pixel
-	order.PutUint32(reqBody[12:16], 456)                             // cursor
+	order.PutUint32(reqBody[8:12], 0xFF00FF) // background pixel
+	order.PutUint32(reqBody[12:16], 456)     // cursor
 
 	p, err := parseChangeWindowAttributesRequest(order, reqBody)
 	assert.NoError(t, err, "parseChangeWindowAttributesRequest should not return an error")

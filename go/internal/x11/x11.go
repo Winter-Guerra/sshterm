@@ -1116,9 +1116,32 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *AllocNamedColorRequest:
-		p.Sequence = seq
-		p.MajorOp = p.OpCode()
-		return s.handleAllocNamedColor(client, p)
+		if _, ok := s.colormaps[p.Cmap]; !ok {
+			return client.sendError(NewError(ColormapErrorCode, seq, p.Cmap.local, 0, p.OpCode()))
+		}
+
+		name := string(p.Name)
+		rgb, ok := lookupColor(name)
+		if !ok {
+			// TODO: This should be BadName, not BadColor
+			return client.sendError(NewError(15, seq, 0, 0, p.OpCode()))
+		}
+
+		exactRed := scale8to16(rgb.Red)
+		exactGreen := scale8to16(rgb.Green)
+		exactBlue := scale8to16(rgb.Blue)
+
+		// For now, we only support TrueColor visuals, so we just allocate the color directly.
+		// TODO: Implement proper colormap handling.
+		pixel := (uint32(rgb.Red) << 16) | (uint32(rgb.Green) << 8) | uint32(rgb.Blue)
+
+		return &allocColorReply{
+			sequence: seq,
+			red:      exactRed,
+			green:    exactGreen,
+			blue:     exactBlue,
+			pixel:    pixel,
+		}
 
 	case *QueryColorsRequest:
 		cmapID := p.Cmap
@@ -1343,11 +1366,11 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 	case *GetScreenSaverRequest:
 		timeout, interval, preferBlank, allowExpose, _ := s.frontend.GetScreenSaver()
 		return &getScreenSaverReply{
-			sequence:      seq,
-			timeout:       uint16(timeout),
-			interval:      uint16(interval),
-			preferBlank:   preferBlank,
-			allowExpose:   allowExpose,
+			sequence:    seq,
+			timeout:     uint16(timeout),
+			interval:    uint16(interval),
+			preferBlank: preferBlank,
+			allowExpose: allowExpose,
 		}
 	case *ChangeHostsRequest:
 		s.frontend.ChangeHosts(p.Mode, p.Host)
@@ -1386,35 +1409,6 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		debugf("Unknown X11 request opcode: %d", p.OpCode())
 	}
 	return nil
-}
-
-func (s *x11Server) handleAllocNamedColor(client *x11Client, p *AllocNamedColorRequest) messageEncoder {
-	if _, ok := s.colormaps[p.Cmap]; !ok {
-		return client.sendError(NewError(ColormapErrorCode, p.Sequence, p.Cmap.local, p.MinorOp, p.MajorOp))
-	}
-
-	name := string(p.Name)
-	rgb, ok := lookupColor(name)
-	if !ok {
-		// TODO: This should be BadName, not BadColor
-		return client.sendError(NewError(15, p.Sequence, 0, p.MinorOp, p.MajorOp))
-	}
-
-	exactRed := scale8to16(rgb.Red)
-	exactGreen := scale8to16(rgb.Green)
-	exactBlue := scale8to16(rgb.Blue)
-
-	// For now, we only support TrueColor visuals, so we just allocate the color directly.
-	// TODO: Implement proper colormap handling.
-	pixel := (uint32(rgb.Red) << 16) | (uint32(rgb.Green) << 8) | uint32(rgb.Blue)
-
-	return &allocColorReply{
-		sequence: p.Sequence,
-		red:      exactRed,
-		green:    exactGreen,
-		blue:     exactBlue,
-		pixel:    pixel,
-	}
 }
 
 func (s *x11Server) handshake(client *x11Client) {

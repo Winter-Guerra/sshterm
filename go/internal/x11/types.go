@@ -45,14 +45,14 @@ type Rectangle struct {
 
 // KeyboardControl defines the keyboard control attributes.
 type KeyboardControl struct {
-	KeyClickPercent   int32
-	BellPercent       int32
-	BellPitch         int32
-	BellDuration      int32
-	Led               uint32
-	LedMode           uint32
-	Key               KeyCode
-	AutoRepeatMode    uint32
+	KeyClickPercent int32
+	BellPercent     int32
+	BellPitch       int32
+	BellDuration    int32
+	Led             uint32
+	LedMode         uint32
+	Key             KeyCode
+	AutoRepeatMode  uint32
 }
 
 // Host defines a host address.

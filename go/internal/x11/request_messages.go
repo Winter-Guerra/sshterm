@@ -1723,9 +1723,9 @@ func parseCopyGCRequest(order binary.ByteOrder, requestBody []byte) (*CopyGCRequ
 }
 
 type SetDashesRequest struct {
-	GC GContext
+	GC         GContext
 	DashOffset uint16
-	Dashes []byte
+	Dashes     []byte
 }
 
 func (SetDashesRequest) OpCode() reqCode { return SetDashes }
@@ -1740,11 +1740,11 @@ func parseSetDashesRequest(order binary.ByteOrder, requestBody []byte) (*SetDash
 }
 
 type SetClipRectanglesRequest struct {
-	GC          GContext
-	ClippingX   int16
-	ClippingY   int16
-	Rectangles  []Rectangle
-	Ordering    byte
+	GC         GContext
+	ClippingX  int16
+	ClippingY  int16
+	Rectangles []Rectangle
+	Ordering   byte
 }
 
 func (SetClipRectanglesRequest) OpCode() reqCode { return SetClipRectangles }
@@ -2279,11 +2279,8 @@ func parseAllocColorRequest(order binary.ByteOrder, payload []byte) (*AllocColor
 }
 
 type AllocNamedColorRequest struct {
-	Cmap     xID
-	Name     []byte
-	Sequence uint16
-	MinorOp  byte
-	MajorOp  reqCode
+	Cmap xID
+	Name []byte
 }
 
 func (AllocNamedColorRequest) OpCode() reqCode { return AllocNamedColor }
@@ -2446,9 +2443,9 @@ func parseFreeCursorRequest(order binary.ByteOrder, requestBody []byte) (*FreeCu
 }
 
 type RecolorCursorRequest struct {
-	Cursor      Cursor
-	ForeColor   [3]uint16
-	BackColor   [3]uint16
+	Cursor    Cursor
+	ForeColor [3]uint16
+	BackColor [3]uint16
 }
 
 func (RecolorCursorRequest) OpCode() reqCode { return RecolorCursor }
@@ -2519,7 +2516,7 @@ func parseSetPointerMappingRequest(order binary.ByteOrder, requestBody []byte) (
 	return req, nil
 }
 
-type GetPointerMappingRequest struct {}
+type GetPointerMappingRequest struct{}
 
 func (GetPointerMappingRequest) OpCode() reqCode { return GetPointerMapping }
 
@@ -2586,10 +2583,10 @@ func parseGetKeyboardControlRequest(order binary.ByteOrder, requestBody []byte) 
 }
 
 type SetScreenSaverRequest struct {
-	Timeout       int16
-	Interval      int16
-	PreferBlank   byte
-	AllowExpose   byte
+	Timeout     int16
+	Interval    int16
+	PreferBlank byte
+	AllowExpose byte
 }
 
 func (SetScreenSaverRequest) OpCode() reqCode { return SetScreenSaver }
