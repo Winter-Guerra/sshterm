@@ -1408,27 +1408,41 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		return &allocColorCellsReply{
 			sequence: seq,
 		}
-    case *AllocColorPlanesRequest:
-        return &allocColorPlanesReply{
-            sequence: seq,
-        }
+
+	case *AllocColorPlanesRequest:
+		return &allocColorPlanesReply{
+			sequence: seq,
+		}
+
 	case *CreateCursorRequest:
+		debugf("X11: CreateCursorRequest not implemented")
 		// TODO: Implement
+
 	case *CopyPlaneRequest:
+		debugf("X11: CopyPlaneRequest not implemented")
 		// TODO: Implement
+
 	case *ListExtensionsRequest:
+		debugf("X11: ListExtensionsRequest not implemented")
+		// TODO: Implement
 		return &listExtensionsReply{
 			sequence: seq,
 		}
+
 	case *ChangePointerControlRequest:
+		debugf("X11: ChangePointerControlRequest not implemented")
 		// TODO: Implement
+
 	case *GetPointerControlRequest:
+		debugf("X11: GetPointerControlRequest not implemented")
+		// TODO: Implement
 		return &getPointerControlReply{
 			sequence:         seq,
 			accelNumerator:   1,
 			accelDenominator: 1,
 			threshold:        1,
 		}
+
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())
 	}

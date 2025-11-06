@@ -216,28 +216,6 @@ func (r *queryTextExtentsReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// ListExtensions: 99
-type listExtensionsReply struct {
-	sequence uint16
-	nNames   byte
-	names    []string
-}
-
-func (r *listExtensionsReply) encodeMessage(order binary.ByteOrder) []byte {
-	var data []byte
-	for _, name := range r.names {
-		data = append(data, byte(len(name)))
-		data = append(data, name...)
-	}
-	reply := make([]byte, 32+len(data))
-	reply[0] = 1 // Reply type
-	reply[1] = r.nNames
-	order.PutUint16(reply[2:4], r.sequence)
-	order.PutUint32(reply[4:8], uint32((len(data)+3)/4))
-	copy(reply[32:], data)
-	return reply
-}
-
 // GetMotionEvents: 39
 type getMotionEventsReply struct {
 	sequence uint16
@@ -1055,16 +1033,6 @@ func (r *getModifierMappingReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-// GetPointerControl: 106
-type getPointerControlReply struct {
-	sequence         uint16
-	accelNumerator   uint16
-	accelDenominator uint16
-	threshold        uint16
-	doAccel          bool
-	doThreshold      bool
-}
-
 // QueryKeymap: 44
 type queryKeymapReply struct {
 	sequence uint16
@@ -1205,23 +1173,6 @@ func (r *queryTreeReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-func (r *getPointerControlReply) encodeMessage(order binary.ByteOrder) []byte {
-	reply := make([]byte, 32)
-	reply[0] = 1 // Reply type
-	order.PutUint16(reply[2:4], r.sequence)
-	order.PutUint32(reply[4:8], 0)
-	order.PutUint16(reply[8:10], r.accelNumerator)
-	order.PutUint16(reply[10:12], r.accelDenominator)
-	order.PutUint16(reply[12:14], r.threshold)
-	if r.doAccel {
-		reply[14] = 1
-	}
-	if r.doThreshold {
-		reply[15] = 1
-	}
-	return reply
-}
-
 // AllocColorCells: 86
 type allocColorCellsReply struct {
 	sequence uint16
@@ -1250,7 +1201,6 @@ func (r *allocColorCellsReply) encodeMessage(order binary.ByteOrder) []byte {
 	}
 	return reply
 }
-
 
 // AllocColorPlanes: 87
 type allocColorPlanesReply struct {
@@ -1281,7 +1231,6 @@ func (r *allocColorPlanesReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
-
 // ListExtensions: 99
 type listExtensionsReply struct {
 	sequence uint16
@@ -1303,7 +1252,6 @@ func (r *listExtensionsReply) encodeMessage(order binary.ByteOrder) []byte {
 	copy(reply[32:], data)
 	return reply
 }
-
 
 // GetPointerControl: 106
 type getPointerControlReply struct {

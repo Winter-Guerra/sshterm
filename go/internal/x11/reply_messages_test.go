@@ -840,8 +840,6 @@ func TestReplyMessages(t *testing.T) {
 		binary.LittleEndian.PutUint16(expected[8:10], 2)
 		binary.LittleEndian.PutUint16(expected[10:12], 3)
 		binary.LittleEndian.PutUint16(expected[12:14], 4)
-		expected[14] = 1
-		expected[15] = 1
 		if !bytes.Equal(encoded, expected) {
 			t.Errorf("GetPointerControlReply encoding failed. Got %v, want %v", encoded, expected)
 		}

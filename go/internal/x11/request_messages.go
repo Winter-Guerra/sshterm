@@ -33,803 +33,362 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 
 	switch opcode {
 	case CreateWindow:
-		req, err := parseCreateWindowRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCreateWindowRequest(order, data, body)
 
 	case ChangeWindowAttributes:
-		req, err := parseChangeWindowAttributesRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangeWindowAttributesRequest(order, body)
 
 	case GetWindowAttributes:
-		req, err := parseGetWindowAttributesRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetWindowAttributesRequest(order, body)
 
 	case DestroyWindow:
-		req, err := parseDestroyWindowRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseDestroyWindowRequest(order, body)
 
 	case DestroySubwindows:
-		req, err := parseDestroySubwindowsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseDestroySubwindowsRequest(order, body)
 
 	case ChangeSaveSet:
-		req, err := parseChangeSaveSetRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangeSaveSetRequest(order, body)
 
 	case ReparentWindow:
-		req, err := parseReparentWindowRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseReparentWindowRequest(order, body)
 
 	case MapWindow:
-		req, err := parseMapWindowRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseMapWindowRequest(order, body)
 
 	case MapSubwindows:
-		req, err := parseMapSubwindowsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseMapSubwindowsRequest(order, body)
 
 	case UnmapWindow:
-		req, err := parseUnmapWindowRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUnmapWindowRequest(order, body)
 
 	case UnmapSubwindows:
-		req, err := parseUnmapSubwindowsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUnmapSubwindowsRequest(order, body)
 
 	case ConfigureWindow:
-		req, err := parseConfigureWindowRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseConfigureWindowRequest(order, body)
 
 	case CirculateWindow:
-		req, err := parseCirculateWindowRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCirculateWindowRequest(order, data, body)
 
 	case GetGeometry:
-		req, err := parseGetGeometryRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetGeometryRequest(order, body)
 
 	case QueryTree:
-		req, err := parseQueryTreeRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryTreeRequest(order, body)
 
 	case InternAtom:
-		req, err := parseInternAtomRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseInternAtomRequest(order, body)
 
 	case GetAtomName:
-		req, err := parseGetAtomNameRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetAtomNameRequest(order, body)
 
 	case ChangeProperty:
-		req, err := parseChangePropertyRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangePropertyRequest(order, body)
 
 	case DeleteProperty:
-		req, err := parseDeletePropertyRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseDeletePropertyRequest(order, body)
 
 	case GetProperty:
-		req, err := parseGetPropertyRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetPropertyRequest(order, body)
 
 	case ListProperties:
-		req, err := parseListPropertiesRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseListPropertiesRequest(order, body)
 
 	case SetSelectionOwner:
-		req, err := parseSetSelectionOwnerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetSelectionOwnerRequest(order, body)
 
 	case GetSelectionOwner:
-		req, err := parseGetSelectionOwnerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetSelectionOwnerRequest(order, body)
 
 	case ConvertSelection:
-		req, err := parseConvertSelectionRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseConvertSelectionRequest(order, body)
 
 	case SendEvent:
-		req, err := parseSendEventRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSendEventRequest(order, body)
 
 	case GrabPointer:
-		req, err := parseGrabPointerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGrabPointerRequest(order, body)
 
 	case UngrabPointer:
-		req, err := parseUngrabPointerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUngrabPointerRequest(order, body)
 
 	case GrabButton:
-		req, err := parseGrabButtonRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGrabButtonRequest(order, body)
 
 	case UngrabButton:
-		req, err := parseUngrabButtonRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUngrabButtonRequest(order, body)
 
 	case ChangeActivePointerGrab:
-		req, err := parseChangeActivePointerGrabRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangeActivePointerGrabRequest(order, body)
 
 	case GrabKeyboard:
-		req, err := parseGrabKeyboardRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGrabKeyboardRequest(order, body)
 
 	case UngrabKeyboard:
-		req, err := parseUngrabKeyboardRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUngrabKeyboardRequest(order, body)
 
 	case GrabKey:
-		req, err := parseGrabKeyRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGrabKeyRequest(order, body)
 
 	case UngrabKey:
-		req, err := parseUngrabKeyRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUngrabKeyRequest(order, body)
 
 	case AllowEvents:
-		req, err := parseAllowEventsRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseAllowEventsRequest(order, data, body)
 
 	case GrabServer:
-		req, err := parseGrabServerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGrabServerRequest(order, body)
 
 	case UngrabServer:
-		req, err := parseUngrabServerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUngrabServerRequest(order, body)
 
 	case QueryPointer:
-		req, err := parseQueryPointerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryPointerRequest(order, body)
 
 	case GetMotionEvents:
-		req, err := parseGetMotionEventsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetMotionEventsRequest(order, body)
 
 	case TranslateCoords:
-		req, err := parseTranslateCoordsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseTranslateCoordsRequest(order, body)
 
 	case WarpPointer:
-		req, err := parseWarpPointerRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseWarpPointerRequest(order, body)
 
 	case SetInputFocus:
-		req, err := parseSetInputFocusRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetInputFocusRequest(order, body)
 
 	case GetInputFocus:
-		req, err := parseGetInputFocusRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetInputFocusRequest(order, body)
 
 	case QueryKeymap:
-		req, err := parseQueryKeymapRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryKeymapRequest(order, body)
 
 	case OpenFont:
-		req, err := parseOpenFontRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseOpenFontRequest(order, body)
 
 	case CloseFont:
-		req, err := parseCloseFontRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCloseFontRequest(order, body)
 
 	case QueryFont:
-		req, err := parseQueryFontRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryFontRequest(order, body)
 
 	case QueryTextExtents:
-		req, err := parseQueryTextExtentsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryTextExtentsRequest(order, body)
 
 	case ListFonts:
-		req, err := parseListFontsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseListFontsRequest(order, body)
 
 	case ListFontsWithInfo:
-		req, err := parseListFontsWithInfoRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseListFontsWithInfoRequest(order, body)
 
 	case SetFontPath:
-		req, err := parseSetFontPathRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetFontPathRequest(order, body)
 
 	case GetFontPath:
-		req, err := parseGetFontPathRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetFontPathRequest(order, body)
 
 	case CreatePixmap:
-		req, err := parseCreatePixmapRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCreatePixmapRequest(order, data, body)
 
 	case FreePixmap:
-		req, err := parseFreePixmapRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseFreePixmapRequest(order, body)
 
 	case CreateGC:
-		req, err := parseCreateGCRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCreateGCRequest(order, body)
 
 	case ChangeGC:
-		req, err := parseChangeGCRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangeGCRequest(order, body)
 
 	case CopyGC:
-		req, err := parseCopyGCRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCopyGCRequest(order, body)
 
 	case SetDashes:
-		req, err := parseSetDashesRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetDashesRequest(order, body)
 
 	case SetClipRectangles:
-		req, err := parseSetClipRectanglesRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetClipRectanglesRequest(order, data, body)
 
 	case FreeGC:
-		req, err := parseFreeGCRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseFreeGCRequest(order, body)
 
 	case ClearArea:
-		req, err := parseClearAreaRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseClearAreaRequest(order, body)
 
 	case CopyArea:
-		req, err := parseCopyAreaRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCopyAreaRequest(order, body)
 
 	case PolyPoint:
-		req, err := parsePolyPointRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyPointRequest(order, body)
 
 	case PolyLine:
-		req, err := parsePolyLineRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyLineRequest(order, body)
 
 	case PolySegment:
-		req, err := parsePolySegmentRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolySegmentRequest(order, body)
 
 	case PolyRectangle:
-		req, err := parsePolyRectangleRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyRectangleRequest(order, body)
 
 	case PolyArc:
-		req, err := parsePolyArcRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyArcRequest(order, body)
 
 	case FillPoly:
-		req, err := parseFillPolyRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseFillPolyRequest(order, body)
 
 	case PolyFillRectangle:
-		req, err := parsePolyFillRectangleRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyFillRectangleRequest(order, body)
 
 	case PolyFillArc:
-		req, err := parsePolyFillArcRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyFillArcRequest(order, body)
 
 	case PutImage:
-		req, err := parsePutImageRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePutImageRequest(order, data, body)
 
 	case GetImage:
-		req, err := parseGetImageRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetImageRequest(order, data, body)
 
 	case PolyText8:
-		req, err := parsePolyText8Request(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyText8Request(order, body)
 
 	case PolyText16:
-		req, err := parsePolyText16Request(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parsePolyText16Request(order, body)
 
 	case ImageText8:
-		req, err := parseImageText8Request(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseImageText8Request(order, body)
 
 	case ImageText16:
-		req, err := parseImageText16Request(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseImageText16Request(order, body)
 
 	case CreateColormap:
-		req, err := parseCreateColormapRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCreateColormapRequest(order, body)
 
 	case FreeColormap:
-		req, err := parseFreeColormapRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseFreeColormapRequest(order, body)
 
 	case InstallColormap:
-		req, err := parseInstallColormapRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseInstallColormapRequest(order, body)
 
 	case UninstallColormap:
-		req, err := parseUninstallColormapRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseUninstallColormapRequest(order, body)
 
 	case ListInstalledColormaps:
-		req, err := parseListInstalledColormapsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseListInstalledColormapsRequest(order, body)
 
 	case AllocColor:
-		req, err := parseAllocColorRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseAllocColorRequest(order, body)
 
 	case AllocNamedColor:
-		req, err := parseAllocNamedColorRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseAllocNamedColorRequest(order, body)
 
 	case FreeColors:
-		req, err := parseFreeColorsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseFreeColorsRequest(order, body)
 
 	case StoreColors:
-		req, err := parseStoreColorsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseStoreColorsRequest(order, body)
 
 	case StoreNamedColor:
-		req, err := parseStoreNamedColorRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseStoreNamedColorRequest(order, data, body)
 
 	case QueryColors:
-		req, err := parseQueryColorsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryColorsRequest(order, body)
 
 	case LookupColor:
-		req, err := parseLookupColorRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseLookupColorRequest(order, body)
 
 	case CreateGlyphCursor:
-		req, err := parseCreateGlyphCursorRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseCreateGlyphCursorRequest(order, body)
 
 	case FreeCursor:
-		req, err := parseFreeCursorRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseFreeCursorRequest(order, body)
 
 	case RecolorCursor:
-		req, err := parseRecolorCursorRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseRecolorCursorRequest(order, body)
 
 	case QueryBestSize:
-		req, err := parseQueryBestSizeRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryBestSizeRequest(order, body)
 
 	case QueryExtension:
-		req, err := parseQueryExtensionRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseQueryExtensionRequest(order, body)
 
 	case Bell:
-		req, err := parseBellRequest(data)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseBellRequest(data)
 
 	case SetPointerMapping:
-		req, err := parseSetPointerMappingRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetPointerMappingRequest(order, body)
 
 	case GetPointerMapping:
-		req, err := parseGetPointerMappingRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetPointerMappingRequest(order, body)
 
 	case GetKeyboardMapping:
-		req, err := parseGetKeyboardMappingRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetKeyboardMappingRequest(order, body)
 
 	case ChangeKeyboardMapping:
-		req, err := parseChangeKeyboardMappingRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangeKeyboardMappingRequest(order, data, body)
 
 	case ChangeKeyboardControl:
-		req, err := parseChangeKeyboardControlRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangeKeyboardControlRequest(order, body)
 
 	case GetKeyboardControl:
-		req, err := parseGetKeyboardControlRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetKeyboardControlRequest(order, body)
 
 	case SetScreenSaver:
-		req, err := parseSetScreenSaverRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetScreenSaverRequest(order, body)
 
 	case GetScreenSaver:
-		req, err := parseGetScreenSaverRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetScreenSaverRequest(order, body)
 
 	case ChangeHosts:
-		req, err := parseChangeHostsRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseChangeHostsRequest(order, data, body)
 
 	case ListHosts:
-		req, err := parseListHostsRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseListHostsRequest(order, body)
 
 	case SetAccessControl:
-		req, err := parseSetAccessControlRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetAccessControlRequest(order, data, body)
 
 	case SetCloseDownMode:
-		req, err := parseSetCloseDownModeRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetCloseDownModeRequest(order, data, body)
 
 	case KillClient:
-		req, err := parseKillClientRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseKillClientRequest(order, body)
 
 	case RotateProperties:
-		req, err := parseRotatePropertiesRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseRotatePropertiesRequest(order, body)
 
 	case ForceScreenSaver:
-		req, err := parseForceScreenSaverRequest(order, data, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseForceScreenSaverRequest(order, data, body)
 
 	case SetModifierMapping:
-		req, err := parseSetModifierMappingRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseSetModifierMappingRequest(order, body)
 
 	case GetModifierMapping:
-		req, err := parseGetModifierMappingRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseGetModifierMappingRequest(order, body)
 
 	case NoOperation:
-		req, err := parseNoOperationRequest(order, body)
-		if err != nil {
-			return nil, err
-		}
-		return req, nil
+		return parseNoOperationRequest(order, body)
 
-    case reqCodeAllocColorCells:
-         return parseAllocColorCellsRequest(order, raw)
-    case reqCodeAllocColorPlanes:
-         return parseAllocColorPlanesRequest(order, raw)
-    case reqCodeCreateCursor:
-         return parseCreateCursorRequest(order, raw)
-    case reqCodeCopyPlane:
-         return parseCopyPlaneRequest(order, raw)
-    case reqCodeListExtensions:
-         return parseListExtensionsRequest(order, raw)
-    case reqCodeChangePointerControl:
-         return parseChangePointerControlRequest(order, raw)
-    case reqCodeGetPointerControl:
-         return parseGetPointerControlRequest(order, raw)
+	case AllocColorCells:
+		return parseAllocColorCellsRequest(order, raw)
+
+	case AllocColorPlanes:
+		return parseAllocColorPlanesRequest(order, raw)
+
+	case CreateCursor:
+		return parseCreateCursorRequest(order, raw)
+
+	case CopyPlane:
+		return parseCopyPlaneRequest(order, raw)
+
+	case ListExtensions:
+		return parseListExtensionsRequest(order, raw)
+
+	case ChangePointerControl:
+		return parseChangePointerControlRequest(order, raw)
+
+	case GetPointerControl:
+		return parseGetPointerControlRequest(order, raw)
+
 	default:
 		return nil, fmt.Errorf("x11: unhandled opcode %d", opcode)
 	}
@@ -3460,99 +3019,79 @@ type AllocColorCellsRequest struct {
 	// TODO: Implement
 }
 
-func (r *AllocColorCellsRequest) OpCode() reqCode {
-	return reqCodeAllocColorCells
-}
+func (r *AllocColorCellsRequest) OpCode() reqCode { return AllocColorCells }
 
 func parseAllocColorCellsRequest(order binary.ByteOrder, raw []byte) (*AllocColorCellsRequest, error) {
 	// TODO: Implement
 	return &AllocColorCellsRequest{}, nil
 }
 
-
 // AllocColorPlanes: 87
 type AllocColorPlanesRequest struct {
 	// TODO: Implement
 }
 
-func (r *AllocColorPlanesRequest) OpCode() reqCode {
-	return reqCodeAllocColorPlanes
-}
+func (r *AllocColorPlanesRequest) OpCode() reqCode { return AllocColorPlanes }
 
 func parseAllocColorPlanesRequest(order binary.ByteOrder, raw []byte) (*AllocColorPlanesRequest, error) {
 	// TODO: Implement
 	return &AllocColorPlanesRequest{}, nil
 }
 
-
 // reqCodeCreateCursor:
 type CreateCursorRequest struct {
 	// TODO: Implement
 }
 
-func (r *CreateCursorRequest) OpCode() reqCode {
-	return reqCodeCreateCursor
-}
+func (r *CreateCursorRequest) OpCode() reqCode { return CreateCursor }
 
 func parseCreateCursorRequest(order binary.ByteOrder, raw []byte) (*CreateCursorRequest, error) {
 	// TODO: Implement
 	return &CreateCursorRequest{}, nil
 }
 
-
 // reqCodeCopyPlane:
 type CopyPlaneRequest struct {
 	// TODO: Implement
 }
 
-func (r *CopyPlaneRequest) OpCode() reqCode {
-	return reqCodeCopyPlane
-}
+func (r *CopyPlaneRequest) OpCode() reqCode { return CopyPlane }
 
 func parseCopyPlaneRequest(order binary.ByteOrder, raw []byte) (*CopyPlaneRequest, error) {
 	// TODO: Implement
 	return &CopyPlaneRequest{}, nil
 }
 
-
 // reqCodeListExtensions:
 type ListExtensionsRequest struct {
 	// TODO: Implement
 }
 
-func (r *ListExtensionsRequest) OpCode() reqCode {
-	return reqCodeListExtensions
-}
+func (r *ListExtensionsRequest) OpCode() reqCode { return ListExtensions }
 
 func parseListExtensionsRequest(order binary.ByteOrder, raw []byte) (*ListExtensionsRequest, error) {
 	// TODO: Implement
 	return &ListExtensionsRequest{}, nil
 }
 
-
 // reqCodeChangePointerControl:
 type ChangePointerControlRequest struct {
 	// TODO: Implement
 }
 
-func (r *ChangePointerControlRequest) OpCode() reqCode {
-	return reqCodeChangePointerControl
-}
+func (r *ChangePointerControlRequest) OpCode() reqCode { return ChangePointerControl }
 
 func parseChangePointerControlRequest(order binary.ByteOrder, raw []byte) (*ChangePointerControlRequest, error) {
 	// TODO: Implement
 	return &ChangePointerControlRequest{}, nil
 }
 
-
 // reqCodeGetPointerControl:
 type GetPointerControlRequest struct {
 	// TODO: Implement
 }
 
-func (r *GetPointerControlRequest) OpCode() reqCode {
-	return reqCodeGetPointerControl
-}
+func (r *GetPointerControlRequest) OpCode() reqCode { return GetPointerControl }
 
 func parseGetPointerControlRequest(order binary.ByteOrder, raw []byte) (*GetPointerControlRequest, error) {
 	// TODO: Implement
