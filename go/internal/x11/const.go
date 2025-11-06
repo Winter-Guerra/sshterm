@@ -125,6 +125,13 @@ const (
 	SetModifierMapping      = reqCode(118)
 	GetModifierMapping      = reqCode(119)
 	NoOperation             = reqCode(127)
+	reqCodeAllocColorCells = 86
+	reqCodeAllocColorPlanes = 87
+	reqCodeCreateCursor = 93
+	reqCodeCopyPlane = 63
+	reqCodeListExtensions = 99
+	reqCodeChangePointerControl = 105
+	reqCodeGetPointerControl = 106
 )
 
 const (

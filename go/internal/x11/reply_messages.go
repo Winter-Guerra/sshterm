@@ -1221,3 +1221,109 @@ func (r *getPointerControlReply) encodeMessage(order binary.ByteOrder) []byte {
 	}
 	return reply
 }
+
+// AllocColorCells: 86
+type allocColorCellsReply struct {
+	sequence uint16
+	nPixels  uint16
+	nMasks   uint16
+	pixels   []uint32
+	masks    []uint32
+}
+
+func (r *allocColorCellsReply) encodeMessage(order binary.ByteOrder) []byte {
+	numPixels := len(r.pixels)
+	numMasks := len(r.masks)
+	reply := make([]byte, 32+(numPixels+numMasks)*4)
+	reply[0] = 1 // Reply type
+	// byte 1 is unused
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32(numPixels+numMasks)) // Reply length
+	order.PutUint16(reply[8:10], uint16(numPixels))
+	order.PutUint16(reply[10:12], uint16(numMasks))
+	// reply[12:32] is padding
+	for i, pixel := range r.pixels {
+		order.PutUint32(reply[32+i*4:], pixel)
+	}
+	for i, mask := range r.masks {
+		order.PutUint32(reply[32+numPixels*4+i*4:], mask)
+	}
+	return reply
+}
+
+
+// AllocColorPlanes: 87
+type allocColorPlanesReply struct {
+	sequence  uint16
+	nPixels   uint16
+	redMask   uint32
+	greenMask uint32
+	blueMask  uint32
+	pixels    []uint32
+}
+
+func (r *allocColorPlanesReply) encodeMessage(order binary.ByteOrder) []byte {
+	numPixels := len(r.pixels)
+	reply := make([]byte, 32+numPixels*4)
+	reply[0] = 1 // Reply type
+	// byte 1 is unused
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32(numPixels)) // Reply length
+	order.PutUint16(reply[8:10], uint16(numPixels))
+	// reply[10:12] is padding
+	order.PutUint32(reply[12:16], r.redMask)
+	order.PutUint32(reply[16:20], r.greenMask)
+	order.PutUint32(reply[20:24], r.blueMask)
+	// reply[24:32] is padding
+	for i, pixel := range r.pixels {
+		order.PutUint32(reply[32+i*4:], pixel)
+	}
+	return reply
+}
+
+
+// ListExtensions: 99
+type listExtensionsReply struct {
+	sequence uint16
+	nNames   byte
+	names    []string
+}
+
+func (r *listExtensionsReply) encodeMessage(order binary.ByteOrder) []byte {
+	var data []byte
+	for _, name := range r.names {
+		data = append(data, byte(len(name)))
+		data = append(data, name...)
+	}
+	reply := make([]byte, 32+len(data))
+	reply[0] = 1 // Reply type
+	reply[1] = r.nNames
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32((len(data)+3)/4))
+	copy(reply[32:], data)
+	return reply
+}
+
+
+// GetPointerControl: 106
+type getPointerControlReply struct {
+	sequence         uint16
+	accelNumerator   uint16
+	accelDenominator uint16
+	threshold        uint16
+	doAccel          bool
+	doThreshold      bool
+}
+
+func (r *getPointerControlReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	// byte 1 is unused
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0) // Reply length
+	order.PutUint16(reply[8:10], r.accelNumerator)
+	order.PutUint16(reply[10:12], r.accelDenominator)
+	order.PutUint16(reply[12:14], r.threshold)
+	// reply[14:32] is padding
+	return reply
+}

@@ -816,6 +816,20 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 		}
 		return req, nil
 
+    case reqCodeAllocColorCells:
+         return parseAllocColorCellsRequest(order, raw)
+    case reqCodeAllocColorPlanes:
+         return parseAllocColorPlanesRequest(order, raw)
+    case reqCodeCreateCursor:
+         return parseCreateCursorRequest(order, raw)
+    case reqCodeCopyPlane:
+         return parseCopyPlaneRequest(order, raw)
+    case reqCodeListExtensions:
+         return parseListExtensionsRequest(order, raw)
+    case reqCodeChangePointerControl:
+         return parseChangePointerControlRequest(order, raw)
+    case reqCodeGetPointerControl:
+         return parseGetPointerControlRequest(order, raw)
 	default:
 		return nil, fmt.Errorf("x11: unhandled opcode %d", opcode)
 	}
@@ -3439,4 +3453,108 @@ func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData 
 		offset += 4
 	}
 	return wa, offset, nil
+}
+
+// AllocColorCells: 86
+type AllocColorCellsRequest struct {
+	// TODO: Implement
+}
+
+func (r *AllocColorCellsRequest) OpCode() reqCode {
+	return reqCodeAllocColorCells
+}
+
+func parseAllocColorCellsRequest(order binary.ByteOrder, raw []byte) (*AllocColorCellsRequest, error) {
+	// TODO: Implement
+	return &AllocColorCellsRequest{}, nil
+}
+
+
+// AllocColorPlanes: 87
+type AllocColorPlanesRequest struct {
+	// TODO: Implement
+}
+
+func (r *AllocColorPlanesRequest) OpCode() reqCode {
+	return reqCodeAllocColorPlanes
+}
+
+func parseAllocColorPlanesRequest(order binary.ByteOrder, raw []byte) (*AllocColorPlanesRequest, error) {
+	// TODO: Implement
+	return &AllocColorPlanesRequest{}, nil
+}
+
+
+// reqCodeCreateCursor:
+type CreateCursorRequest struct {
+	// TODO: Implement
+}
+
+func (r *CreateCursorRequest) OpCode() reqCode {
+	return reqCodeCreateCursor
+}
+
+func parseCreateCursorRequest(order binary.ByteOrder, raw []byte) (*CreateCursorRequest, error) {
+	// TODO: Implement
+	return &CreateCursorRequest{}, nil
+}
+
+
+// reqCodeCopyPlane:
+type CopyPlaneRequest struct {
+	// TODO: Implement
+}
+
+func (r *CopyPlaneRequest) OpCode() reqCode {
+	return reqCodeCopyPlane
+}
+
+func parseCopyPlaneRequest(order binary.ByteOrder, raw []byte) (*CopyPlaneRequest, error) {
+	// TODO: Implement
+	return &CopyPlaneRequest{}, nil
+}
+
+
+// reqCodeListExtensions:
+type ListExtensionsRequest struct {
+	// TODO: Implement
+}
+
+func (r *ListExtensionsRequest) OpCode() reqCode {
+	return reqCodeListExtensions
+}
+
+func parseListExtensionsRequest(order binary.ByteOrder, raw []byte) (*ListExtensionsRequest, error) {
+	// TODO: Implement
+	return &ListExtensionsRequest{}, nil
+}
+
+
+// reqCodeChangePointerControl:
+type ChangePointerControlRequest struct {
+	// TODO: Implement
+}
+
+func (r *ChangePointerControlRequest) OpCode() reqCode {
+	return reqCodeChangePointerControl
+}
+
+func parseChangePointerControlRequest(order binary.ByteOrder, raw []byte) (*ChangePointerControlRequest, error) {
+	// TODO: Implement
+	return &ChangePointerControlRequest{}, nil
+}
+
+
+// reqCodeGetPointerControl:
+type GetPointerControlRequest struct {
+	// TODO: Implement
+}
+
+func (r *GetPointerControlRequest) OpCode() reqCode {
+	return reqCodeGetPointerControl
+}
+
+func parseGetPointerControlRequest(order binary.ByteOrder, raw []byte) (*GetPointerControlRequest, error) {
+	// TODO: Implement
+	return &GetPointerControlRequest{}, nil
 }

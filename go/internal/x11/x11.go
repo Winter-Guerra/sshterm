@@ -1404,6 +1404,31 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			keyCodes:            keyCodes,
 		}
 
+	case *AllocColorCellsRequest:
+		return &allocColorCellsReply{
+			sequence: seq,
+		}
+    case *AllocColorPlanesRequest:
+        return &allocColorPlanesReply{
+            sequence: seq,
+        }
+	case *CreateCursorRequest:
+		// TODO: Implement
+	case *CopyPlaneRequest:
+		// TODO: Implement
+	case *ListExtensionsRequest:
+		return &listExtensionsReply{
+			sequence: seq,
+		}
+	case *ChangePointerControlRequest:
+		// TODO: Implement
+	case *GetPointerControlRequest:
+		return &getPointerControlReply{
+			sequence:         seq,
+			accelNumerator:   1,
+			accelDenominator: 1,
+			threshold:        1,
+		}
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())
 	}
