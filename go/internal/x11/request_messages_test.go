@@ -59,6 +59,120 @@ func TestRequestParsing(t *testing.T) {
 	}
 }
 
+func TestRequestParsingErrors(t *testing.T) {
+	testCases := []struct {
+		reqType reqCode
+		raw     []byte
+	}{
+		{CreateWindow, make([]byte, 27)},
+		{ChangeWindowAttributes, make([]byte, 7)},
+		{GetWindowAttributes, make([]byte, 3)},
+		{DestroyWindow, make([]byte, 3)},
+		{DestroySubwindows, make([]byte, 3)},
+		{ChangeSaveSet, make([]byte, 4)},
+		{ReparentWindow, make([]byte, 11)},
+		{MapWindow, make([]byte, 3)},
+		{MapSubwindows, make([]byte, 3)},
+		{UnmapWindow, make([]byte, 3)},
+		{UnmapSubwindows, make([]byte, 3)},
+		{ConfigureWindow, make([]byte, 7)},
+		{CirculateWindow, make([]byte, 3)},
+		{GetGeometry, make([]byte, 3)},
+		{QueryTree, make([]byte, 3)},
+		{InternAtom, make([]byte, 3)},
+		{GetAtomName, make([]byte, 3)},
+		{ChangeProperty, make([]byte, 19)},
+		{DeleteProperty, make([]byte, 7)},
+		{GetProperty, make([]byte, 19)},
+		{ListProperties, make([]byte, 3)},
+		{SetSelectionOwner, make([]byte, 11)},
+		{GetSelectionOwner, make([]byte, 3)},
+		{ConvertSelection, make([]byte, 19)},
+		{SendEvent, make([]byte, 43)},
+		{GrabPointer, make([]byte, 19)},
+		{UngrabPointer, make([]byte, 3)},
+		{GrabButton, make([]byte, 23)},
+		{UngrabButton, make([]byte, 7)},
+		{ChangeActivePointerGrab, make([]byte, 11)},
+		{GrabKeyboard, make([]byte, 11)},
+		{UngrabKeyboard, make([]byte, 3)},
+		{GrabKey, make([]byte, 12)},
+		{UngrabKey, make([]byte, 7)},
+		{AllowEvents, make([]byte, 3)},
+		{QueryPointer, make([]byte, 3)},
+		{GetMotionEvents, make([]byte, 11)},
+		{TranslateCoords, make([]byte, 11)},
+		{WarpPointer, make([]byte, 15)},
+		{SetInputFocus, make([]byte, 11)},
+		{OpenFont, make([]byte, 7)},
+		{CloseFont, make([]byte, 3)},
+		{QueryFont, make([]byte, 3)},
+		{QueryTextExtents, make([]byte, 3)},
+		{ListFonts, make([]byte, 3)},
+		{ListFontsWithInfo, make([]byte, 3)},
+		{SetFontPath, make([]byte, 3)},
+		{CreatePixmap, make([]byte, 11)},
+		{FreePixmap, make([]byte, 3)},
+		{CreateGC, make([]byte, 11)},
+		{ChangeGC, make([]byte, 7)},
+		{CopyGC, make([]byte, 7)},
+		{SetDashes, make([]byte, 7)},
+		{SetClipRectangles, make([]byte, 7)},
+		{FreeGC, make([]byte, 3)},
+		{ClearArea, make([]byte, 11)},
+		{CopyArea, make([]byte, 27)},
+		{PolyPoint, make([]byte, 7)},
+		{PolyLine, make([]byte, 7)},
+		{PolySegment, make([]byte, 7)},
+		{PolyRectangle, make([]byte, 7)},
+		{PolyArc, make([]byte, 7)},
+		{FillPoly, make([]byte, 11)},
+		{PolyFillRectangle, make([]byte, 7)},
+		{PolyFillArc, make([]byte, 7)},
+		{PutImage, make([]byte, 19)},
+		{GetImage, make([]byte, 15)},
+		{PolyText8, make([]byte, 11)},
+		{PolyText16, make([]byte, 11)},
+		{ImageText8, make([]byte, 11)},
+		{ImageText16, make([]byte, 11)},
+		{CreateColormap, make([]byte, 15)},
+		{FreeColormap, make([]byte, 3)},
+		{InstallColormap, make([]byte, 3)},
+		{UninstallColormap, make([]byte, 3)},
+		{ListInstalledColormaps, make([]byte, 3)},
+		{AllocColor, make([]byte, 9)},
+		{AllocNamedColor, make([]byte, 7)},
+		{FreeColors, make([]byte, 7)},
+		{StoreColors, make([]byte, 3)},
+		{StoreNamedColor, make([]byte, 11)},
+		{QueryColors, make([]byte, 3)},
+		{LookupColor, make([]byte, 7)},
+		{CreateGlyphCursor, make([]byte, 27)},
+		{FreeCursor, make([]byte, 3)},
+		{RecolorCursor, make([]byte, 15)},
+		{QueryBestSize, make([]byte, 7)},
+		{QueryExtension, make([]byte, 3)},
+		{GetKeyboardMapping, make([]byte, 1)},
+		{ChangeKeyboardMapping, make([]byte, 3)},
+		{ChangeKeyboardControl, make([]byte, 3)},
+		{SetScreenSaver, make([]byte, 5)},
+		{ChangeHosts, make([]byte, 3)},
+		{KillClient, make([]byte, 3)},
+		{RotateProperties, make([]byte, 7)},
+		{SetModifierMapping, make([]byte, 0)},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%T", tc.reqType), func(t *testing.T) {
+			hdr := make([]byte, 4)
+			hdr[0] = byte(tc.reqType)
+			binary.LittleEndian.PutUint16(hdr[2:4], uint16(len(tc.raw)/4))
+			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...))
+			assert.Error(t, err, "parseRequest should return an error for undersized requests")
+		})
+	}
+}
+
 func TestParseImageText8Request(t *testing.T) {
 	// ImageText8 request: drawable, gc, x, y, text
 	drawable := uint32(1)
@@ -576,7 +690,7 @@ func TestParseUngrabButtonRequest(t *testing.T) {
 
 func TestParseChangeActivePointerGrabRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 10)
+	reqBody := make([]byte, 12)
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint32(reqBody[4:8], 456)
 	order.PutUint16(reqBody[8:10], 789)
@@ -636,7 +750,7 @@ func TestParseGrabKeyRequest(t *testing.T) {
 
 func TestParseUngrabKeyRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 7)
+	reqBody := make([]byte, 8)
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint16(reqBody[4:6], 456)
 	reqBody[6] = 7
