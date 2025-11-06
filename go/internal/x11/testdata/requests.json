@@ -1070,5 +1070,21 @@
   {
     "raw": "620006000f00000058496e707574457874656e73696f6e00",
     "want": "\u0026x11.QueryExtensionRequest{Name:\"XInputExtension\"}"
+  },
+  {
+    "raw": "3f00080004030201080706050c0b0a090e0d100f12111413161518171c1b1a19",
+    "want": "&x11.CopyPlaneRequest{SrcDrawable:0x1020304, DstDrawable:0x5060708, Gc:0x90a0b0c, SrcX:3342, SrcY:3856, DstX:4370, DstY:4884, Width:0x1516, Height:0x1718, PlaneMask:0x191a1b1c}"
+  },
+  {
+    "raw": "63000100",
+    "want": "&x11.ListExtensionsRequest{}"
+  },
+  {
+    "raw": "690003000201040306050101",
+    "want": "&x11.ChangePointerControlRequest{AccelerationNumerator:258, AccelerationDenominator:772, Threshold:1286, DoAcceleration:true, DoThreshold:true}"
+  },
+  {
+    "raw": "6a000100",
+    "want": "&x11.GetPointerControlRequest{}"
   }
 ]

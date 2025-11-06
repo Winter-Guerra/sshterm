@@ -378,13 +378,13 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 		return parseCreateCursorRequest(order, raw)
 
 	case CopyPlane:
-		return parseCopyPlaneRequest(order, raw)
+		return parseCopyPlaneRequest(order, body)
 
 	case ListExtensions:
 		return parseListExtensionsRequest(order, raw)
 
 	case ChangePointerControl:
-		return parseChangePointerControlRequest(order, raw)
+		return parseChangePointerControlRequest(order, body)
 
 	case GetPointerControl:
 		return parseGetPointerControlRequest(order, raw)
@@ -3052,48 +3052,76 @@ func parseCreateCursorRequest(order binary.ByteOrder, raw []byte) (*CreateCursor
 
 // reqCodeCopyPlane:
 type CopyPlaneRequest struct {
-	// TODO: Implement
+	SrcDrawable Drawable
+	DstDrawable Drawable
+	Gc          GContext
+	SrcX        int16
+	SrcY        int16
+	DstX        int16
+	DstY        int16
+	Width       uint16
+	Height      uint16
+	PlaneMask   uint32
 }
 
 func (r *CopyPlaneRequest) OpCode() reqCode { return CopyPlane }
 
-func parseCopyPlaneRequest(order binary.ByteOrder, raw []byte) (*CopyPlaneRequest, error) {
-	// TODO: Implement
-	return &CopyPlaneRequest{}, nil
+func parseCopyPlaneRequest(order binary.ByteOrder, body []byte) (*CopyPlaneRequest, error) {
+	if len(body) < 28 {
+		return nil, fmt.Errorf("%w: copy plane request too short", errParseError)
+	}
+	req := &CopyPlaneRequest{}
+	req.SrcDrawable = Drawable(order.Uint32(body[0:4]))
+	req.DstDrawable = Drawable(order.Uint32(body[4:8]))
+	req.Gc = GContext(order.Uint32(body[8:12]))
+	req.SrcX = int16(order.Uint16(body[12:14]))
+	req.SrcY = int16(order.Uint16(body[14:16]))
+	req.DstX = int16(order.Uint16(body[16:18]))
+	req.DstY = int16(order.Uint16(body[18:20]))
+	req.Width = order.Uint16(body[20:22])
+	req.Height = order.Uint16(body[22:24])
+	req.PlaneMask = order.Uint32(body[24:28])
+	return req, nil
 }
 
 // reqCodeListExtensions:
-type ListExtensionsRequest struct {
-	// TODO: Implement
-}
+type ListExtensionsRequest struct{}
 
 func (r *ListExtensionsRequest) OpCode() reqCode { return ListExtensions }
 
 func parseListExtensionsRequest(order binary.ByteOrder, raw []byte) (*ListExtensionsRequest, error) {
-	// TODO: Implement
 	return &ListExtensionsRequest{}, nil
 }
 
 // reqCodeChangePointerControl:
 type ChangePointerControlRequest struct {
-	// TODO: Implement
+	AccelerationNumerator   int16
+	AccelerationDenominator int16
+	Threshold               int16
+	DoAcceleration          bool
+	DoThreshold             bool
 }
 
 func (r *ChangePointerControlRequest) OpCode() reqCode { return ChangePointerControl }
 
-func parseChangePointerControlRequest(order binary.ByteOrder, raw []byte) (*ChangePointerControlRequest, error) {
-	// TODO: Implement
-	return &ChangePointerControlRequest{}, nil
+func parseChangePointerControlRequest(order binary.ByteOrder, body []byte) (*ChangePointerControlRequest, error) {
+	if len(body) < 8 {
+		return nil, fmt.Errorf("%w: change pointer control request too short", errParseError)
+	}
+	req := &ChangePointerControlRequest{}
+	req.AccelerationNumerator = int16(order.Uint16(body[0:2]))
+	req.AccelerationDenominator = int16(order.Uint16(body[2:4]))
+	req.Threshold = int16(order.Uint16(body[4:6]))
+	req.DoAcceleration = body[6] != 0
+	req.DoThreshold = body[7] != 0
+	return req, nil
 }
 
 // reqCodeGetPointerControl:
-type GetPointerControlRequest struct {
-	// TODO: Implement
-}
+type GetPointerControlRequest struct{}
 
 func (r *GetPointerControlRequest) OpCode() reqCode { return GetPointerControl }
 
 func parseGetPointerControlRequest(order binary.ByteOrder, raw []byte) (*GetPointerControlRequest, error) {
-	// TODO: Implement
 	return &GetPointerControlRequest{}, nil
 }
