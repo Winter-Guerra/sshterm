@@ -1208,7 +1208,6 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 		return &listFontsReply{
 			sequence:  seq,
-			numFonts:  uint16(len(fontNames)),
 			fontNames: fontNames,
 		}
 

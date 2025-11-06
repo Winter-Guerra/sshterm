@@ -456,7 +456,6 @@ func (r *queryFontReply) encodeMessage(order binary.ByteOrder) []byte {
 // ListFonts: 50
 type listFontsReply struct {
 	sequence  uint16
-	numFonts  uint16
 	fontNames []string
 }
 
@@ -955,18 +954,18 @@ type getKeyboardControlReply struct {
 }
 
 func (r *getKeyboardControlReply) encodeMessage(order binary.ByteOrder) []byte {
-	reply := make([]byte, 32)
+	reply := make([]byte, 52)
 	reply[0] = 1 // Reply type
-	reply[1] = 5
+	reply[1] = r.globalAutoRepeat
 	order.PutUint16(reply[2:4], r.sequence)
-	order.PutUint32(reply[4:8], 5)
-	reply[8] = r.keyClickPercent
-	reply[9] = r.bellPercent
-	order.PutUint16(reply[10:12], r.bellPitch)
-	order.PutUint16(reply[12:14], r.bellDuration)
-	order.PutUint32(reply[16:20], r.ledMask)
-	reply[20] = r.globalAutoRepeat
-	copy(reply[21:53], r.autoRepeats[:])
+	order.PutUint32(reply[4:8], 5) // Reply length
+	order.PutUint32(reply[8:12], r.ledMask)
+	reply[12] = r.keyClickPercent
+	reply[13] = r.bellPercent
+	order.PutUint16(reply[14:16], r.bellPitch)
+	order.PutUint16(reply[16:18], r.bellDuration)
+	// reply[18:20] is padding
+	copy(reply[20:52], r.autoRepeats[:])
 	return reply
 }
 
@@ -1001,12 +1000,15 @@ type listHostsReply struct {
 func (r *listHostsReply) encodeMessage(order binary.ByteOrder) []byte {
 	var data []byte
 	for _, host := range r.hosts {
-		data = append(data, host.Family)
-		data = append(data, 0, 0, 0) // padding
-		order.PutUint16(data, uint16(len(host.Data)))
-		data = append(data, host.Data...)
+		var hostData []byte
+		hostData = append(hostData, host.Family)
+		hostData = append(hostData, 0) // padding
+		hostData = append(hostData, make([]byte, 2)...)
+		order.PutUint16(hostData[2:4], uint16(len(host.Data)))
+		hostData = append(hostData, host.Data...)
 		pad := (4 - (len(host.Data) % 4)) % 4
-		data = append(data, make([]byte, pad)...)
+		hostData = append(hostData, make([]byte, pad)...)
+		data = append(data, hostData...)
 	}
 	reply := make([]byte, 32+len(data))
 	reply[0] = 1 // Reply type
