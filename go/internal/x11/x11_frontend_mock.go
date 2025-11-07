@@ -388,7 +388,7 @@ func (m *MockX11Frontend) GetCanvasOperations() []CanvasOperation {
 	return m.CanvasOperations
 }
 
-func (m *MockX11Frontend) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint32) {
+func (m *MockX11Frontend) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 	if pixel == 0 {
 		return 0xFF, 0xFF, 0xFF // White
 	}

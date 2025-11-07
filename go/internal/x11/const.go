@@ -128,13 +128,18 @@ const (
 )
 
 const (
-	ValueErrorCode     byte = 2
-	ColormapErrorCode  byte = 12
-	IDChoiceErrorCode  byte = 14
-	WindowErrorCode    byte = 3
-	GContextErrorCode  byte = 13
-	PixmapErrorCode    byte = 4
-	CursorErrorCode    byte = 6
+	ValueErrorCode    byte = 2
+	WindowErrorCode   byte = 3
+	PixmapErrorCode   byte = 4
+	AtomErrorCode     byte = 5
+	CursorErrorCode   byte = 6
+	ColormapErrorCode byte = 12
+	GContextErrorCode byte = 13
+	IDChoiceErrorCode byte = 14
+	NameErrorCode     byte = 15
+)
+
+const (
 	ColormapNotifyCode byte = 13
 )
 

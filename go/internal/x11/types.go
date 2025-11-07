@@ -60,3 +60,12 @@ type Host struct {
 	Family byte
 	Data   []byte
 }
+
+// xColorItem defines a color item.
+type xColorItem struct {
+	Pixel uint32
+	Red   uint16
+	Green uint16
+	Blue  uint16
+	Flags byte
+}

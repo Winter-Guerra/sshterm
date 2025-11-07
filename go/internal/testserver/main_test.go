@@ -249,6 +249,22 @@ func TestSSHTerm(t *testing.T) {
 		return
 	}
 
+	logConsole := func(ev *runtime.EventConsoleAPICalled) {
+		var parts []string
+		for _, arg := range ev.Args {
+			if strings.Contains(arg.Value.String(), "ForwardX11 requested, but X11 is not enabled") {
+				t.Error("X11 not enabled")
+				cancel()
+			}
+			if s, err := strconv.Unquote(arg.Value.String()); err == nil {
+				parts = append(parts, s)
+			} else {
+				parts = append(parts, arg.Value.String())
+			}
+		}
+		fmt.Fprintf(os.Stderr, "console.%s: %s\n", ev.Type, strings.Join(parts, " "))
+	}
+
 	t.Run("WASM App Tests", func(t *testing.T) {
 		ctx, cancel = context.WithTimeout(t.Context(), 5*time.Minute)
 		defer cancel()
@@ -266,10 +282,7 @@ func TestSSHTerm(t *testing.T) {
 			switch ev := ev.(type) {
 			case *cdproto.Message:
 			case *runtime.EventConsoleAPICalled:
-				//t.Logf("* console.%s call:", ev.Type)
-				//for _, arg := range ev.Args {
-				//	t.Logf("   %s - %s", arg.Type, arg.Value)
-				//},
+				logConsole(ev)
 			case *runtime.EventExceptionThrown:
 				t.Logf("Exception: * %s", ev.ExceptionDetails.Error())
 			case *webauthn.EventCredentialAdded, *webauthn.EventCredentialAsserted, *webauthn.EventCredentialDeleted, *webauthn.EventCredentialUpdated:
@@ -347,14 +360,7 @@ func TestSSHTerm(t *testing.T) {
 			switch ev := ev.(type) {
 			case *cdproto.Message:
 			case *runtime.EventConsoleAPICalled:
-				t.Logf("* console.%s call:", ev.Type)
-				for _, arg := range ev.Args {
-					t.Logf("   %s - %s", arg.Type, arg.Value)
-					if strings.Contains(arg.Value.String(), "ForwardX11 requested, but X11 is not enabled") {
-						t.Error("X11 not enabled")
-						cancel()
-					}
-				}
+				logConsole(ev)
 			case *runtime.EventExceptionThrown:
 				t.Logf("Exception: * %s", ev.ExceptionDetails.Error())
 			default:
@@ -365,13 +371,20 @@ func TestSSHTerm(t *testing.T) {
 		var buf []byte
 		var canvasOperationsJSON string
 
-		err = chromedp.Run(ctx,
+		if err := chromedp.Run(ctx,
 			chromedp.Navigate("https://devtest.local:8443/tests.html?x11"),
 			chromedp.WaitVisible("#x11-window-1-1"), // Wait for the X11 window to appear
+		); err != nil {
+			t.Fatalf("Failed to run chromedp actions: %v", err)
+		}
+
+		t.Log("Waiting for X11 Simulation to finish")
+		<-sshServerWithCert.x11SimDone
+
+		if err := chromedp.Run(ctx,
 			chromedp.CaptureScreenshot(&buf),
 			chromedp.Evaluate(`JSON.stringify(window.getCanvasOperations())`, &canvasOperationsJSON),
-		)
-		if err != nil {
+		); err != nil {
 			t.Fatalf("Failed to run chromedp actions: %v", err)
 		}
 		x11Ops := GetX11Operations()
@@ -426,7 +439,24 @@ func parseColorString(colorStr string) uint32 {
 
 func compareOperations(t *testing.T, x11Ops []X11Operation, canvasOps []CanvasOperation) {
 	if len(x11Ops) != len(canvasOps) {
-		t.Fatalf("Number of operations mismatch: X11=%d, Canvas=%d", len(x11Ops), len(canvasOps))
+		count := make(map[string]int)
+		for _, op := range x11Ops {
+			count[op.Type]++
+		}
+		for _, op := range canvasOps {
+			count[op.Type]--
+		}
+		for k, v := range count {
+			if v == 0 {
+				continue
+			}
+			if v > 0 {
+				t.Logf("X11 has %d more %s than Canvas", v, k)
+			} else {
+				t.Logf("Canvas has %d more %s than X11", -v, k)
+			}
+		}
+		t.Fatalf("Number of operations mismatch: X11=%d, Canvas=%d delta=%+v", len(x11Ops), len(canvasOps), count)
 	}
 
 	for i := 0; i < len(x11Ops); i++ {

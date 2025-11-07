@@ -28,6 +28,8 @@ type sshServer struct {
 	authority ssh.Signer
 	signer    ssh.Signer
 	pubKey    ssh.PublicKey
+
+	x11SimDone chan struct{}
 }
 
 func newSSHServer(t *testing.T, dir string, hostCert bool) (*sshServer, error) {
@@ -71,6 +73,7 @@ func newSSHServer(t *testing.T, dir string, hostCert bool) (*sshServer, error) {
 		authority:      authority,
 		signer:         signer,
 		pubKey:         sshPub,
+		x11SimDone:     make(chan struct{}),
 	}
 
 	certChecker := &ssh.CertChecker{

@@ -21,9 +21,9 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 	if n := copy(reqHeader[:], raw); n != 4 {
 		return nil, fmt.Errorf("%w: header too short", errParseError)
 	}
-	debugf("X11: Raw request header: %x", reqHeader)
 	length := order.Uint16(reqHeader[2:4])
 	if int(4*length) != len(raw) {
+		debugf("X11: Raw request header: %x", reqHeader)
 		return nil, fmt.Errorf("%w: mismatch length %d != %d", errParseError, 4*length, len(raw))
 	}
 
@@ -261,7 +261,7 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 		return parseImageText16Request(order, body)
 
 	case CreateColormap:
-		return parseCreateColormapRequest(order, body)
+		return parseCreateColormapRequest(order, data, body)
 
 	case FreeColormap:
 		return parseFreeColormapRequest(order, body)
@@ -2035,15 +2035,15 @@ type CreateColormapRequest struct {
 
 func (CreateColormapRequest) OpCode() reqCode { return CreateColormap }
 
-func parseCreateColormapRequest(order binary.ByteOrder, payload []byte) (*CreateColormapRequest, error) {
-	if len(payload) < 16 {
+func parseCreateColormapRequest(order binary.ByteOrder, data byte, payload []byte) (*CreateColormapRequest, error) {
+	if len(payload) < 12 {
 		return nil, fmt.Errorf("%w: create colormap request too short", errParseError)
 	}
 	req := &CreateColormapRequest{}
-	req.Alloc = payload[0]
-	req.Mid = Colormap(order.Uint32(payload[4:8]))
-	req.Window = Window(order.Uint32(payload[8:12]))
-	req.Visual = VisualID(order.Uint32(payload[12:16]))
+	req.Alloc = data
+	req.Mid = Colormap(order.Uint32(payload[0:4]))
+	req.Window = Window(order.Uint32(payload[4:8]))
+	req.Visual = VisualID(order.Uint32(payload[8:12]))
 	return req, nil
 }
 
@@ -2157,6 +2157,16 @@ type FreeColorsRequest struct {
 
 func (FreeColorsRequest) OpCode() reqCode { return FreeColors }
 
+/*
+FreeColors
+
+	1     88                              opcode
+	1                                     unused
+	2     3+n                             request length
+	4     COLORMAP                        cmap
+	4     CARD32                          plane-mask
+	4n     LISTofCARD32                   pixels
+*/
 func parseFreeColorsRequest(order binary.ByteOrder, requestBody []byte) (*FreeColorsRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, fmt.Errorf("%w: free colors request too short", errParseError)
@@ -2165,6 +2175,9 @@ func parseFreeColorsRequest(order binary.ByteOrder, requestBody []byte) (*FreeCo
 	req.Cmap = Colormap(order.Uint32(requestBody[0:4]))
 	req.PlaneMask = order.Uint32(requestBody[4:8])
 	numPixels := (len(requestBody) - 8) / 4
+	if len(requestBody) < 8+numPixels*4 {
+		return nil, fmt.Errorf("%w: free colors request too short for %d colors", errParseError, numPixels)
+	}
 	for i := 0; i < numPixels; i++ {
 		offset := 8 + i*4
 		req.Pixels = append(req.Pixels, order.Uint32(requestBody[offset:offset+4]))

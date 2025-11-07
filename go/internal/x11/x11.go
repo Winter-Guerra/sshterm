@@ -92,7 +92,7 @@ type X11FrontendAPI interface {
 	GrabKeyboard(grabWindow xID, ownerEvents bool, time uint32, pointerMode, keyboardMode byte) byte
 	UngrabKeyboard(time uint32)
 	GetCanvasOperations() []CanvasOperation
-	GetRGBColor(colormap xID, pixel uint32) (r, g, b uint32)
+	GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8)
 	OpenFont(fid xID, name string)
 	QueryFont(fid xID) (minBounds, maxBounds xCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []xCharInfo)
 	CloseFont(fid xID)
@@ -156,7 +156,7 @@ func (w *window) mapState() byte {
 }
 
 type colormap struct {
-	pixels map[uint32]color
+	pixels map[uint32]xColorItem
 }
 
 type x11Server struct {
@@ -360,18 +360,18 @@ func (s *x11Server) sendEvent(client *x11Client, event messageEncoder) {
 	}
 }
 
-func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint32) {
+func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 	if colormap.local == s.defaultColormap {
 		colormap.client = 0
 	}
 	if cm, ok := s.colormaps[colormap]; ok {
 		if color, ok := cm.pixels[pixel]; ok {
 			debugf("GetRGBColor: cmap:%s pixel:%x return %+v", colormap, pixel, color)
-			return uint32(color.Red), uint32(color.Green), uint32(color.Blue)
+			return uint8(color.Red >> 8), uint8(color.Green >> 8), uint8(color.Blue >> 8)
 		}
-		r = (pixel & 0xff0000) >> 16
-		g = (pixel & 0x00ff00) >> 8
-		b = (pixel & 0x0000ff)
+		r = uint8((pixel & 0xff0000) >> 16)
+		g = uint8((pixel & 0x00ff00) >> 8)
+		b = uint8((pixel & 0x0000ff))
 		debugf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
 		return r, g, b
 	}
@@ -386,9 +386,9 @@ func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint32) {
 	}
 	// For TrueColor visuals, the pixel value directly encodes RGB components.
 	if s.rootVisual.class == 4 { // TrueColor
-		r = (pixel & s.rootVisual.redMask) >> calculateShift(s.rootVisual.redMask)
-		g = (pixel & s.rootVisual.greenMask) >> calculateShift(s.rootVisual.greenMask)
-		b = (pixel & s.rootVisual.blueMask) >> calculateShift(s.rootVisual.blueMask)
+		r = uint8((pixel & s.rootVisual.redMask) >> calculateShift(s.rootVisual.redMask))
+		g = uint8((pixel & s.rootVisual.greenMask) >> calculateShift(s.rootVisual.greenMask))
+		b = uint8((pixel & s.rootVisual.blueMask) >> calculateShift(s.rootVisual.blueMask))
 		debugf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
 		return r, g, b
 	}
@@ -425,7 +425,7 @@ func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
 	if _, err := io.ReadFull(client.conn, raw[4:]); err != nil {
 		return nil, 0, err
 	}
-	debugf("RAW REQUEST: %x", raw)
+	debugf("X11DEBUG: RAW Request: %x", raw)
 	req, err := parseRequest(client.byteOrder, raw)
 	if err != nil {
 		return nil, 0, err
@@ -440,6 +440,11 @@ func (s *x11Server) cleanupClient(client *x11Client) {
 }
 
 func (s *x11Server) serve(client *x11Client) {
+	defer func() {
+		if r := recover(); r != nil {
+			debugf("X11 Request Handler Panic: %v\n%s", r, debug.Stack())
+		}
+	}()
 	defer client.conn.Close()
 	defer s.cleanupClient(client)
 	for {
@@ -447,11 +452,13 @@ func (s *x11Server) serve(client *x11Client) {
 		if err != nil {
 			if err != io.EOF {
 				s.logger.Errorf("Failed to read X11 request: %v", err)
+				debugf("readRequest failed: %v", err)
 			}
 			break
 		}
 		reply := s.handleRequest(client, req, seq)
 		if reply != nil {
+			debugf("X11DEBUG: Reply(%d): %#v", seq, reply)
 			if err := client.send(reply); err != nil {
 				s.logger.Errorf("Failed to write reply: %v", err)
 			}
@@ -460,21 +467,7 @@ func (s *x11Server) serve(client *x11Client) {
 }
 
 func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (reply messageEncoder) {
-	debugf("X11: Received opcode: %d", req.OpCode())
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.Errorf("X11 Request Handler Panic: %v\n%s", r, debug.Stack())
-			// Construct a generic X11 error reply (Request error)
-			reply = client.sendError(&GenericError{
-				seq:      seq,
-				badValue: uint32(req.OpCode()),
-				minorOp:  0,
-				majorOp:  req.OpCode(),
-				code:     1, // Request error code
-			})
-		}
-	}()
-
+	debugf("X11DEBUG: handleRequest(%d) opcode: %d: %#v", seq, req.OpCode(), req)
 	switch p := req.(type) {
 	case *CreateWindowRequest:
 		xid := client.xID(uint32(p.Drawable))
@@ -1058,7 +1051,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 		newColormap := &colormap{
-			pixels: make(map[uint32]color),
+			pixels: make(map[uint32]xColorItem),
 		}
 
 		if p.Alloc == 1 { // All
@@ -1088,7 +1081,32 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *StoreNamedColorRequest:
-		log.Print("StoreNamedColor: not implemented")
+		xid := client.xID(uint32(p.Cmap))
+		cm, ok := s.colormaps[xid]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreNamedColor, code: ColormapErrorCode})
+		}
+
+		rgb, ok := lookupColor(p.Name)
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: 0, majorOp: StoreNamedColor, code: NameErrorCode})
+		}
+
+		c, exists := cm.pixels[p.Pixel]
+		if !exists {
+			c = xColorItem{}
+		}
+
+		if p.Flags&DoRed != 0 {
+			c.Red = scale8to16(rgb.Red)
+		}
+		if p.Flags&DoGreen != 0 {
+			c.Green = scale8to16(rgb.Green)
+		}
+		if p.Flags&DoBlue != 0 {
+			c.Blue = scale8to16(rgb.Blue)
+		}
+		cm.pixels[p.Pixel] = c
 
 	case *StoreColorsRequest:
 		xid := client.xID(uint32(p.Cmap))
@@ -1100,7 +1118,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		for _, item := range p.Items {
 			c, exists := cm.pixels[item.Pixel]
 			if !exists {
-				c = color{}
+				c = xColorItem{}
 			}
 
 			if item.Flags&DoRed != 0 {
@@ -1116,26 +1134,25 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *AllocNamedColorRequest:
-		if _, ok := s.colormaps[p.Cmap]; !ok {
+		cm, ok := s.colormaps[client.xID(p.Cmap.local)]
+		if !ok {
 			return client.sendError(NewError(ColormapErrorCode, seq, p.Cmap.local, 0, p.OpCode()))
 		}
 
 		name := string(p.Name)
 		rgb, ok := lookupColor(name)
 		if !ok {
-			// TODO: This should be BadName, not BadColor
-			return client.sendError(NewError(15, seq, 0, 0, p.OpCode()))
+			return client.sendError(NewError(NameErrorCode, seq, 0, 0, p.OpCode()))
 		}
 
 		exactRed := scale8to16(rgb.Red)
 		exactGreen := scale8to16(rgb.Green)
 		exactBlue := scale8to16(rgb.Blue)
 
-		// For now, we only support TrueColor visuals, so we just allocate the color directly.
-		// TODO: Implement proper colormap handling.
 		pixel := (uint32(rgb.Red) << 16) | (uint32(rgb.Green) << 8) | uint32(rgb.Blue)
+		cm.pixels[pixel] = xColorItem{Red: exactRed, Green: exactGreen, Blue: exactBlue}
 
-		return &allocColorReply{
+		return &allocNamedColorReply{
 			sequence: seq,
 			red:      exactRed,
 			green:    exactGreen,
@@ -1144,16 +1161,19 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *QueryColorsRequest:
-		cmapID := p.Cmap
-		pixels := p.Pixels
+		cm, ok := s.colormaps[client.xID(p.Cmap.local)]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap.local, majorOp: QueryColors, code: ColormapErrorCode})
+		}
 
-		var colors []color
-		for _, pixel := range pixels {
-			color, ok := s.colormaps[cmapID].pixels[pixel]
+		colors := make([]xColorItem, len(p.Pixels))
+		for i, pixel := range p.Pixels {
+			color, ok := cm.pixels[pixel]
 			if !ok {
-				return client.sendError(&GenericError{seq: seq, badValue: pixel, majorOp: QueryColors, code: ValueErrorCode})
+				// If the pixel is not in the colormap, return black
+				color = xColorItem{Red: 0, Green: 0, Blue: 0}
 			}
-			colors = append(colors, color)
+			colors[i] = color
 		}
 
 		return &queryColorsReply{
@@ -1162,12 +1182,12 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *LookupColorRequest:
-		cmapID := xID{local: uint32(p.Cmap)}
+		// cmapID := client.xID(uint32(p.Cmap))
 
 		color, ok := lookupColor(p.Name)
 		if !ok {
 			// TODO: This should be BadName, not BadColor
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(cmapID.local), majorOp: LookupColor, code: ColormapErrorCode})
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: LookupColor, code: NameErrorCode})
 		}
 
 		return &lookupColorReply{
@@ -1193,7 +1213,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		b8 := byte(p.Blue >> 8)
 		pixel := (uint32(r8) << 16) | (uint32(g8) << 8) | uint32(b8)
 
-		cm.pixels[pixel] = color{Red: p.Red, Green: p.Green, Blue: p.Blue}
+		cm.pixels[pixel] = xColorItem{Red: p.Red, Green: p.Green, Blue: p.Blue}
 
 		return &allocColorReply{
 			sequence: seq,
@@ -1531,10 +1551,10 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client) {
 					selections: make(map[xID]uint32),
 					colormaps: map[xID]*colormap{
 						xID{local: 0x1}: {
-							pixels: map[uint32]color{
-								0x000000: color{0x00, 0x00, 0x00},
-								1:        color{0xff, 0xff, 0xff},
-								0xffffff: color{0xff, 0xff, 0xff},
+							pixels: map[uint32]xColorItem{
+								0x000000: {Pixel: 0x000000, Red: 0x0000, Green: 0x0000, Blue: 0x0000, Flags: 0},
+								1:        {Pixel: 1, Red: 0xffff, Green: 0xffff, Blue: 0xffff, Flags: 0},
+								0xffffff: {Pixel: 0xffffff, Red: 0xffff, Green: 0xffff, Blue: 0xffff, Flags: 0},
 							},
 						},
 					},

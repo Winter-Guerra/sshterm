@@ -16,12 +16,6 @@ type xCharInfo struct {
 	Attributes       uint16
 }
 
-type color struct {
-	Red   uint16
-	Green uint16
-	Blue  uint16
-}
-
 func boolToByte(b bool) byte {
 	if b {
 		return 1
@@ -487,6 +481,18 @@ type allocColorReply struct {
 	pixel    uint32
 }
 
+/*
+1     1                               Reply
+1                                     unused
+2     CARD16                          sequence number
+4     0                               reply length
+2     CARD16                          red
+2     CARD16                          green
+2     CARD16                          blue
+2                                     unused
+4     CARD32                          pixel
+12                                    unused
+*/
 func (r *allocColorReply) encodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -499,6 +505,45 @@ func (r *allocColorReply) encodeMessage(order binary.ByteOrder) []byte {
 	// reply[14:16] is padding
 	order.PutUint32(reply[16:20], r.pixel)
 	// reply[20:32] is padding
+	return reply
+}
+
+// AllocNamedColor: 85
+type allocNamedColorReply struct {
+	sequence uint16
+	red      uint16
+	green    uint16
+	blue     uint16
+	pixel    uint32
+}
+
+/*
+1     1                               Reply
+1                                     unused
+2     CARD16                          sequence number
+4     0                               reply length
+4     CARD32                          pixel
+2     CARD16                          exact-red
+2     CARD16                          exact-green
+2     CARD16                          exact-blue
+2     CARD16                          visual-red
+2     CARD16                          visual-green
+2     CARD16                          visual-blue
+8                                     unused
+*/
+func (r *allocNamedColorReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	// byte 1 is unused
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
+	order.PutUint32(reply[8:12], r.pixel)
+	order.PutUint16(reply[12:14], r.red)
+	order.PutUint16(reply[14:16], r.green)
+	order.PutUint16(reply[16:18], r.blue)
+	order.PutUint16(reply[18:20], r.red)
+	order.PutUint16(reply[20:22], r.green)
+	order.PutUint16(reply[22:24], r.blue)
 	return reply
 }
 
@@ -527,7 +572,7 @@ func (r *listInstalledColormapsReply) encodeMessage(order binary.ByteOrder) []by
 // QueryColors: 91
 type queryColorsReply struct {
 	sequence uint16
-	colors   []color
+	colors   []xColorItem
 }
 
 func (r *queryColorsReply) encodeMessage(order binary.ByteOrder) []byte {

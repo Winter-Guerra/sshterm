@@ -539,7 +539,12 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 		Args: []any{xid.local, parent, x, y, width, height, depth},
 	})
 }
+
 func (w *wasmX11Frontend) DestroyWindow(wid xID) {
+	w.destroyWindow(wid, true)
+}
+
+func (w *wasmX11Frontend) destroyWindow(wid xID, logit bool) {
 	if winInfo, ok := w.windows[wid]; ok {
 		// Remove event listeners from the document and window elements
 		if winInfo.isTopLevel {
@@ -589,10 +594,12 @@ func (w *wasmX11Frontend) DestroyWindow(wid xID) {
 
 		delete(w.windows, wid)
 	}
-	w.recordOperation(CanvasOperation{
-		Type: "destroyWindow",
-		Args: []any{wid.local},
-	})
+	if logit {
+		w.recordOperation(CanvasOperation{
+			Type: "destroyWindow",
+			Args: []any{wid.local},
+		})
+	}
 }
 
 func (w *wasmX11Frontend) CloseWindow(xid xID) {
@@ -627,7 +634,7 @@ func (w *wasmX11Frontend) CloseWindow(xid xID) {
 		w.server.SendClientMessageEvent(xid, wmProtocolsAtom, data)
 	} else {
 		debugf("X11: WM_DELETE_WINDOW not supported for window %s, destroying directly", xid)
-		w.DestroyWindow(xid)
+		w.destroyWindow(xid, false)
 	}
 }
 
@@ -1156,7 +1163,7 @@ func (w *wasmX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
 			// Clear the area with the window's background color
-			var r, g, b uint32 = 0xff, 0xff, 0xff
+			var r, g, b uint8 = 0xff, 0xff, 0xff
 			if w.server.windows[drawable].attributes.BackgroundPixelSet {
 				// Get RGB color from server's colormap or visual
 				r, g, b = w.GetRGBColor(winInfo.colormap, w.server.windows[drawable].attributes.BackgroundPixel)
@@ -1719,7 +1726,7 @@ func (w *wasmX11Frontend) Bell(percent int8) {
 	})
 }
 
-func (w *wasmX11Frontend) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint32) {
+func (w *wasmX11Frontend) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 	return w.server.GetRGBColor(colormap, pixel)
 }
 
@@ -2097,7 +2104,7 @@ func uint32SliceToAnySlice(s []uint32) []any {
 func (w *wasmX11Frontend) DestroyAllWindowsForClient(client uint32) {
 	for xid := range w.windows {
 		if xid.client == client {
-			w.DestroyWindow(xid)
+			w.destroyWindow(xid, false)
 		}
 	}
 }

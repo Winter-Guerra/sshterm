@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -251,8 +250,10 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn) {
 	}
 
 	s.simulateXEyes(x11Channel)
+	s.simulateColorOperations(x11Channel, replyChan)
 
 	s.t.Log("All drawing commands sent successfully")
+	close(s.x11SimDone)
 	time.Sleep(2 * time.Second)
 	x11Channel.Close()
 }
@@ -265,7 +266,9 @@ func (s *sshServer) readReplies(channel ssh.Channel) <-chan []byte {
 			replyHeader := make([]byte, 32)
 			_, err := io.ReadFull(channel, replyHeader)
 			if err != nil {
-				s.t.Logf("failed to read X11 message header: %v", err)
+				if err != io.EOF {
+					s.t.Logf("failed to read X11 message header: %v", err)
+				}
 				return
 			}
 
@@ -291,7 +294,7 @@ func (s *sshServer) readReplies(channel ssh.Channel) <-chan []byte {
 
 			} else if msgType == 0 { // Error
 				// Error messages are 32 bytes long
-				s.t.Logf("Received X11 error: code=%d, sequence=%d", replyHeader[1], sequenceNumber)
+				s.t.Errorf("Received X11 error: code=%d, sequence=%d", replyHeader[1], sequenceNumber)
 			} else if msgType >= 2 && msgType <= 127 { // Event
 				// Events are 32 bytes long, so no additional data to read after the header
 				s.t.Logf("Received X11 event: type=%d, sequence=%d. Discarding.", msgType, sequenceNumber)
@@ -373,8 +376,88 @@ func (s *sshServer) simulateXEyes(x11Channel ssh.Channel) {
 	}
 }
 
+func (s *sshServer) simulateColorOperations(channel ssh.Channel, replyChan <-chan []byte) {
+	s.t.Log("Simulating color operations")
+
+	// 1. Create a new colormap
+	colormapID := uint32(2)
+	if err := s.createColormap(channel, colormapID, 1, 0); err != nil {
+		s.t.Errorf("Failed to create colormap: %v", err)
+		return
+	}
+
+	// 2. Allocate some colors
+	pixel, r, g, b, err := s.allocNamedColor(channel, colormapID, "blue", replyChan)
+	if err != nil {
+		s.t.Errorf("Failed to allocate named color: %v", err)
+		return
+	}
+	if pixel != 0x0000ff || r != 0 || g != 0 || b != 0xffff {
+		s.t.Errorf("ERR allocNamedColor(_, %d, blue, _) = %06x, (%04x, %04x, %04x)", colormapID, pixel, r, g, b)
+	}
+	pixel, r, g, b, err = s.allocColor(channel, colormapID, 0, 0, 65535, replyChan)
+	if err != nil {
+		s.t.Errorf("Failed to allocate color: %v", err)
+		return
+	}
+	if pixel != 0x0000ff || r != 0 || g != 0 || b != 0xffff {
+		s.t.Errorf("ERR allocColor(_, %d, 0, 0, 65535, _) = %06x, (%04x, %04x, %04x)", colormapID, pixel, r, g, b)
+	}
+
+	// 3. Create a new window with the new colormap
+	if err := s.createWindowWithColormap(channel, 20, 1, 10, 20, 200, 200, colormapID); err != nil {
+		s.t.Errorf("Failed to create window with colormap: %v", err)
+		return
+	}
+	if err := s.mapWindow(channel, 20); err != nil {
+		s.t.Errorf("Failed to map window: %v", err)
+		return
+	}
+
+	// 4. Draw something in the new window
+	blueGC := uint32(200)
+	if err := s.createGCWithBackground(channel, blueGC, 20, 0x0000FF, 0); err != nil {
+		s.t.Errorf("Failed to create blue GC: %v", err)
+		return
+	}
+	rect := []int16{10, 10, 180, 180}
+	if err := s.polyFillRectangle(channel, 20, blueGC, rect); err != nil {
+		s.t.Errorf("Failed to draw rectangle: %v", err)
+		return
+	}
+
+	// 5. Query colors
+	if _, err := s.queryColors(channel, colormapID, []uint32{0x0000FF}, replyChan); err != nil {
+		s.t.Errorf("Failed to query colors: %v", err)
+		return
+	}
+
+	// 6. Install colormap
+	if err := s.installColormap(channel, colormapID); err != nil {
+		s.t.Errorf("Failed to install colormap: %v", err)
+		return
+	}
+
+	// 7. List installed colormaps
+	if _, err := s.listInstalledColormaps(channel, replyChan); err != nil {
+		s.t.Errorf("Failed to list installed colormaps: %v", err)
+		return
+	}
+
+	// 8. Free colors
+	if err := s.freeColors(channel, colormapID, 0, []uint32{0x0000FF}); err != nil {
+		s.t.Errorf("Failed to free colors: %v", err)
+		return
+	}
+
+	// 9. Free colormap
+	if err := s.freeColormap(channel, colormapID); err != nil {
+		s.t.Errorf("Failed to free colormap: %v", err)
+		return
+	}
+}
+
 func GetX11Operations() []X11Operation {
-	log.Printf("X11: GetX11Operations returning %d operations", len(x11Operations))
 	return x11Operations
 }
 
@@ -1199,6 +1282,10 @@ func (s *sshServer) writeX11Request(channel ssh.Channel, opcode byte, data byte,
 }
 
 func (s *sshServer) createWindow(channel ssh.Channel, wid, parent, x, y, width, height uint32) error {
+	return s.createWindowWithColormap(channel, wid, parent, x, y, width, height, 0)
+}
+
+func (s *sshServer) createWindowWithColormap(channel ssh.Channel, wid, parent, x, y, width, height, colormap uint32) error {
 	x11Operations = append(x11Operations, X11Operation{
 		Type: "createWindow",
 		Args: []any{wid, parent, x, y, width, height, uint32(24)},
@@ -1211,16 +1298,17 @@ func (s *sshServer) createWindow(channel ssh.Channel, wid, parent, x, y, width, 
 	// X, Y, Width, Height, Border Width: x, y, width, height, 0
 	// Class: InputOutput (1)
 	// Visual: CopyFromParent (0)
-	// Value Mask: CWBackPixel (1<<1) | CWEventMask (1<<11)
-	// Value List: background pixel, event mask
+	// Value Mask: CWBackPixel (1<<1) | CWEventMask (1<<11) | CWColormap (1<<13)
+	// Value List: background pixel, event mask, colormap
 
 	depth := byte(24)
 	borderWidth := uint16(0)
 	class := uint16(1)  // InputOutput
 	visual := uint32(0) // CopyFromParent
 
-	valueMask := uint32(1 << 1)         // CWBackPixel
-	backgroundPixel := uint32(0xFFFFFF) // White
+	valueMask := uint32((1 << 1) | (1 << 11) | (1 << 13)) // CWBackPixel | CWEventMask | CWColormap
+	backgroundPixel := uint32(0xFFFFFF)                   // White
+	eventMask := uint32(0)                                // No events
 
 	// Fixed part of payload (24 bytes: Window ID, Parent ID, X, Y, Width, Height, Border Width, Class, Visual)
 	payload := make([]byte, 24)
@@ -1238,9 +1326,11 @@ func (s *sshServer) createWindow(channel ssh.Channel, wid, parent, x, y, width, 
 	valueMaskBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(valueMaskBytes[0:4], valueMask)
 
-	// Value List (4 bytes: CWBackPixel)
-	valueList := make([]byte, 4)
+	// Value List (12 bytes: CWBackPixel, CWEventMask, CWColormap)
+	valueList := make([]byte, 12)
 	binary.LittleEndian.PutUint32(valueList[0:4], backgroundPixel)
+	binary.LittleEndian.PutUint32(valueList[4:8], eventMask)
+	binary.LittleEndian.PutUint32(valueList[8:12], colormap)
 
 	fullPayload := append(payload, valueMaskBytes...)
 	fullPayload = append(fullPayload, valueList...)
@@ -1250,4 +1340,157 @@ func (s *sshServer) createWindow(channel ssh.Channel, wid, parent, x, y, width, 
 		return err
 	}
 	return nil
+}
+
+func (s *sshServer) createColormap(channel ssh.Channel, mid, window, visual uint32) error {
+	payload := make([]byte, 12)
+	binary.LittleEndian.PutUint32(payload[0:4], mid)
+	binary.LittleEndian.PutUint32(payload[4:8], window)
+	binary.LittleEndian.PutUint32(payload[8:12], visual)
+
+	_, err := s.writeX11Request(channel, 78, 0, payload)
+	return err
+}
+
+func (s *sshServer) freeColormap(channel ssh.Channel, cmap uint32) error {
+	payload := make([]byte, 4)
+	binary.LittleEndian.PutUint32(payload[0:4], cmap)
+
+	_, err := s.writeX11Request(channel, 79, 0, payload)
+	return err
+}
+
+func (s *sshServer) allocNamedColor(channel ssh.Channel, cmap uint32, name string, replyChan <-chan []byte) (uint32, uint16, uint16, uint16, error) {
+	nameBytes := []byte(name)
+	nameLen := uint16(len(nameBytes))
+
+	payload := make([]byte, 4+2+2)
+	binary.LittleEndian.PutUint32(payload[0:4], cmap)
+	binary.LittleEndian.PutUint16(payload[4:6], nameLen)
+
+	payload = append(payload, nameBytes...)
+
+	expectedSequence, err := s.writeX11Request(channel, 85, 0, payload)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+
+	reply := <-replyChan
+	sequenceNumber := binary.LittleEndian.Uint16(reply[2:4])
+	if sequenceNumber != expectedSequence {
+		return 0, 0, 0, 0, fmt.Errorf("unexpected reply sequence number %d != %d", sequenceNumber, expectedSequence)
+	}
+
+	pixel := binary.LittleEndian.Uint32(reply[8:12])
+	red := binary.LittleEndian.Uint16(reply[12:14])
+	green := binary.LittleEndian.Uint16(reply[14:16])
+	blue := binary.LittleEndian.Uint16(reply[16:18])
+
+	return pixel, red, green, blue, nil
+}
+
+func (s *sshServer) allocColor(channel ssh.Channel, cmap uint32, red, green, blue uint16, replyChan <-chan []byte) (uint32, uint16, uint16, uint16, error) {
+	payload := make([]byte, 12)
+	binary.LittleEndian.PutUint32(payload[0:4], cmap)
+	binary.LittleEndian.PutUint16(payload[4:6], red)
+	binary.LittleEndian.PutUint16(payload[6:8], green)
+	binary.LittleEndian.PutUint16(payload[8:10], blue)
+
+	expectedSequence, err := s.writeX11Request(channel, 84, 0, payload)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+
+	reply := <-replyChan
+	sequenceNumber := binary.LittleEndian.Uint16(reply[2:4])
+	if sequenceNumber != expectedSequence {
+		return 0, 0, 0, 0, fmt.Errorf("unexpected reply sequence number %d != %d", sequenceNumber, expectedSequence)
+	}
+
+	red = binary.LittleEndian.Uint16(reply[8:10])
+	green = binary.LittleEndian.Uint16(reply[10:12])
+	blue = binary.LittleEndian.Uint16(reply[12:14])
+	pixel := binary.LittleEndian.Uint32(reply[16:20])
+
+	return pixel, red, green, blue, nil
+}
+
+func (s *sshServer) queryColors(channel ssh.Channel, cmap uint32, pixels []uint32, replyChan <-chan []byte) ([]uint16, error) {
+	payload := make([]byte, 4)
+	binary.LittleEndian.PutUint32(payload[0:4], cmap)
+
+	for _, pixel := range pixels {
+		pixelBytes := make([]byte, 4)
+		binary.LittleEndian.PutUint32(pixelBytes, pixel)
+		payload = append(payload, pixelBytes...)
+	}
+
+	expectedSequence, err := s.writeX11Request(channel, 91, 0, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	reply := <-replyChan
+	sequenceNumber := binary.LittleEndian.Uint16(reply[2:4])
+	if sequenceNumber != expectedSequence {
+		return nil, fmt.Errorf("unexpected reply sequence number %d != %d", sequenceNumber, expectedSequence)
+	}
+
+	numColors := binary.LittleEndian.Uint16(reply[8:10])
+	colors := make([]uint16, numColors*3)
+	for i := 0; i < int(numColors); i++ {
+		offset := 12 + i*8
+		colors[i*3] = binary.LittleEndian.Uint16(reply[offset : offset+2])
+		colors[i*3+1] = binary.LittleEndian.Uint16(reply[offset+2 : offset+4])
+		colors[i*3+2] = binary.LittleEndian.Uint16(reply[offset+4 : offset+6])
+	}
+
+	return colors, nil
+}
+
+func (s *sshServer) installColormap(channel ssh.Channel, cmap uint32) error {
+	payload := make([]byte, 4)
+	binary.LittleEndian.PutUint32(payload[0:4], cmap)
+
+	_, err := s.writeX11Request(channel, 81, 0, payload)
+	return err
+}
+
+func (s *sshServer) listInstalledColormaps(channel ssh.Channel, replyChan <-chan []byte) ([]uint32, error) {
+	payload := make([]byte, 4)
+	binary.LittleEndian.PutUint32(payload[0:4], 1) // dummy window
+
+	expectedSequence, err := s.writeX11Request(channel, 83, 0, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	reply := <-replyChan
+	sequenceNumber := binary.LittleEndian.Uint16(reply[2:4])
+	if sequenceNumber != expectedSequence {
+		return nil, fmt.Errorf("unexpected reply sequence number %d != %d", sequenceNumber, expectedSequence)
+	}
+
+	numColormaps := binary.LittleEndian.Uint16(reply[8:10])
+	colormaps := make([]uint32, numColormaps)
+	for i := 0; i < int(numColormaps); i++ {
+		colormaps[i] = binary.LittleEndian.Uint32(reply[12+i*4 : 16+i*4])
+	}
+
+	return colormaps, nil
+}
+
+func (s *sshServer) freeColors(channel ssh.Channel, cmap, planeMask uint32, pixels []uint32) error {
+	payload := make([]byte, 8+len(pixels)*4)
+	binary.LittleEndian.PutUint32(payload[0:4], cmap)
+	binary.LittleEndian.PutUint32(payload[4:8], planeMask)
+
+	for _, pixel := range pixels {
+		pixelBytes := make([]byte, 4)
+		binary.LittleEndian.PutUint32(pixelBytes, pixel)
+		payload = append(payload, pixelBytes...)
+	}
+
+	_, err := s.writeX11Request(channel, 88, 0, payload)
+	return err
 }

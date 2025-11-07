@@ -1029,13 +1029,13 @@ func TestParsePolyArcRequest(t *testing.T) {
 
 func TestParseCreateColormapRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 16)
+	reqBody := make([]byte, 12)
 	reqBody[0] = 1
-	order.PutUint32(reqBody[4:8], 123)
-	order.PutUint32(reqBody[8:12], 456)
-	order.PutUint32(reqBody[12:16], 789)
+	order.PutUint32(reqBody[0:4], 123)
+	order.PutUint32(reqBody[4:8], 456)
+	order.PutUint32(reqBody[8:12], 789)
 
-	p, err := parseCreateColormapRequest(order, reqBody)
+	p, err := parseCreateColormapRequest(order, 1, reqBody)
 	assert.NoError(t, err, "parseCreateColormapRequest should not return an error")
 	assert.Equal(t, byte(1), p.Alloc, "Alloc should be parsed correctly")
 	assert.Equal(t, Colormap(123), p.Mid, "Mid should be parsed correctly")

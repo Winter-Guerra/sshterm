@@ -583,9 +583,9 @@ func TestReplyMessages(t *testing.T) {
 	t.Run("QueryColors", func(t *testing.T) {
 		reply := &queryColorsReply{
 			sequence: 27,
-			colors: []color{
-				{1, 2, 3},
-				{4, 5, 6},
+			colors: []xColorItem{
+				{Pixel: 0, Red: 1, Green: 2, Blue: 3, Flags: 0},
+				{Pixel: 0, Red: 4, Green: 5, Blue: 6, Flags: 0},
 			},
 		}
 		encoded := reply.encodeMessage(binary.LittleEndian)

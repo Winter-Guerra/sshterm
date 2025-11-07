@@ -22,7 +22,7 @@ export TEST_UID=$(id -u)
 export TEST_GID=$(id -g)
 docker compose -f tests/docker-compose-browser-tests.yaml up \
   --abort-on-container-exit \
-  --exit-code-from=devtest
+  --exit-code-from=devtest |& grep -v "^headless-shell.*:CONSOLE"
 RES=$?
 docker compose -f tests/docker-compose-browser-tests.yaml rm -f
 
