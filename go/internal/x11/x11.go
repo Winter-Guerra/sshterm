@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"runtime/debug"
-
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -502,6 +501,58 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 		s.frontend.CreateWindow(xid, uint32(p.Parent), uint32(p.X), uint32(p.Y), uint32(p.Width), uint32(p.Height), uint32(p.Depth), p.ValueMask, p.Values)
 
+	case *ChangeWindowAttributesRequest:
+		xid := client.xID(uint32(p.Window))
+		if w, ok := s.windows[xid]; ok {
+			if p.ValueMask&CWBackPixmap != 0 {
+				w.attributes.BackgroundPixmap = p.Values.BackgroundPixmap
+			}
+			if p.ValueMask&CWBackPixel != 0 {
+				w.attributes.BackgroundPixel = p.Values.BackgroundPixel
+			}
+			if p.ValueMask&CWBorderPixmap != 0 {
+				w.attributes.BorderPixmap = p.Values.BorderPixmap
+			}
+			if p.ValueMask&CWBorderPixel != 0 {
+				w.attributes.BorderPixel = p.Values.BorderPixel
+			}
+			if p.ValueMask&CWBitGravity != 0 {
+				w.attributes.BitGravity = p.Values.BitGravity
+			}
+			if p.ValueMask&CWWinGravity != 0 {
+				w.attributes.WinGravity = p.Values.WinGravity
+			}
+			if p.ValueMask&CWBackingStore != 0 {
+				w.attributes.BackingStore = p.Values.BackingStore
+			}
+			if p.ValueMask&CWBackingPlanes != 0 {
+				w.attributes.BackingPlanes = p.Values.BackingPlanes
+			}
+			if p.ValueMask&CWBackingPixel != 0 {
+				w.attributes.BackingPixel = p.Values.BackingPixel
+			}
+			if p.ValueMask&CWOverrideRedirect != 0 {
+				w.attributes.OverrideRedirect = p.Values.OverrideRedirect
+			}
+			if p.ValueMask&CWSaveUnder != 0 {
+				w.attributes.SaveUnder = p.Values.SaveUnder
+			}
+			if p.ValueMask&CWEventMask != 0 {
+				w.attributes.EventMask = p.Values.EventMask
+			}
+			if p.ValueMask&CWDontPropagate != 0 {
+				w.attributes.DontPropagateMask = p.Values.DontPropagateMask
+			}
+			if p.ValueMask&CWColormap != 0 {
+				w.attributes.Colormap = p.Values.Colormap
+			}
+			if p.ValueMask&CWCursor != 0 {
+				w.attributes.Cursor = p.Values.Cursor
+				s.frontend.SetWindowCursor(xid, client.xID(uint32(p.Values.Cursor)))
+			}
+		}
+		s.frontend.ChangeWindowAttributes(xid, p.ValueMask, p.Values)
+
 	case *GetWindowAttributesRequest:
 		xid := client.xID(uint32(p.Drawable))
 		w, ok := s.windows[xid]
@@ -526,17 +577,20 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			yourEventMask:      w.attributes.EventMask, // Assuming client's event mask is the same for now
 			doNotPropagateMask: 0,                      // Not explicitly stored in window attributes
 		}
-	//case *DestroyWindowRequest:
-	//	xid := client.xID(p.Window)
-	//	delete(s.windows, xid)
-	//	s.frontend.DestroyWindow(xid)
 
-	case *UnmapWindowRequest:
+	case *DestroyWindowRequest:
 		xid := client.xID(uint32(p.Window))
-		if w, ok := s.windows[xid]; ok {
-			w.mapped = false
-		}
-		s.frontend.UnmapWindow(xid)
+		delete(s.windows, xid)
+		s.frontend.DestroyWindow(xid)
+
+	case *DestroySubwindowsRequest:
+		// TODO: implement
+
+	case *ChangeSaveSetRequest:
+		// TODO: implement
+
+	case *ReparentWindowRequest:
+		// TODO: implement
 
 	case *MapWindowRequest:
 		xid := client.xID(uint32(p.Window))
@@ -559,9 +613,22 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			}
 		}
 
+	case *UnmapWindowRequest:
+		xid := client.xID(uint32(p.Window))
+		if w, ok := s.windows[xid]; ok {
+			w.mapped = false
+		}
+		s.frontend.UnmapWindow(xid)
+
+	case *UnmapSubwindowsRequest:
+		// TODO: implement
+
 	case *ConfigureWindowRequest:
 		xid := client.xID(uint32(p.Window))
 		s.frontend.ConfigureWindow(xid, p.ValueMask, p.Values)
+
+	case *CirculateWindowRequest:
+		// TODO: implement
 
 	case *GetGeometryRequest:
 		xid := client.xID(uint32(p.Drawable))
@@ -580,7 +647,11 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			borderWidth: 0, // Border width is not stored in window struct, assuming 0 for now
 		}
 
-	//case *QueryTreeRequest:
+	case *QueryTreeRequest:
+		// TODO: implement
+		return &queryTreeReply{
+			sequence: seq,
+		}
 
 	case *InternAtomRequest:
 		atomID := s.frontend.GetAtom(client.id, p.Name)
@@ -602,11 +673,119 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		xid := client.xID(uint32(p.Window))
 		s.frontend.ChangeProperty(xid, uint32(p.Property), uint32(p.Type), uint32(p.Format), p.Data)
 
+	case *DeletePropertyRequest:
+		// TODO: implement
+
+	case *GetPropertyRequest:
+		data, typ, format := s.frontend.GetProperty(client.xID(uint32(p.Window)), uint32(p.Property))
+
+		// Handle offset and length
+		var propData []byte
+		bytesAfter := 0
+		if p.Offset*4 < uint32(len(data)) {
+			start := p.Offset * 4
+			end := start + p.Length*4
+			if end > uint32(len(data)) {
+				end = uint32(len(data))
+			}
+			propData = data[start:end]
+			bytesAfter = len(data) - int(end)
+		} else {
+			bytesAfter = len(data)
+		}
+
+		n := len(propData)
+		var valueLenInFormatUnits uint32
+		if format == 8 {
+			valueLenInFormatUnits = uint32(n)
+		} else if format == 16 {
+			valueLenInFormatUnits = uint32(n / 2)
+		} else if format == 32 {
+			valueLenInFormatUnits = uint32(n / 4)
+		}
+
+		return &getPropertyReply{
+			sequence:              seq,
+			format:                byte(format),
+			propertyType:          typ,
+			bytesAfter:            uint32(bytesAfter),
+			valueLenInFormatUnits: valueLenInFormatUnits,
+			value:                 propData,
+		}
+
+	case *ListPropertiesRequest:
+		xid := client.xID(uint32(p.Window))
+		atoms := s.frontend.ListProperties(xid)
+		return &listPropertiesReply{
+			sequence:      seq,
+			numProperties: uint16(len(atoms)),
+			atoms:         atoms,
+		}
+
+	case *SetSelectionOwnerRequest:
+		s.selections[client.xID(uint32(p.Selection))] = uint32(p.Owner)
+
+	case *GetSelectionOwnerRequest:
+		owner := s.selections[client.xID(uint32(p.Selection))]
+		return &getSelectionOwnerReply{
+			sequence: seq,
+			owner:    owner,
+		}
+
+	case *ConvertSelectionRequest:
+		s.frontend.ConvertSelection(uint32(p.Selection), uint32(p.Target), uint32(p.Property), client.xID(uint32(p.Requestor)))
+
 	case *SendEventRequest:
 		// The X11 client sends an event to another client.
 		// We need to forward this event to the appropriate frontend.
 		// For now, we'll just log it and pass it to the frontend.
 		s.frontend.SendEvent(&x11RawEvent{data: p.EventData})
+
+	case *GrabPointerRequest:
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		status := s.frontend.GrabPointer(grabWindow, p.OwnerEvents, p.EventMask, p.PointerMode, p.KeyboardMode, uint32(p.ConfineTo), uint32(p.Cursor), uint32(p.Time))
+		return &grabPointerReply{
+			sequence: seq,
+			status:   status,
+		}
+
+	case *UngrabPointerRequest:
+		s.frontend.UngrabPointer(uint32(p.Time))
+
+	case *GrabButtonRequest:
+		// TODO: implement
+
+	case *UngrabButtonRequest:
+		// TODO: implement
+
+	case *ChangeActivePointerGrabRequest:
+		// TODO: implement
+
+	case *GrabKeyboardRequest:
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		status := s.frontend.GrabKeyboard(grabWindow, p.OwnerEvents, uint32(p.Time), p.PointerMode, p.KeyboardMode)
+		return &grabKeyboardReply{
+			sequence: seq,
+			status:   status,
+		}
+
+	case *UngrabKeyboardRequest:
+		s.frontend.UngrabKeyboard(uint32(p.Time))
+
+	case *GrabKeyRequest:
+		// TODO: implement
+
+	case *UngrabKeyRequest:
+		// TODO: implement
+
+	case *AllowEventsRequest:
+		s.frontend.AllowEvents(client.id, p.Mode, uint32(p.Time))
+
+	case *GrabServerRequest:
+		// TODO: implement
+
+	case *UngrabServerRequest:
+		// TODO: implement
 
 	case *QueryPointerRequest:
 		xid := client.xID(uint32(p.Drawable))
@@ -623,14 +802,126 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			mask:       0,          // No buttons pressed
 		}
 
-	case *ListPropertiesRequest:
-		xid := client.xID(uint32(p.Window))
-		atoms := s.frontend.ListProperties(xid)
-		return &listPropertiesReply{
-			sequence:      seq,
-			numProperties: uint16(len(atoms)),
-			atoms:         atoms,
+	case *GetMotionEventsRequest:
+		// TODO: implement
+		return &getMotionEventsReply{
+			sequence: seq,
 		}
+
+	case *TranslateCoordsRequest:
+		srcWindow := client.xID(uint32(p.SrcWindow))
+		dstWindow := client.xID(uint32(p.DstWindow))
+
+		// Simplified implementation: assume windows are direct children of the root
+		src, srcOk := s.windows[srcWindow]
+		dst, dstOk := s.windows[dstWindow]
+		if !srcOk || !dstOk {
+			// One of the windows doesn't exist, can't translate
+			return nil
+		}
+
+		dstX := src.x + p.SrcX - dst.x
+		dstY := src.y + p.SrcY - dst.y
+
+		return &translateCoordsReply{
+			sequence:   seq,
+			sameScreen: true,
+			child:      0, // No child for now
+			dstX:       dstX,
+			dstY:       dstY,
+		}
+
+	case *WarpPointerRequest:
+		// TODO: implement
+
+	case *SetInputFocusRequest:
+		// TODO: implement
+
+	case *GetInputFocusRequest:
+		return &getInputFocusReply{
+			sequence: seq,
+			revertTo: 1, // RevertToParent
+			focus:    s.frontend.GetFocusWindow(client.id).local,
+		}
+
+	case *QueryKeymapRequest:
+		// TODO: implement
+		return &queryKeymapReply{
+			sequence: seq,
+		}
+
+	case *OpenFontRequest:
+		s.frontend.OpenFont(client.xID(uint32(p.Fid)), p.Name)
+
+	case *CloseFontRequest:
+		s.frontend.CloseFont(client.xID(uint32(p.Fid)))
+
+	case *QueryFontRequest:
+		minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, charInfos := s.frontend.QueryFont(client.xID(uint32(p.Fid)))
+
+		return &queryFontReply{
+			sequence:       seq,
+			minBounds:      minBounds,
+			maxBounds:      maxBounds,
+			minCharOrByte2: minCharOrByte2,
+			maxCharOrByte2: maxCharOrByte2,
+			defaultChar:    defaultChar,
+			numFontProps:   0, // Not implemented yet
+			drawDirection:  drawDirection,
+			minByte1:       minByte1,
+			maxByte1:       maxByte1,
+			allCharsExist:  allCharsExist,
+			fontAscent:     fontAscent,
+			fontDescent:    fontDescent,
+			numCharInfos:   uint32(len(charInfos)),
+			charInfos:      charInfos,
+		}
+
+	case *QueryTextExtentsRequest:
+		// TODO: implement
+		return &queryTextExtentsReply{
+			sequence: seq,
+		}
+
+	case *ListFontsRequest:
+		fontNames := s.frontend.ListFonts(p.MaxNames, p.Pattern)
+
+		return &listFontsReply{
+			sequence:  seq,
+			fontNames: fontNames,
+		}
+
+	case *ListFontsWithInfoRequest:
+		// TODO: implement
+		return &listFontsWithInfoReply{
+			sequence: seq,
+		}
+
+	case *SetFontPathRequest:
+		// TODO: implement
+
+	case *GetFontPathRequest:
+		// TODO: implement
+		return &getFontPathReply{
+			sequence: seq,
+		}
+
+	case *CreatePixmapRequest:
+		xid := client.xID(uint32(p.Pid))
+
+		// Check if the pixmap ID is already in use
+		if _, exists := s.pixmaps[xid]; exists {
+			s.logger.Errorf("X11: CreatePixmap: ID %s already in use", xid)
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Pid), majorOp: CreatePixmap, code: IDChoiceErrorCode})
+		}
+
+		s.pixmaps[xid] = true // Mark pixmap ID as used
+		s.frontend.CreatePixmap(xid, client.xID(uint32(p.Drawable)), uint32(p.Width), uint32(p.Height), uint32(p.Depth))
+
+	case *FreePixmapRequest:
+		xid := client.xID(uint32(p.Pid))
+		delete(s.pixmaps, xid)
+		s.frontend.FreePixmap(xid)
 
 	case *CreateGCRequest:
 		xid := client.xID(uint32(p.Cid))
@@ -719,6 +1010,21 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 		s.frontend.ChangeGC(xid, p.ValueMask, p.Values)
 
+	case *CopyGCRequest:
+		srcGC := client.xID(uint32(p.SrcGC))
+		dstGC := client.xID(uint32(p.DstGC))
+		s.frontend.CopyGC(srcGC, dstGC)
+
+	case *SetDashesRequest:
+		s.frontend.SetDashes(client.xID(uint32(p.GC)), p.DashOffset, p.Dashes)
+
+	case *SetClipRectanglesRequest:
+		s.frontend.SetClipRectangles(client.xID(uint32(p.GC)), p.ClippingX, p.ClippingY, p.Rectangles, p.Ordering)
+
+	case *FreeGCRequest:
+		gcID := client.xID(uint32(p.GC))
+		s.frontend.FreeGC(gcID)
+
 	case *ClearAreaRequest:
 		s.frontend.ClearArea(client.xID(uint32(p.Window)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
 
@@ -728,6 +1034,10 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			return nil
 		}
 		s.frontend.CopyArea(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gc, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
+
+	case *CopyPlaneRequest:
+		debugf("X11: CopyPlaneRequest not implemented")
+		// TODO: Implement
 
 	case *PolyPointRequest:
 		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
@@ -750,19 +1060,19 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 		s.frontend.PolySegment(client.xID(uint32(p.Drawable)), gc, p.Segments)
 
-	case *PolyArcRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyArc(client.xID(uint32(p.Drawable)), gc, p.Arcs)
-
 	case *PolyRectangleRequest:
 		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
 		if !ok {
 			return nil
 		}
 		s.frontend.PolyRectangle(client.xID(uint32(p.Drawable)), gc, p.Rectangles)
+
+	case *PolyArcRequest:
+		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
+		if !ok {
+			return nil
+		}
+		s.frontend.PolyArc(client.xID(uint32(p.Drawable)), gc, p.Arcs)
 
 	case *FillPolyRequest:
 		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
@@ -805,57 +1115,6 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			imageData: imgData,
 		}
 
-	case *GetPropertyRequest:
-		data, typ, format := s.frontend.GetProperty(client.xID(uint32(p.Window)), uint32(p.Property))
-
-		// Handle offset and length
-		var propData []byte
-		bytesAfter := 0
-		if p.Offset*4 < uint32(len(data)) {
-			start := p.Offset * 4
-			end := start + p.Length*4
-			if end > uint32(len(data)) {
-				end = uint32(len(data))
-			}
-			propData = data[start:end]
-			bytesAfter = len(data) - int(end)
-		} else {
-			bytesAfter = len(data)
-		}
-
-		n := len(propData)
-		var valueLenInFormatUnits uint32
-		if format == 8 {
-			valueLenInFormatUnits = uint32(n)
-		} else if format == 16 {
-			valueLenInFormatUnits = uint32(n / 2)
-		} else if format == 32 {
-			valueLenInFormatUnits = uint32(n / 4)
-		}
-
-		return &getPropertyReply{
-			sequence:              seq,
-			format:                byte(format),
-			propertyType:          typ,
-			bytesAfter:            uint32(bytesAfter),
-			valueLenInFormatUnits: valueLenInFormatUnits,
-			value:                 propData,
-		}
-
-	case *ImageText8Request:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.ImageText8(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Text)
-
-	case *ImageText16Request:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.ImageText16(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Text)
-
 	case *PolyText8Request:
 		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
 		if !ok {
@@ -870,178 +1129,19 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 		s.frontend.PolyText16(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Items)
 
-	case *BellRequest:
-		s.frontend.Bell(p.Percent)
-
-	case *CreatePixmapRequest:
-		xid := client.xID(uint32(p.Pid))
-
-		// Check if the pixmap ID is already in use
-		if _, exists := s.pixmaps[xid]; exists {
-			s.logger.Errorf("X11: CreatePixmap: ID %s already in use", xid)
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Pid), majorOp: CreatePixmap, code: IDChoiceErrorCode})
-		}
-
-		s.pixmaps[xid] = true // Mark pixmap ID as used
-		s.frontend.CreatePixmap(xid, client.xID(uint32(p.Drawable)), uint32(p.Width), uint32(p.Height), uint32(p.Depth))
-
-	case *FreePixmapRequest:
-		xid := client.xID(uint32(p.Pid))
-		delete(s.pixmaps, xid)
-		s.frontend.FreePixmap(xid)
-
-	case *CreateGlyphCursorRequest:
-		// Check if the cursor ID is already in use
-		if _, exists := s.cursors[client.xID(uint32(p.Cid))]; exists {
-			s.logger.Errorf("X11: CreateGlyphCursor: ID %d already in use", p.Cid)
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cid), majorOp: CreateGlyphCursor, code: IDChoiceErrorCode})
-		}
-
-		s.cursors[client.xID(uint32(p.Cid))] = true
-		s.frontend.CreateCursorFromGlyph(uint32(p.Cid), p.SourceChar)
-
-	case *ChangeWindowAttributesRequest:
-		xid := client.xID(uint32(p.Window))
-		if w, ok := s.windows[xid]; ok {
-			if p.ValueMask&CWBackPixmap != 0 {
-				w.attributes.BackgroundPixmap = p.Values.BackgroundPixmap
-			}
-			if p.ValueMask&CWBackPixel != 0 {
-				w.attributes.BackgroundPixel = p.Values.BackgroundPixel
-			}
-			if p.ValueMask&CWBorderPixmap != 0 {
-				w.attributes.BorderPixmap = p.Values.BorderPixmap
-			}
-			if p.ValueMask&CWBorderPixel != 0 {
-				w.attributes.BorderPixel = p.Values.BorderPixel
-			}
-			if p.ValueMask&CWBitGravity != 0 {
-				w.attributes.BitGravity = p.Values.BitGravity
-			}
-			if p.ValueMask&CWWinGravity != 0 {
-				w.attributes.WinGravity = p.Values.WinGravity
-			}
-			if p.ValueMask&CWBackingStore != 0 {
-				w.attributes.BackingStore = p.Values.BackingStore
-			}
-			if p.ValueMask&CWBackingPlanes != 0 {
-				w.attributes.BackingPlanes = p.Values.BackingPlanes
-			}
-			if p.ValueMask&CWBackingPixel != 0 {
-				w.attributes.BackingPixel = p.Values.BackingPixel
-			}
-			if p.ValueMask&CWOverrideRedirect != 0 {
-				w.attributes.OverrideRedirect = p.Values.OverrideRedirect
-			}
-			if p.ValueMask&CWSaveUnder != 0 {
-				w.attributes.SaveUnder = p.Values.SaveUnder
-			}
-			if p.ValueMask&CWEventMask != 0 {
-				w.attributes.EventMask = p.Values.EventMask
-			}
-			if p.ValueMask&CWDontPropagate != 0 {
-				w.attributes.DontPropagateMask = p.Values.DontPropagateMask
-			}
-			if p.ValueMask&CWColormap != 0 {
-				w.attributes.Colormap = p.Values.Colormap
-			}
-			if p.ValueMask&CWCursor != 0 {
-				w.attributes.Cursor = p.Values.Cursor
-				s.frontend.SetWindowCursor(xid, client.xID(uint32(p.Values.Cursor)))
-			}
-		}
-		s.frontend.ChangeWindowAttributes(xid, p.ValueMask, p.Values)
-
-	case *CopyGCRequest:
-		srcGC := client.xID(uint32(p.SrcGC))
-		dstGC := client.xID(uint32(p.DstGC))
-		s.frontend.CopyGC(srcGC, dstGC)
-
-	case *FreeGCRequest:
-		gcID := client.xID(uint32(p.GC))
-		s.frontend.FreeGC(gcID)
-
-	case *FreeCursorRequest:
-		xid := client.xID(uint32(p.Cursor))
-		delete(s.cursors, xid)
-		s.frontend.FreeCursor(xid)
-
-	case *TranslateCoordsRequest:
-		srcWindow := client.xID(uint32(p.SrcWindow))
-		dstWindow := client.xID(uint32(p.DstWindow))
-
-		// Simplified implementation: assume windows are direct children of the root
-		src, srcOk := s.windows[srcWindow]
-		dst, dstOk := s.windows[dstWindow]
-		if !srcOk || !dstOk {
-			// One of the windows doesn't exist, can't translate
+	case *ImageText8Request:
+		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
+		if !ok {
 			return nil
 		}
+		s.frontend.ImageText8(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Text)
 
-		dstX := src.x + p.SrcX - dst.x
-		dstY := src.y + p.SrcY - dst.y
-
-		return &translateCoordsReply{
-			sequence:   seq,
-			sameScreen: true,
-			child:      0, // No child for now
-			dstX:       dstX,
-			dstY:       dstY,
+	case *ImageText16Request:
+		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
+		if !ok {
+			return nil
 		}
-
-	case *GetInputFocusRequest:
-		return &getInputFocusReply{
-			sequence: seq,
-			revertTo: 1, // RevertToParent
-			focus:    s.frontend.GetFocusWindow(client.id).local,
-		}
-
-	case *SetSelectionOwnerRequest:
-		s.selections[client.xID(uint32(p.Selection))] = uint32(p.Owner)
-
-	case *GetSelectionOwnerRequest:
-		owner := s.selections[client.xID(uint32(p.Selection))]
-		return &getSelectionOwnerReply{
-			sequence: seq,
-			owner:    owner,
-		}
-
-	case *ConvertSelectionRequest:
-		s.frontend.ConvertSelection(uint32(p.Selection), uint32(p.Target), uint32(p.Property), client.xID(uint32(p.Requestor)))
-
-	case *GrabPointerRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
-		status := s.frontend.GrabPointer(grabWindow, p.OwnerEvents, p.EventMask, p.PointerMode, p.KeyboardMode, uint32(p.ConfineTo), uint32(p.Cursor), uint32(p.Time))
-		return &grabPointerReply{
-			sequence: seq,
-			status:   status,
-		}
-
-	case *UngrabPointerRequest:
-		s.frontend.UngrabPointer(uint32(p.Time))
-
-	case *GrabKeyboardRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
-		status := s.frontend.GrabKeyboard(grabWindow, p.OwnerEvents, uint32(p.Time), p.PointerMode, p.KeyboardMode)
-		return &grabKeyboardReply{
-			sequence: seq,
-			status:   status,
-		}
-
-	case *UngrabKeyboardRequest:
-		s.frontend.UngrabKeyboard(uint32(p.Time))
-
-	case *AllowEventsRequest:
-		s.frontend.AllowEvents(client.id, p.Mode, uint32(p.Time))
-
-	case *QueryBestSizeRequest:
-		debugf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", p.Class, p.Drawable, p.Width, p.Height)
-
-		return &queryBestSizeReply{
-			sequence: seq,
-			width:    p.Width,
-			height:   p.Height,
-		}
+		s.frontend.ImageText16(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Text)
 
 	case *CreateColormapRequest:
 		xid := client.xID(uint32(p.Mid))
@@ -1068,210 +1168,6 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColormap, code: ColormapErrorCode})
 		}
 		delete(s.colormaps, xid)
-
-	case *QueryExtensionRequest:
-		debugf("X11: QueryExtension name=%s", p.Name)
-
-		return &queryExtensionReply{
-			sequence:    seq,
-			present:     false,
-			majorOpcode: 0,
-			firstEvent:  0,
-			firstError:  0,
-		}
-
-	case *StoreNamedColorRequest:
-		xid := client.xID(uint32(p.Cmap))
-		cm, ok := s.colormaps[xid]
-		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreNamedColor, code: ColormapErrorCode})
-		}
-
-		rgb, ok := lookupColor(p.Name)
-		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: 0, majorOp: StoreNamedColor, code: NameErrorCode})
-		}
-
-		c, exists := cm.pixels[p.Pixel]
-		if !exists {
-			c = xColorItem{}
-		}
-
-		if p.Flags&DoRed != 0 {
-			c.Red = scale8to16(rgb.Red)
-		}
-		if p.Flags&DoGreen != 0 {
-			c.Green = scale8to16(rgb.Green)
-		}
-		if p.Flags&DoBlue != 0 {
-			c.Blue = scale8to16(rgb.Blue)
-		}
-		cm.pixels[p.Pixel] = c
-
-	case *StoreColorsRequest:
-		xid := client.xID(uint32(p.Cmap))
-		cm, ok := s.colormaps[xid]
-		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreColors, code: ColormapErrorCode})
-		}
-
-		for _, item := range p.Items {
-			c, exists := cm.pixels[item.Pixel]
-			if !exists {
-				c = xColorItem{}
-			}
-
-			if item.Flags&DoRed != 0 {
-				c.Red = item.Red
-			}
-			if item.Flags&DoGreen != 0 {
-				c.Green = item.Green
-			}
-			if item.Flags&DoBlue != 0 {
-				c.Blue = item.Blue
-			}
-			cm.pixels[item.Pixel] = c
-		}
-
-	case *AllocNamedColorRequest:
-		cm, ok := s.colormaps[client.xID(p.Cmap.local)]
-		if !ok {
-			return client.sendError(NewError(ColormapErrorCode, seq, p.Cmap.local, 0, p.OpCode()))
-		}
-
-		name := string(p.Name)
-		rgb, ok := lookupColor(name)
-		if !ok {
-			return client.sendError(NewError(NameErrorCode, seq, 0, 0, p.OpCode()))
-		}
-
-		exactRed := scale8to16(rgb.Red)
-		exactGreen := scale8to16(rgb.Green)
-		exactBlue := scale8to16(rgb.Blue)
-
-		pixel := (uint32(rgb.Red) << 16) | (uint32(rgb.Green) << 8) | uint32(rgb.Blue)
-		cm.pixels[pixel] = xColorItem{Red: exactRed, Green: exactGreen, Blue: exactBlue}
-
-		return &allocNamedColorReply{
-			sequence: seq,
-			red:      exactRed,
-			green:    exactGreen,
-			blue:     exactBlue,
-			pixel:    pixel,
-		}
-
-	case *QueryColorsRequest:
-		cmap := client.xID(p.Cmap.local)
-		if cmap.local == s.defaultColormap {
-			cmap.client = 0
-		}
-		cm, ok := s.colormaps[cmap]
-		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap.local, majorOp: QueryColors, code: ColormapErrorCode})
-		}
-
-		colors := make([]xColorItem, len(p.Pixels))
-		for i, pixel := range p.Pixels {
-			color, ok := cm.pixels[pixel]
-			if !ok {
-				// If the pixel is not in the colormap, return black
-				color = xColorItem{Red: 0, Green: 0, Blue: 0}
-			}
-			colors[i] = color
-		}
-
-		return &queryColorsReply{
-			sequence: seq,
-			colors:   colors,
-		}
-
-	case *LookupColorRequest:
-		// cmapID := client.xID(uint32(p.Cmap))
-
-		color, ok := lookupColor(p.Name)
-		if !ok {
-			// TODO: This should be BadName, not BadColor
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: LookupColor, code: NameErrorCode})
-		}
-
-		return &lookupColorReply{
-			sequence:   seq,
-			red:        scale8to16(color.Red),
-			green:      scale8to16(color.Green),
-			blue:       scale8to16(color.Blue),
-			exactRed:   scale8to16(color.Red),
-			exactGreen: scale8to16(color.Green),
-			exactBlue:  scale8to16(color.Blue),
-		}
-
-	case *AllocColorRequest:
-		xid := client.xID(uint32(p.Cmap))
-		cm, ok := s.colormaps[xid]
-		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: AllocColor, code: ColormapErrorCode})
-		}
-
-		// Simple allocation for TrueColor: construct pixel value from RGB
-		r8 := byte(p.Red >> 8)
-		g8 := byte(p.Green >> 8)
-		b8 := byte(p.Blue >> 8)
-		pixel := (uint32(r8) << 16) | (uint32(g8) << 8) | uint32(b8)
-
-		cm.pixels[pixel] = xColorItem{Red: p.Red, Green: p.Green, Blue: p.Blue}
-
-		return &allocColorReply{
-			sequence: seq,
-			red:      p.Red,
-			green:    p.Green,
-			blue:     p.Blue,
-			pixel:    pixel,
-		}
-
-	case *ListFontsRequest:
-		fontNames := s.frontend.ListFonts(p.MaxNames, p.Pattern)
-
-		return &listFontsReply{
-			sequence:  seq,
-			fontNames: fontNames,
-		}
-
-	case *OpenFontRequest:
-		s.frontend.OpenFont(client.xID(uint32(p.Fid)), p.Name)
-
-	case *CloseFontRequest:
-		s.frontend.CloseFont(client.xID(uint32(p.Fid)))
-
-	case *QueryFontRequest:
-		minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, charInfos := s.frontend.QueryFont(client.xID(uint32(p.Fid)))
-
-		return &queryFontReply{
-			sequence:       seq,
-			minBounds:      minBounds,
-			maxBounds:      maxBounds,
-			minCharOrByte2: minCharOrByte2,
-			maxCharOrByte2: maxCharOrByte2,
-			defaultChar:    defaultChar,
-			numFontProps:   0, // Not implemented yet
-			drawDirection:  drawDirection,
-			minByte1:       minByte1,
-			maxByte1:       maxByte1,
-			allCharsExist:  allCharsExist,
-			fontAscent:     fontAscent,
-			fontDescent:    fontDescent,
-			numCharInfos:   uint32(len(charInfos)),
-			charInfos:      charInfos,
-		}
-
-	case *FreeColorsRequest:
-		xid := client.xID(uint32(p.Cmap))
-		cm, ok := s.colormaps[xid]
-		if !ok {
-			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColors, code: ColormapErrorCode})
-		}
-
-		for _, pixel := range p.Pixels {
-			delete(cm.pixels, pixel)
-		}
 
 	case *InstallColormapRequest:
 		xid := client.xID(uint32(p.Cmap))
@@ -1343,89 +1239,54 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			colormaps:    colormaps,
 		}
 
-	case *SetDashesRequest:
-		s.frontend.SetDashes(client.xID(uint32(p.GC)), p.DashOffset, p.Dashes)
-	case *SetClipRectanglesRequest:
-		s.frontend.SetClipRectangles(client.xID(uint32(p.GC)), p.ClippingX, p.ClippingY, p.Rectangles, p.Ordering)
-	case *RecolorCursorRequest:
-		s.frontend.RecolorCursor(client.xID(uint32(p.Cursor)), p.ForeColor, p.BackColor)
-	case *SetPointerMappingRequest:
-		status, _ := s.frontend.SetPointerMapping(p.Map)
-		return &setPointerMappingReply{
+	case *AllocColorRequest:
+		xid := client.xID(uint32(p.Cmap))
+		cm, ok := s.colormaps[xid]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: AllocColor, code: ColormapErrorCode})
+		}
+
+		// Simple allocation for TrueColor: construct pixel value from RGB
+		r8 := byte(p.Red >> 8)
+		g8 := byte(p.Green >> 8)
+		b8 := byte(p.Blue >> 8)
+		pixel := (uint32(r8) << 16) | (uint32(g8) << 8) | uint32(b8)
+
+		cm.pixels[pixel] = xColorItem{Red: p.Red, Green: p.Green, Blue: p.Blue}
+
+		return &allocColorReply{
 			sequence: seq,
-			status:   status,
+			red:      p.Red,
+			green:    p.Green,
+			blue:     p.Blue,
+			pixel:    pixel,
 		}
-	case *GetPointerMappingRequest:
-		pMap, _ := s.frontend.GetPointerMapping()
-		return &getPointerMappingReply{
+
+	case *AllocNamedColorRequest:
+		cm, ok := s.colormaps[client.xID(p.Cmap.local)]
+		if !ok {
+			return client.sendError(NewError(ColormapErrorCode, seq, p.Cmap.local, 0, p.OpCode()))
+		}
+
+		name := string(p.Name)
+		rgb, ok := lookupColor(name)
+		if !ok {
+			return client.sendError(NewError(NameErrorCode, seq, 0, 0, p.OpCode()))
+		}
+
+		exactRed := scale8to16(rgb.Red)
+		exactGreen := scale8to16(rgb.Green)
+		exactBlue := scale8to16(rgb.Blue)
+
+		pixel := (uint32(rgb.Red) << 16) | (uint32(rgb.Green) << 8) | uint32(rgb.Blue)
+		cm.pixels[pixel] = xColorItem{Red: exactRed, Green: exactGreen, Blue: exactBlue}
+
+		return &allocNamedColorReply{
 			sequence: seq,
-			length:   byte(len(pMap)),
-			pMap:     pMap,
-		}
-	case *GetKeyboardMappingRequest:
-		keySyms, _ := s.frontend.GetKeyboardMapping(p.FirstKeyCode, p.Count)
-		return &getKeyboardMappingReply{
-			sequence: seq,
-			keySyms:  keySyms,
-		}
-	case *ChangeKeyboardMappingRequest:
-		s.frontend.ChangeKeyboardMapping(p.KeyCodeCount, p.FirstKeyCode, p.KeySymsPerKeyCode, p.KeySyms)
-	case *ChangeKeyboardControlRequest:
-		s.frontend.ChangeKeyboardControl(p.ValueMask, p.Values)
-	case *GetKeyboardControlRequest:
-		kc, _ := s.frontend.GetKeyboardControl()
-		return &getKeyboardControlReply{
-			sequence:         seq,
-			keyClickPercent:  byte(kc.KeyClickPercent),
-			bellPercent:      byte(kc.BellPercent),
-			bellPitch:        uint16(kc.BellPitch),
-			bellDuration:     uint16(kc.BellDuration),
-			ledMask:          uint32(kc.Led),
-			globalAutoRepeat: byte(kc.AutoRepeatMode),
-			autoRepeats:      [32]byte{},
-		}
-	case *SetScreenSaverRequest:
-		s.frontend.SetScreenSaver(p.Timeout, p.Interval, p.PreferBlank, p.AllowExpose)
-	case *GetScreenSaverRequest:
-		timeout, interval, preferBlank, allowExpose, _ := s.frontend.GetScreenSaver()
-		return &getScreenSaverReply{
-			sequence:    seq,
-			timeout:     uint16(timeout),
-			interval:    uint16(interval),
-			preferBlank: preferBlank,
-			allowExpose: allowExpose,
-		}
-	case *ChangeHostsRequest:
-		s.frontend.ChangeHosts(p.Mode, p.Host)
-	case *ListHostsRequest:
-		hosts, _ := s.frontend.ListHosts()
-		return &listHostsReply{
-			sequence: seq,
-			numHosts: uint16(len(hosts)),
-			hosts:    hosts,
-		}
-	case *SetAccessControlRequest:
-		s.frontend.SetAccessControl(p.Mode)
-	case *SetCloseDownModeRequest:
-		s.frontend.SetCloseDownMode(p.Mode)
-	case *KillClientRequest:
-		s.frontend.KillClient(p.Resource)
-	case *RotatePropertiesRequest:
-		s.frontend.RotateProperties(client.xID(uint32(p.Window)), p.Delta, p.Atoms)
-	case *ForceScreenSaverRequest:
-		s.frontend.ForceScreenSaver(p.Mode)
-	case *SetModifierMappingRequest:
-		status, _ := s.frontend.SetModifierMapping(p.KeyCodesPerModifier, p.KeyCodes)
-		return &setModifierMappingReply{
-			sequence: seq,
-			status:   status,
-		}
-	case *GetModifierMappingRequest:
-		keyCodesPerModifier, keyCodes, _ := s.frontend.GetModifierMapping()
-		return &getModifierMappingReply{
-			sequence:            seq,
-			keyCodesPerModifier: keyCodesPerModifier,
-			keyCodes:            keyCodes,
+			red:      exactRed,
+			green:    exactGreen,
+			blue:     exactBlue,
+			pixel:    pixel,
 		}
 
 	case *AllocColorCellsRequest:
@@ -1438,13 +1299,155 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			sequence: seq,
 		}
 
+	case *FreeColorsRequest:
+		xid := client.xID(uint32(p.Cmap))
+		cm, ok := s.colormaps[xid]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColors, code: ColormapErrorCode})
+		}
+
+		for _, pixel := range p.Pixels {
+			delete(cm.pixels, pixel)
+		}
+
+	case *StoreColorsRequest:
+		xid := client.xID(uint32(p.Cmap))
+		cm, ok := s.colormaps[xid]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreColors, code: ColormapErrorCode})
+		}
+
+		for _, item := range p.Items {
+			c, exists := cm.pixels[item.Pixel]
+			if !exists {
+				c = xColorItem{}
+			}
+
+			if item.Flags&DoRed != 0 {
+				c.Red = item.Red
+			}
+			if item.Flags&DoGreen != 0 {
+				c.Green = item.Green
+			}
+			if item.Flags&DoBlue != 0 {
+				c.Blue = item.Blue
+			}
+			cm.pixels[item.Pixel] = c
+		}
+
+	case *StoreNamedColorRequest:
+		xid := client.xID(uint32(p.Cmap))
+		cm, ok := s.colormaps[xid]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreNamedColor, code: ColormapErrorCode})
+		}
+
+		rgb, ok := lookupColor(p.Name)
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: 0, majorOp: StoreNamedColor, code: NameErrorCode})
+		}
+
+		c, exists := cm.pixels[p.Pixel]
+		if !exists {
+			c = xColorItem{}
+		}
+
+		if p.Flags&DoRed != 0 {
+			c.Red = scale8to16(rgb.Red)
+		}
+		if p.Flags&DoGreen != 0 {
+			c.Green = scale8to16(rgb.Green)
+		}
+		if p.Flags&DoBlue != 0 {
+			c.Blue = scale8to16(rgb.Blue)
+		}
+		cm.pixels[p.Pixel] = c
+
+	case *QueryColorsRequest:
+		cmap := client.xID(p.Cmap.local)
+		if cmap.local == s.defaultColormap {
+			cmap.client = 0
+		}
+		cm, ok := s.colormaps[cmap]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap.local, majorOp: QueryColors, code: ColormapErrorCode})
+		}
+
+		colors := make([]xColorItem, len(p.Pixels))
+		for i, pixel := range p.Pixels {
+			color, ok := cm.pixels[pixel]
+			if !ok {
+				// If the pixel is not in the colormap, return black
+				color = xColorItem{Red: 0, Green: 0, Blue: 0}
+			}
+			colors[i] = color
+		}
+
+		return &queryColorsReply{
+			sequence: seq,
+			colors:   colors,
+		}
+
+	case *LookupColorRequest:
+		// cmapID := client.xID(uint32(p.Cmap))
+
+		color, ok := lookupColor(p.Name)
+		if !ok {
+			// TODO: This should be BadName, not BadColor
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: LookupColor, code: NameErrorCode})
+		}
+
+		return &lookupColorReply{
+			sequence:   seq,
+			red:        scale8to16(color.Red),
+			green:      scale8to16(color.Green),
+			blue:       scale8to16(color.Blue),
+			exactRed:   scale8to16(color.Red),
+			exactGreen: scale8to16(color.Green),
+			exactBlue:  scale8to16(color.Blue),
+		}
+
 	case *CreateCursorRequest:
 		debugf("X11: CreateCursorRequest not implemented")
 		// TODO: Implement
 
-	case *CopyPlaneRequest:
-		debugf("X11: CopyPlaneRequest not implemented")
-		// TODO: Implement
+	case *CreateGlyphCursorRequest:
+		// Check if the cursor ID is already in use
+		if _, exists := s.cursors[client.xID(uint32(p.Cid))]; exists {
+			s.logger.Errorf("X11: CreateGlyphCursor: ID %d already in use", p.Cid)
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cid), majorOp: CreateGlyphCursor, code: IDChoiceErrorCode})
+		}
+
+		s.cursors[client.xID(uint32(p.Cid))] = true
+		s.frontend.CreateCursorFromGlyph(uint32(p.Cid), p.SourceChar)
+
+	case *FreeCursorRequest:
+		xid := client.xID(uint32(p.Cursor))
+		delete(s.cursors, xid)
+		s.frontend.FreeCursor(xid)
+
+	case *RecolorCursorRequest:
+		s.frontend.RecolorCursor(client.xID(uint32(p.Cursor)), p.ForeColor, p.BackColor)
+
+	case *QueryBestSizeRequest:
+		debugf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", p.Class, p.Drawable, p.Width, p.Height)
+
+		return &queryBestSizeReply{
+			sequence: seq,
+			width:    p.Width,
+			height:   p.Height,
+		}
+
+	case *QueryExtensionRequest:
+		debugf("X11: QueryExtension name=%s", p.Name)
+
+		return &queryExtensionReply{
+			sequence:    seq,
+			present:     false,
+			majorOpcode: 0,
+			firstEvent:  0,
+			firstError:  0,
+		}
 
 	case *ListExtensionsRequest:
 		debugf("X11: ListExtensionsRequest not implemented")
@@ -1452,6 +1455,35 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		return &listExtensionsReply{
 			sequence: seq,
 		}
+
+	case *ChangeKeyboardMappingRequest:
+		s.frontend.ChangeKeyboardMapping(p.KeyCodeCount, p.FirstKeyCode, p.KeySymsPerKeyCode, p.KeySyms)
+
+	case *GetKeyboardMappingRequest:
+		keySyms, _ := s.frontend.GetKeyboardMapping(p.FirstKeyCode, p.Count)
+		return &getKeyboardMappingReply{
+			sequence: seq,
+			keySyms:  keySyms,
+		}
+
+	case *ChangeKeyboardControlRequest:
+		s.frontend.ChangeKeyboardControl(p.ValueMask, p.Values)
+
+	case *GetKeyboardControlRequest:
+		kc, _ := s.frontend.GetKeyboardControl()
+		return &getKeyboardControlReply{
+			sequence:         seq,
+			keyClickPercent:  byte(kc.KeyClickPercent),
+			bellPercent:      byte(kc.BellPercent),
+			bellPitch:        uint16(kc.BellPitch),
+			bellDuration:     uint16(kc.BellDuration),
+			ledMask:          uint32(kc.Led),
+			globalAutoRepeat: byte(kc.AutoRepeatMode),
+			autoRepeats:      [32]byte{},
+		}
+
+	case *BellRequest:
+		s.frontend.Bell(p.Percent)
 
 	case *ChangePointerControlRequest:
 		debugf("X11: ChangePointerControlRequest not implemented")
@@ -1466,6 +1498,78 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			accelDenominator: 1,
 			threshold:        1,
 		}
+
+	case *SetScreenSaverRequest:
+		s.frontend.SetScreenSaver(p.Timeout, p.Interval, p.PreferBlank, p.AllowExpose)
+
+	case *GetScreenSaverRequest:
+		timeout, interval, preferBlank, allowExpose, _ := s.frontend.GetScreenSaver()
+		return &getScreenSaverReply{
+			sequence:    seq,
+			timeout:     uint16(timeout),
+			interval:    uint16(interval),
+			preferBlank: preferBlank,
+			allowExpose: allowExpose,
+		}
+
+	case *ChangeHostsRequest:
+		s.frontend.ChangeHosts(p.Mode, p.Host)
+
+	case *ListHostsRequest:
+		hosts, _ := s.frontend.ListHosts()
+		return &listHostsReply{
+			sequence: seq,
+			numHosts: uint16(len(hosts)),
+			hosts:    hosts,
+		}
+
+	case *SetAccessControlRequest:
+		s.frontend.SetAccessControl(p.Mode)
+
+	case *SetCloseDownModeRequest:
+		s.frontend.SetCloseDownMode(p.Mode)
+
+	case *KillClientRequest:
+		s.frontend.KillClient(p.Resource)
+
+	case *RotatePropertiesRequest:
+		s.frontend.RotateProperties(client.xID(uint32(p.Window)), p.Delta, p.Atoms)
+
+	case *ForceScreenSaverRequest:
+		s.frontend.ForceScreenSaver(p.Mode)
+
+	case *SetPointerMappingRequest:
+		status, _ := s.frontend.SetPointerMapping(p.Map)
+		return &setPointerMappingReply{
+			sequence: seq,
+			status:   status,
+		}
+
+	case *GetPointerMappingRequest:
+		pMap, _ := s.frontend.GetPointerMapping()
+		return &getPointerMappingReply{
+			sequence: seq,
+			length:   byte(len(pMap)),
+			pMap:     pMap,
+		}
+
+	case *SetModifierMappingRequest:
+		status, _ := s.frontend.SetModifierMapping(p.KeyCodesPerModifier, p.KeyCodes)
+		return &setModifierMappingReply{
+			sequence: seq,
+			status:   status,
+		}
+
+	case *GetModifierMappingRequest:
+		keyCodesPerModifier, keyCodes, _ := s.frontend.GetModifierMapping()
+		return &getModifierMappingReply{
+			sequence:            seq,
+			keyCodesPerModifier: keyCodesPerModifier,
+			keyCodes:            keyCodes,
+		}
+
+	case *NoOperationRequest:
+		// TODO: implement
 
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())
