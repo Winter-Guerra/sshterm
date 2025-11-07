@@ -1161,7 +1161,11 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *QueryColorsRequest:
-		cm, ok := s.colormaps[client.xID(p.Cmap.local)]
+		cmap := client.xID(p.Cmap.local)
+		if cmap.local == s.defaultColormap {
+			cmap.client = 0
+		}
+		cm, ok := s.colormaps[cmap]
 		if !ok {
 			return client.sendError(&GenericError{seq: seq, badValue: p.Cmap.local, majorOp: QueryColors, code: ColormapErrorCode})
 		}
