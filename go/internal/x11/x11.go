@@ -78,6 +78,7 @@ type X11FrontendAPI interface {
 	CreatePixmap(xid, drawable xID, width, height, depth uint32)
 	FreePixmap(xid xID)
 	CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, height, dstX, dstY uint32)
+	CreateCursor(cursorID xID, source, mask xID, foreColor, backColor [3]uint16, x, y uint16)
 	CreateCursorFromGlyph(cursorID uint32, glyphID uint16)
 	SetWindowCursor(windowID xID, cursorID xID)
 	CopyGC(srcGC, dstGC xID)
@@ -1408,8 +1409,18 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *CreateCursorRequest:
-		debugf("X11: CreateCursorRequest not implemented")
-		// TODO: Implement
+		cursorXID := client.xID(uint32(p.Cid))
+		if _, exists := s.cursors[cursorXID]; exists {
+			s.logger.Errorf("X11: CreateCursor: ID %s already in use", cursorXID)
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cid), majorOp: CreateCursor, code: IDChoiceErrorCode})
+		}
+
+		s.cursors[cursorXID] = true
+		sourceXID := client.xID(uint32(p.Source))
+		maskXID := client.xID(uint32(p.Mask))
+		foreColor := [3]uint16{p.ForeRed, p.ForeGreen, p.ForeBlue}
+		backColor := [3]uint16{p.BackRed, p.BackGreen, p.BackBlue}
+		s.frontend.CreateCursor(cursorXID, sourceXID, maskXID, foreColor, backColor, p.X, p.Y)
 
 	case *CreateGlyphCursorRequest:
 		// Check if the cursor ID is already in use

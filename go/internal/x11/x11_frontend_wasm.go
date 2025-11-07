@@ -56,19 +56,27 @@ type fontInfo struct {
 	cssFont string // CSS font string, e.g., "12px monospace"
 }
 
+type cursorInfo struct {
+	style  string
+	source xID
+	mask   xID
+	x, y   uint16
+}
+
 type wasmX11Frontend struct {
 	document         js.Value
 	body             js.Value
-	windows          map[xID]*windowInfo // Map to store window elements (div)
-	pixmaps          map[xID]*pixmapInfo // Map to store pixmap elements (canvas)
-	gcs              map[xID]GC          // Map to store graphics contexts (Go representation)
-	fonts            map[xID]*fontInfo   // Map to store opened fonts
-	focusedWindowID  xID                 // Track the currently focused window
-	server           *x11Server          // To call back into the server for pointer updates
-	canvasOperations []CanvasOperation   // Store canvas operations for testing
-	atoms            map[string]uint32   // Map atom names to IDs
-	nextAtomID       uint32              // Next available atom ID
-	cursorStyles     map[uint32]string   // Map X11 cursor IDs to CSS cursor styles
+	windows          map[xID]*windowInfo    // Map to store window elements (div)
+	pixmaps          map[xID]*pixmapInfo    // Map to store pixmap elements (canvas)
+	gcs              map[xID]GC             // Map to store graphics contexts (Go representation)
+	fonts            map[xID]*fontInfo      // Map to store opened fonts
+	cursors          map[xID]*cursorInfo    // Map to store cursor info
+	focusedWindowID  xID                    // Track the currently focused window
+	server           *x11Server             // To call back into the server for pointer updates
+	canvasOperations []CanvasOperation      // Store canvas operations for testing
+	atoms            map[string]uint32      // Map atom names to IDs
+	nextAtomID       uint32                 // Next available atom ID
+	cursorStyles     map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
 }
 
 func (w *wasmX11Frontend) initPredefinedAtoms() {
@@ -155,10 +163,11 @@ func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
 		pixmaps:      make(map[xID]*pixmapInfo),
 		gcs:          make(map[xID]GC),
 		fonts:        make(map[xID]*fontInfo),
+		cursors:      make(map[xID]*cursorInfo),
 		server:       s,
 		atoms:        make(map[string]uint32),
 		nextAtomID:   1,
-		cursorStyles: make(map[uint32]string),
+		cursorStyles: make(map[uint32]*cursorInfo),
 	}
 	frontend.initDefaultCursors()
 	frontend.initCanvasOperations()
@@ -1332,8 +1341,15 @@ func (w *wasmX11Frontend) SetClipRectangles(gc xID, clippingX, clippingY int16, 
 	debugf("X11: SetClipRectangles (not implemented)")
 }
 
-func (w *wasmX11Frontend) RecolorCursor(cursor xID, foreColor, backColor [3]uint16) {
-	debugf("X11: RecolorCursor (not implemented)")
+func (w *wasmX11Frontend) RecolorCursor(cursorID xID, foreColor, backColor [3]uint16) {
+	debugf("X11: RecolorCursor id=%s", cursorID)
+	cursor, ok := w.cursorStyles[cursorID.local]
+	if !ok {
+		debugf("X11: RecolorCursor cursor %d not found", cursorID)
+		return
+	}
+
+	w.CreateCursor(cursorID, cursor.source, cursor.mask, foreColor, backColor, cursor.x, cursor.y)
 }
 
 func (w *wasmX11Frontend) SetPointerMapping(pMap []byte) (byte, error) {
@@ -1492,6 +1508,109 @@ func (w *wasmX11Frontend) CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, 
 	})
 }
 
+func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor, backColor [3]uint16, x, y uint16) {
+	debugf("X11: CreateCursor id=%s source=%s mask=%s", cursorID, source, mask)
+
+	sourcePixmap, sourceOk := w.pixmaps[source]
+	if !sourceOk {
+		debugf("X11: CreateCursor source pixmap %s not found", source)
+		return
+	}
+
+	maskPixmap, maskOk := w.pixmaps[mask]
+	if !maskOk && mask.local != 0 {
+		debugf("X11: CreateCursor mask pixmap %s not found", mask)
+		return
+	}
+
+	width := sourcePixmap.canvas.Get("width").Int()
+	height := sourcePixmap.canvas.Get("height").Int()
+
+	if width == 0 || height == 0 {
+		return
+	}
+
+	// Create a temporary canvas to generate the cursor image
+	tempCanvas := w.document.Call("createElement", "canvas")
+	tempCanvas.Set("width", width)
+	tempCanvas.Set("height", height)
+	tempCtx := tempCanvas.Call("getContext", "2d")
+
+	// Get image data from source and mask pixmaps
+	sourceJSData := sourcePixmap.context.Call("getImageData", 0, 0, width, height).Get("data")
+	sourceBytes := make([]byte, sourceJSData.Length())
+	js.CopyBytesToGo(sourceBytes, sourceJSData)
+
+	var maskBytes []byte
+	if mask.local != 0 {
+		maskJSData := maskPixmap.context.Call("getImageData", 0, 0, width, height).Get("data")
+		maskBytes = make([]byte, maskJSData.Length())
+		js.CopyBytesToGo(maskBytes, maskJSData)
+	}
+
+	cursorBytes := make([]byte, width*height*4)
+
+	fgR := uint8(foreColor[0] >> 8)
+	fgG := uint8(foreColor[1] >> 8)
+	fgB := uint8(foreColor[2] >> 8)
+	bgR := uint8(backColor[0] >> 8)
+	bgG := uint8(backColor[1] >> 8)
+	bgB := uint8(backColor[2] >> 8)
+
+	for i := 0; i < width*height; i++ {
+		idx := i * 4
+
+		maskBitOn := true
+		if mask.local != 0 {
+			maskBitOn = maskBytes[idx+3] > 0
+		}
+
+		if maskBitOn {
+			sourceBitOn := sourceBytes[idx+3] > 0
+			if sourceBitOn {
+				// Foreground
+				cursorBytes[idx+0] = fgR
+				cursorBytes[idx+1] = fgG
+				cursorBytes[idx+2] = fgB
+				cursorBytes[idx+3] = 255
+			} else {
+				// Background
+				cursorBytes[idx+0] = bgR
+				cursorBytes[idx+1] = bgG
+				cursorBytes[idx+2] = bgB
+				cursorBytes[idx+3] = 255
+			}
+		} else {
+			// Transparent
+			cursorBytes[idx+0] = 0
+			cursorBytes[idx+1] = 0
+			cursorBytes[idx+2] = 0
+			cursorBytes[idx+3] = 0
+		}
+	}
+
+	cursorDataArray := jsutil.Uint8ClampedArrayFromBytes(cursorBytes)
+
+	cursorImageData := js.Global().Get("ImageData").New(cursorDataArray, width, height)
+	tempCtx.Call("putImageData", cursorImageData, 0, 0)
+
+	dataURL := tempCanvas.Call("toDataURL").String()
+	cursorStyle := fmt.Sprintf("url(%s) %d %d, auto", dataURL, x, y)
+
+	w.cursorStyles[cursorID.local] = &cursorInfo{
+		style:  cursorStyle,
+		source: source,
+		mask:   mask,
+		x:      x,
+		y:      y,
+	}
+
+	w.recordOperation(CanvasOperation{
+		Type: "createCursor",
+		Args: []any{cursorID.local, source.local, mask.local, x, y},
+	})
+}
+
 func (w *wasmX11Frontend) WarpPointer(x, y int16) {
 	debugf("X11: warpPointer x=%d y=%d", x, y)
 	w.server.UpdatePointerPosition(x, y)
@@ -1525,7 +1644,7 @@ func (w *wasmX11Frontend) CreateCursorFromGlyph(cursorID uint32, glyphID uint16)
 	default:
 		style = "default"
 	}
-	w.cursorStyles[cursorID] = style
+	w.cursorStyles[cursorID] = &cursorInfo{style: style}
 	w.recordOperation(CanvasOperation{
 		Type: "createCursorFromGlyph",
 		Args: []any{cursorID, glyphID},
@@ -1535,8 +1654,8 @@ func (w *wasmX11Frontend) CreateCursorFromGlyph(cursorID uint32, glyphID uint16)
 func (w *wasmX11Frontend) SetWindowCursor(windowID xID, cursorID xID) {
 	debugf("X11: setWindowCursor window=%s cursor=%s", windowID, cursorID)
 	if winInfo, ok := w.windows[windowID]; ok {
-		if style, ok := w.cursorStyles[cursorID.local]; ok {
-			winInfo.canvas.Get("style").Set("cursor", style)
+		if cursor, ok := w.cursorStyles[cursorID.local]; ok {
+			winInfo.canvas.Get("style").Set("cursor", cursor.style)
 		} else {
 			winInfo.canvas.Get("style").Set("cursor", "default")
 		}
@@ -1650,21 +1769,21 @@ func (w *wasmX11Frontend) UngrabKeyboard(time uint32) {
 func (w *wasmX11Frontend) initDefaultCursors() {
 	// This is a minimal mapping from X11 cursor names to CSS cursor values.
 	// The cursor IDs are taken from the standard X11 cursor font.
-	w.cursorStyles[68] = "pointer" // X_cursor
-	w.cursorStyles[34] = "crosshair"
-	w.cursorStyles[58] = "help"
-	w.cursorStyles[52] = "move"
-	w.cursorStyles[138] = "text"
-	w.cursorStyles[108] = "wait"
-	w.cursorStyles[116] = "wait"
-	w.cursorStyles[118] = "w-resize"
-	w.cursorStyles[120] = "e-resize"
-	w.cursorStyles[76] = "n-resize"
-	w.cursorStyles[14] = "s-resize"
-	w.cursorStyles[10] = "nw-resize"
-	w.cursorStyles[12] = "ne-resize"
-	w.cursorStyles[134] = "sw-resize"
-	w.cursorStyles[136] = "se-resize"
+	w.cursorStyles[68] = &cursorInfo{style: "pointer"}
+	w.cursorStyles[34] = &cursorInfo{style: "crosshair"}
+	w.cursorStyles[58] = &cursorInfo{style: "help"}
+	w.cursorStyles[52] = &cursorInfo{style: "move"}
+	w.cursorStyles[138] = &cursorInfo{style: "text"}
+	w.cursorStyles[108] = &cursorInfo{style: "wait"}
+	w.cursorStyles[116] = &cursorInfo{style: "wait"}
+	w.cursorStyles[118] = &cursorInfo{style: "w-resize"}
+	w.cursorStyles[120] = &cursorInfo{style: "e-resize"}
+	w.cursorStyles[76] = &cursorInfo{style: "n-resize"}
+	w.cursorStyles[14] = &cursorInfo{style: "s-resize"}
+	w.cursorStyles[10] = &cursorInfo{style: "nw-resize"}
+	w.cursorStyles[12] = &cursorInfo{style: "ne-resize"}
+	w.cursorStyles[134] = &cursorInfo{style: "sw-resize"}
+	w.cursorStyles[136] = &cursorInfo{style: "se-resize"}
 }
 
 func (w *wasmX11Frontend) SetCursor(windowID xID, cursorID uint32) {

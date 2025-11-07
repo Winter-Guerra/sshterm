@@ -42,15 +42,16 @@ func Uint32ArrayToBytes(in []uint32) []byte {
 }
 
 var (
-	Uint8Array = js.Global().Get("Uint8Array")
-	Error      = js.Global().Get("Error")
-	Array      = js.Global().Get("Array")
-	Object     = js.Global().Get("Object")
-	Promise    = js.Global().Get("Promise")
-	Blob       = js.Global().Get("Blob")
-	URL        = js.Global().Get("URL")
-	Document   = js.Global().Get("document")
-	Body       = Document.Get("body")
+	Uint8Array        = js.Global().Get("Uint8Array")
+	Uint8ClampedArray = js.Global().Get("Uint8ClampedArray")
+	Error             = js.Global().Get("Error")
+	Array             = js.Global().Get("Array")
+	Object            = js.Global().Get("Object")
+	Promise           = js.Global().Get("Promise")
+	Blob              = js.Global().Get("Blob")
+	URL               = js.Global().Get("URL")
+	Document          = js.Global().Get("document")
+	Body              = Document.Get("body")
 )
 
 func TryCatch(try func(), catch func(any)) {
@@ -134,6 +135,10 @@ func Uint8ArrayToBytes(v js.Value) []byte {
 	buf := make([]byte, v.Length())
 	js.CopyBytesToGo(buf, v)
 	return buf
+}
+
+func Uint8ClampedArrayFromBytes(in []byte) js.Value {
+	return Uint8ClampedArray.New(Uint8ArrayFromBytes(in))
 }
 
 type ImportedFile struct {

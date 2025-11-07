@@ -1090,5 +1090,9 @@
   {
     "raw": "560103000403020106050807",
     "want": "&x11.AllocColorCellsRequest{Contiguous:true, Cmap:0x1020304, Colors:0x506, Planes:0x708}"
+  },
+  {
+    "raw": "5d0008000102030405060708090a0b0cde12ad34fe56ac78fa90c12d00000000",
+    "want": "&x11.CreateCursorRequest{Cid:0x4030201, Source:0x8070605, Mask:0xc0b0a09, ForeRed:0x12de, ForeGreen:0x34ad, ForeBlue:0x56fe, BackRed:0x78ac, BackGreen:0x90fa, BackBlue:0x2dc1, X:0x0, Y:0x0}"
   }
 ]

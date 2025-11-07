@@ -278,6 +278,9 @@ func (m *MockX11Frontend) FreePixmap(xid xID) {}
 func (m *MockX11Frontend) CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, height, dstX, dstY uint32) {
 }
 
+func (m *MockX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor, backColor [3]uint16, x, y uint16) {
+}
+
 func (m *MockX11Frontend) CreateCursorFromGlyph(cursorID uint32, glyphID uint16) {}
 
 func (m *MockX11Frontend) SetWindowCursor(windowID xID, cursorID xID) {}
