@@ -51,17 +51,18 @@ type X11FrontendAPI interface {
 	MapWindow(xid xID)
 	UnmapWindow(xid xID)
 	ConfigureWindow(xid xID, valueMask uint16, values []uint32)
-	PutImage(drawable xID, gc GC, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, data []byte)
-	PolyLine(drawable xID, gc GC, points []uint32)
-	PolyFillRectangle(drawable xID, gc GC, rects []uint32)
-	FillPoly(drawable xID, gc GC, points []uint32)
-	PolySegment(drawable xID, gc GC, segments []uint32)
-	PolyPoint(drawable xID, gc GC, points []uint32)
-	PolyRectangle(drawable xID, gc GC, rects []uint32)
-	PolyArc(drawable xID, gc GC, arcs []uint32)
-	PolyFillArc(drawable xID, gc GC, arcs []uint32)
+	PutImage(drawable xID, gcID xID, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, data []byte)
+	PolyLine(drawable xID, gcID xID, points []uint32)
+	PolyFillRectangle(drawable xID, gcID xID, rects []uint32)
+	FillPoly(drawable xID, gcID xID, points []uint32)
+	PolySegment(drawable xID, gcID xID, segments []uint32)
+	PolyPoint(drawable xID, gcID xID, points []uint32)
+	PolyRectangle(drawable xID, gcID xID, rects []uint32)
+	PolyArc(drawable xID, gcID xID, arcs []uint32)
+	PolyFillArc(drawable xID, gcID xID, arcs []uint32)
 	ClearArea(drawable xID, x, y, width, height int32)
-	CopyArea(srcDrawable, dstDrawable xID, gc GC, srcX, srcY, dstX, dstY, width, height int32)
+	CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX, srcY, dstX, dstY, width, height int32)
+	CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX, srcY, dstX, dstY, width, height, bitPlane int32)
 	GetImage(drawable xID, x, y, width, height int32, format uint32) ([]byte, error)
 	ReadClipboard() (string, error)
 	WriteClipboard(string) error
@@ -71,10 +72,10 @@ type X11FrontendAPI interface {
 	GetAtomName(atom uint32) string
 	ListProperties(window xID) []uint32
 	GetProperty(window xID, property uint32) ([]byte, uint32, uint32)
-	ImageText8(drawable xID, gc GC, x, y int32, text []byte)
-	ImageText16(drawable xID, gc GC, x, y int32, text []uint16)
-	PolyText8(drawable xID, gc GC, x, y int32, items []PolyText8Item)
-	PolyText16(drawable xID, gc GC, x, y int32, items []PolyText16Item)
+	ImageText8(drawable xID, gcID xID, x, y int32, text []byte)
+	ImageText16(drawable xID, gcID xID, x, y int32, text []uint16)
+	PolyText8(drawable xID, gcID xID, x, y int32, items []PolyText8Item)
+	PolyText16(drawable xID, gcID xID, x, y int32, items []PolyText16Item)
 	CreatePixmap(xid, drawable xID, width, height, depth uint32)
 	FreePixmap(xid xID)
 	CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, height, dstX, dstY uint32)
@@ -1030,78 +1031,48 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.ClearArea(client.xID(uint32(p.Window)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
 
 	case *CopyAreaRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.CopyArea(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gc, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.CopyArea(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
 
 	case *CopyPlaneRequest:
-		debugf("X11: CopyPlaneRequest not implemented")
-		// TODO: Implement
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.CopyPlane(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height), int32(p.PlaneMask))
 
 	case *PolyPointRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyPoint(client.xID(uint32(p.Drawable)), gc, p.Coordinates)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyPoint(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
 
 	case *PolyLineRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyLine(client.xID(uint32(p.Drawable)), gc, p.Coordinates)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyLine(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
 
 	case *PolySegmentRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolySegment(client.xID(uint32(p.Drawable)), gc, p.Segments)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolySegment(client.xID(uint32(p.Drawable)), gcID, p.Segments)
 
 	case *PolyRectangleRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyRectangle(client.xID(uint32(p.Drawable)), gc, p.Rectangles)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
 
 	case *PolyArcRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyArc(client.xID(uint32(p.Drawable)), gc, p.Arcs)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
 
 	case *FillPolyRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.FillPoly(client.xID(uint32(p.Drawable)), gc, p.Coordinates)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.FillPoly(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
 
 	case *PolyFillRectangleRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyFillRectangle(client.xID(uint32(p.Drawable)), gc, p.Rectangles)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyFillRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
 
 	case *PolyFillArcRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyFillArc(client.xID(uint32(p.Drawable)), gc, p.Arcs)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyFillArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
 
 	case *PutImageRequest:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PutImage(client.xID(uint32(p.Drawable)), gc, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PutImage(client.xID(uint32(p.Drawable)), gcID, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
 
 	case *GetImageRequest:
 		imgData, err := s.frontend.GetImage(client.xID(uint32(p.Drawable)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height), p.PlaneMask)
@@ -1117,32 +1088,20 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *PolyText8Request:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyText8(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Items)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
 
 	case *PolyText16Request:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.PolyText16(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Items)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.PolyText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
 
 	case *ImageText8Request:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.ImageText8(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Text)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.ImageText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
 
 	case *ImageText16Request:
-		gc, ok := s.gcs[client.xID(uint32(p.Gc))]
-		if !ok {
-			return nil
-		}
-		s.frontend.ImageText16(client.xID(uint32(p.Drawable)), gc, int32(p.X), int32(p.Y), p.Text)
+		gcID := client.xID(uint32(p.Gc))
+		s.frontend.ImageText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
 
 	case *CreateColormapRequest:
 		xid := client.xID(uint32(p.Mid))

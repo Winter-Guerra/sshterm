@@ -11,7 +11,7 @@ type propertyChange struct {
 
 type putImageCall struct {
 	drawable      xID
-	gc            uint32
+	gcID          xID
 	depth         uint8
 	width, height uint16
 	dstX, dstY    int16
@@ -22,49 +22,49 @@ type putImageCall struct {
 
 type polyLineCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	points   []uint32
 }
 
 type polyFillRectCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	rects    []uint32
 }
 
 type fillPolyCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	points   []uint32
 }
 
 type polySegmentCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	segments []uint32
 }
 
 type polyPointCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	points   []uint32
 }
 
 type polyRectCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	rects    []uint32
 }
 
 type polyArcCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	arcs     []uint32
 }
 
 type polyFillArcCall struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	arcs     []uint32
 }
 
@@ -74,8 +74,15 @@ type clearAreaCall struct {
 }
 
 type copyAreaCall struct {
-	srcDrawable, dstDrawable                  xID
-	gc, srcX, srcY, dstX, dstY, width, height uint32
+	srcDrawable, dstDrawable              xID
+	gcID                                  xID
+	srcX, srcY, dstX, dstY, width, height uint32
+}
+
+type copyPlaneCall struct {
+	srcDrawable, dstDrawable                        xID
+	gcID                                            xID
+	srcX, srcY, dstX, dstY, width, height, bitPlane uint32
 }
 
 type getImageCall struct {
@@ -120,6 +127,7 @@ type MockX11Frontend struct {
 	PolyFillArcCalls                []*polyFillArcCall
 	ClearAreaCalls                  []*clearAreaCall
 	CopyAreaCalls                   []*copyAreaCall
+	CopyPlaneCalls                  []*copyPlaneCall
 	GetImageCalls                   []*getImageCall
 	GetImageReturn                  []byte
 	GetImageError                   error
@@ -147,28 +155,28 @@ type MockX11Frontend struct {
 
 type imageText8Call struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	x, y     int32
 	text     []byte
 }
 
 type imageText16Call struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	x, y     int32
 	text     []uint16
 }
 
 type polyText8Call struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	x, y     int32
 	items    []PolyText8Item
 }
 
 type polyText16Call struct {
 	drawable xID
-	gc       uint32
+	gcID     xID
 	x, y     int32
 	items    []PolyText16Item
 }
@@ -206,48 +214,52 @@ func (m *MockX11Frontend) ConfigureWindow(xid xID, valueMask uint16, values []ui
 	m.ConfigureWindowCalls = append(m.ConfigureWindowCalls, &configureWindowCall{xid, valueMask, values})
 }
 
-func (w *MockX11Frontend) PutImage(drawable xID, gc GC, depth uint8, width, height uint16, dstX, dstY int16, leftPad uint8, format uint8, imgData []byte) {
-	w.PutImageCalls = append(w.PutImageCalls, &putImageCall{drawable, gc.Foreground, depth, width, height, dstX, dstY, leftPad, format, imgData})
+func (w *MockX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, data []byte) {
+	w.PutImageCalls = append(w.PutImageCalls, &putImageCall{drawable, gcID, depth, width, height, dstX, dstY, leftPad, format, data})
 }
 
-func (m *MockX11Frontend) PolyLine(drawable xID, gc GC, points []uint32) {
-	m.PolyLineCalls = append(m.PolyLineCalls, &polyLineCall{drawable, gc.Foreground, points})
+func (m *MockX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
+	m.PolyLineCalls = append(m.PolyLineCalls, &polyLineCall{drawable, gcID, points})
 }
 
-func (m *MockX11Frontend) PolyFillRectangle(drawable xID, gc GC, rects []uint32) {
-	m.PolyFillRectangleCalls = append(m.PolyFillRectangleCalls, &polyFillRectCall{drawable, gc.Foreground, rects})
+func (m *MockX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint32) {
+	m.PolyFillRectangleCalls = append(m.PolyFillRectangleCalls, &polyFillRectCall{drawable, gcID, rects})
 }
 
-func (m *MockX11Frontend) FillPoly(drawable xID, gc GC, points []uint32) {
-	m.FillPolyCalls = append(m.FillPolyCalls, &fillPolyCall{drawable, gc.Foreground, points})
+func (m *MockX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
+	m.FillPolyCalls = append(m.FillPolyCalls, &fillPolyCall{drawable, gcID, points})
 }
 
-func (m *MockX11Frontend) PolySegment(drawable xID, gc GC, segments []uint32) {
-	m.PolySegmentCalls = append(m.PolySegmentCalls, &polySegmentCall{drawable, gc.Foreground, segments})
+func (m *MockX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32) {
+	m.PolySegmentCalls = append(m.PolySegmentCalls, &polySegmentCall{drawable, gcID, segments})
 }
 
-func (m *MockX11Frontend) PolyPoint(drawable xID, gc GC, points []uint32) {
-	m.PolyPointCalls = append(m.PolyPointCalls, &polyPointCall{drawable, gc.Foreground, points})
+func (m *MockX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
+	m.PolyPointCalls = append(m.PolyPointCalls, &polyPointCall{drawable, gcID, points})
 }
 
-func (m *MockX11Frontend) PolyRectangle(drawable xID, gc GC, rects []uint32) {
-	m.PolyRectangleCalls = append(m.PolyRectangleCalls, &polyRectCall{drawable, gc.Foreground, rects})
+func (m *MockX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) {
+	m.PolyRectangleCalls = append(m.PolyRectangleCalls, &polyRectCall{drawable, gcID, rects})
 }
 
-func (m *MockX11Frontend) PolyArc(drawable xID, gc GC, arcs []uint32) {
-	m.PolyArcCalls = append(m.PolyArcCalls, &polyArcCall{drawable, gc.Foreground, arcs})
+func (m *MockX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
+	m.PolyArcCalls = append(m.PolyArcCalls, &polyArcCall{drawable, gcID, arcs})
 }
 
-func (m *MockX11Frontend) PolyFillArc(drawable xID, gc GC, arcs []uint32) {
-	m.PolyFillArcCalls = append(m.PolyFillArcCalls, &polyFillArcCall{drawable, gc.Foreground, arcs})
+func (m *MockX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
+	m.PolyFillArcCalls = append(m.PolyFillArcCalls, &polyFillArcCall{drawable, gcID, arcs})
 }
 
 func (m *MockX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 	m.ClearAreaCalls = append(m.ClearAreaCalls, &clearAreaCall{drawable, uint32(x), uint32(y), uint32(width), uint32(height)})
 }
 
-func (m *MockX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gc GC, srcX, srcY, dstX, dstY, width, height int32) {
-	m.CopyAreaCalls = append(m.CopyAreaCalls, &copyAreaCall{srcDrawable, dstDrawable, gc.Foreground, uint32(srcX), uint32(srcY), uint32(dstX), uint32(dstY), uint32(width), uint32(height)})
+func (m *MockX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX, srcY, dstX, dstY, width, height int32) {
+	m.CopyAreaCalls = append(m.CopyAreaCalls, &copyAreaCall{srcDrawable, dstDrawable, gcID, uint32(srcX), uint32(srcY), uint32(dstX), uint32(dstY), uint32(width), uint32(height)})
+}
+
+func (m *MockX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX, srcY, dstX, dstY, width, height, bitPlane int32) {
+	m.CopyPlaneCalls = append(m.CopyPlaneCalls, &copyPlaneCall{srcDrawable, dstDrawable, gcID, uint32(srcX), uint32(srcY), uint32(dstX), uint32(dstY), uint32(width), uint32(height), uint32(bitPlane)})
 }
 
 func (m *MockX11Frontend) GetImage(drawable xID, x, y, width, height int32, format uint32) ([]byte, error) {
@@ -255,20 +267,20 @@ func (m *MockX11Frontend) GetImage(drawable xID, x, y, width, height int32, form
 	return m.GetImageReturn, nil
 }
 
-func (m *MockX11Frontend) ImageText8(drawable xID, gc GC, x, y int32, text []byte) {
-	m.ImageText8Calls = append(m.ImageText8Calls, &imageText8Call{drawable, gc.Foreground, x, y, text})
+func (m *MockX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []byte) {
+	m.ImageText8Calls = append(m.ImageText8Calls, &imageText8Call{drawable, gcID, x, y, text})
 }
 
-func (m *MockX11Frontend) ImageText16(drawable xID, gc GC, x, y int32, text []uint16) {
-	m.ImageText16Calls = append(m.ImageText16Calls, &imageText16Call{drawable, gc.Foreground, x, y, text})
+func (m *MockX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text []uint16) {
+	m.ImageText16Calls = append(m.ImageText16Calls, &imageText16Call{drawable, gcID, x, y, text})
 }
 
-func (m *MockX11Frontend) PolyText8(drawable xID, gc GC, x, y int32, items []PolyText8Item) {
-	m.PolyText8Calls = append(m.PolyText8Calls, &polyText8Call{drawable, gc.Foreground, x, y, items})
+func (m *MockX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyText8Item) {
+	m.PolyText8Calls = append(m.PolyText8Calls, &polyText8Call{drawable, gcID, x, y, items})
 }
 
-func (m *MockX11Frontend) PolyText16(drawable xID, gc GC, x, y int32, items []PolyText16Item) {
-	m.PolyText16Calls = append(m.PolyText16Calls, &polyText16Call{drawable, gc.Foreground, x, y, items})
+func (m *MockX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyText16Item) {
+	m.PolyText16Calls = append(m.PolyText16Calls, &polyText16Call{drawable, gcID, x, y, items})
 }
 
 func (m *MockX11Frontend) CreatePixmap(id, drawable xID, width, height, depth uint32) {}

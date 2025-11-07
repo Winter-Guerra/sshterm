@@ -69,6 +69,8 @@ type wasmX11Frontend struct {
 	windows          map[xID]*windowInfo    // Map to store window elements (div)
 	pixmaps          map[xID]*pixmapInfo    // Map to store pixmap elements (canvas)
 	gcs              map[xID]GC             // Map to store graphics contexts (Go representation)
+	clippingRects    map[xID][]Rectangle    // Map to store clipping rectangles for GCs
+	dashPatterns     map[xID][]byte         // Map to store dash patterns for GCs
 	fonts            map[xID]*fontInfo      // Map to store opened fonts
 	cursors          map[xID]*cursorInfo    // Map to store cursor info
 	focusedWindowID  xID                    // Track the currently focused window
@@ -157,17 +159,19 @@ func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
 	document := js.Global().Get("document")
 	body := document.Get("body")
 	frontend := &wasmX11Frontend{
-		document:     document,
-		body:         body,
-		windows:      make(map[xID]*windowInfo),
-		pixmaps:      make(map[xID]*pixmapInfo),
-		gcs:          make(map[xID]GC),
-		fonts:        make(map[xID]*fontInfo),
-		cursors:      make(map[xID]*cursorInfo),
-		server:       s,
-		atoms:        make(map[string]uint32),
-		nextAtomID:   1,
-		cursorStyles: make(map[uint32]*cursorInfo),
+		document:      document,
+		body:          body,
+		windows:       make(map[xID]*windowInfo),
+		pixmaps:       make(map[xID]*pixmapInfo),
+		gcs:           make(map[xID]GC),
+		clippingRects: make(map[xID][]Rectangle),
+		dashPatterns:  make(map[xID][]byte),
+		fonts:         make(map[xID]*fontInfo),
+		cursors:       make(map[xID]*cursorInfo),
+		server:        s,
+		atoms:         make(map[string]uint32),
+		nextAtomID:    1,
+		cursorStyles:  make(map[uint32]*cursorInfo),
 	}
 	frontend.initDefaultCursors()
 	frontend.initCanvasOperations()
@@ -858,7 +862,11 @@ func (w *wasmX11Frontend) ChangeProperty(xid xID, p, typ, format uint32, data []
 	})
 }
 
-func (w *wasmX11Frontend) PutImage(drawable xID, gc GC, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, imgData []byte) {
+func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, imgData []byte) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: putImage drawable=%s gc=%v format=%d width=%d height=%d dstX=%d dstY=%d leftPad=%d depth=%d data length=%d first 16 bytes of data: %x", drawable, gc, format, width, height, dstX, dstY, leftPad, depth, len(imgData), imgData[:min(len(imgData), 16)])
 
 	var currentColormap xID
@@ -915,43 +923,31 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gc GC, format uint8, width, hei
 		ctx.Call("putImageData", imageData, dstX, dstY)
 
 	case 1: // XYPixmap
-		r, g, b := w.GetRGBColor(currentColormap, gc.Foreground)
-		fgR, fgG, fgB := r, g, b
-
-		r, g, b = w.GetRGBColor(currentColormap, gc.Background)
-		bgR, bgG, bgB := r, g, b
-
 		jsImgData := js.Global().Get("Uint8ClampedArray").New(int(width * height * 4))
-		dataIndex := 0
-		// For XYPixmap, imgData contains planes. Assuming depth 1 for now.
-		// The 'format' argument to PutImage is actually the depth for XYPixmap.
-		if depth > 1 {
-			debugf("X11: Warning: Multi-plane XYPixmap (depth %d) is not fully supported. Treating as 1-bit.", depth)
-		}
+		pixelValues := make([]uint32, width*height)
+		scanlineStride := (int(width) + 7) / 8
 
-		// For depth 1, scanlineStride is (width + leftPad + 7) / 8
-		scanlineStride := (int(width) + int(leftPad) + 7) / 8
-
-		for row := 0; row < int(height); row++ {
-			scanlineOffset := row * scanlineStride
-			for col := 0; col < int(width); col++ {
-				bitPos := int(leftPad) + col
-				byteIndex := scanlineOffset + (bitPos / 8)
-				bitIndex := bitPos % 8
-
-				if byteIndex < len(imgData) && (imgData[byteIndex]>>(bitIndex))&1 == 1 {
-					jsImgData.SetIndex(dataIndex, int(fgR))
-					jsImgData.SetIndex(dataIndex+1, int(fgG))
-					jsImgData.SetIndex(dataIndex+2, int(fgB))
-				} else {
-					jsImgData.SetIndex(dataIndex, int(bgR))
-					jsImgData.SetIndex(dataIndex+1, int(bgG))
-					jsImgData.SetIndex(dataIndex+2, int(bgB))
+		for d := 0; d < int(depth); d++ {
+			plane := imgData[d*int(height)*scanlineStride:]
+			for y := 0; y < int(height); y++ {
+				for x := 0; x < int(width); x++ {
+					byteIndex := (y*scanlineStride + x/8)
+					bitIndex := x % 8
+					if (plane[byteIndex]>>bitIndex)&1 != 0 {
+						pixelValues[y*int(width)+x] |= (1 << d)
+					}
 				}
-				jsImgData.SetIndex(dataIndex+3, 255) // Alpha
-				dataIndex += 4
 			}
 		}
+
+		for i, pixel := range pixelValues {
+			r, g, b := w.GetRGBColor(currentColormap, pixel)
+			jsImgData.SetIndex(i*4+0, int(r))
+			jsImgData.SetIndex(i*4+1, int(g))
+			jsImgData.SetIndex(i*4+2, int(b))
+			jsImgData.SetIndex(i*4+3, 255)
+		}
+
 		imageData := js.Global().Get("ImageData").New(jsImgData, width, height)
 		ctx.Call("putImageData", imageData, dstX, dstY)
 
@@ -976,11 +972,19 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gc GC, format uint8, width, hei
 	})
 }
 
-func (w *wasmX11Frontend) PolyLine(drawable xID, gc GC, points []uint32) {
+func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyLine drawable=%s gc=%v points=%v", drawable, gc, points)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
+			w.applyDashes(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("strokeStyle", color)
 			winInfo.ctx.Call("beginPath")
@@ -1000,11 +1004,42 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gc GC, points []uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gc GC, rects []uint32) {
+func (w *wasmX11Frontend) applyClipping(gcID xID, ctx js.Value) {
+	if rects, ok := w.clippingRects[gcID]; ok && len(rects) > 0 {
+		ctx.Call("beginPath")
+		for _, rect := range rects {
+			ctx.Call("rect", rect.X, rect.Y, rect.Width, rect.Height)
+		}
+		ctx.Call("clip")
+	}
+}
+
+func (w *wasmX11Frontend) applyDashes(gcID xID, ctx js.Value) {
+	if dashes, ok := w.dashPatterns[gcID]; ok && len(dashes) > 0 {
+		jsDashes := js.Global().Get("Array").New(len(dashes))
+		for i, v := range dashes {
+			jsDashes.SetIndex(i, js.ValueOf(v))
+		}
+		ctx.Call("setLineDash", jsDashes)
+		if gc, ok := w.gcs[gcID]; ok {
+			ctx.Set("lineDashOffset", gc.DashOffset)
+		}
+	}
+}
+
+func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyFillRectangle drawable=%s gc=%v rects=%v GCFunction=%d", drawable, gc, rects, gc.Function)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
+			w.applyDashes(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 			for i := 0; i < len(rects); i += 4 {
@@ -1019,11 +1054,19 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gc GC, rects []uint32)
 	})
 }
 
-func (w *wasmX11Frontend) FillPoly(drawable xID, gc GC, points []uint32) {
+func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: fillPoly drawable=%s gc=%v points=%v", drawable, gc, points)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
+			w.applyDashes(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 			winInfo.ctx.Call("beginPath")
@@ -1044,11 +1087,19 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gc GC, points []uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) PolySegment(drawable xID, gc GC, segments []uint32) {
+func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polySegment drawable=%s gc=%v segments=%v", drawable, gc, segments)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
+			w.applyDashes(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("strokeStyle", color)
 			for i := 0; i < len(segments); i += 4 {
@@ -1066,11 +1117,19 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gc GC, segments []uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) PolyPoint(drawable xID, gc GC, points []uint32) {
+func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyPoint drawable=%s gc=%v points=%v", drawable, gc, points)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
+			w.applyDashes(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 			for i := 0; i < len(points); i += 2 {
@@ -1085,11 +1144,19 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gc GC, points []uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) PolyRectangle(drawable xID, gc GC, rects []uint32) {
+func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyRectangle drawable=%s gc=%v rects=%v", drawable, gc, rects)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
+			w.applyDashes(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("strokeStyle", color)
 			for i := 0; i < len(rects); i += 4 {
@@ -1104,11 +1171,19 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gc GC, rects []uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) PolyArc(drawable xID, gc GC, arcs []uint32) {
+func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
+			w.applyDashes(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("strokeStyle", color)
 			for i := 0; i < len(arcs); i += 6 {
@@ -1134,11 +1209,18 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gc GC, arcs []uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) PolyFillArc(drawable xID, gc GC, arcs []uint32) {
+func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyFillArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 			for i := 0; i < len(arcs); i += 6 {
@@ -1189,7 +1271,11 @@ func (w *wasmX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 	})
 }
 
-func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gc GC, srcX, srcY, dstX, dstY, width, height int32) {
+func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX, srcY, dstX, dstY, width, height int32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: copyArea src=%s dst=%s gc=%v srcX=%d srcY=%d dstX=%d dstY=%d width=%d height=%d", srcDrawable, dstDrawable, gc, srcX, srcY, dstX, dstY, width, height)
 	var srcCanvas js.Value
 	srcWinInfo, srcIsWindow := w.windows[srcDrawable]
@@ -1218,6 +1304,74 @@ func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gc GC, srcX, sr
 		Args: []any{srcDrawable.local, dstDrawable.local, gc, srcX, srcY, dstX, dstY, width, height},
 	})
 }
+
+func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX, srcY, dstX, dstY, width, height, bitPlane int32) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
+	debugf("X11: copyPlane src=%s dst=%s gc=%v srcX=%d srcY=%d dstX=%d dstY=%d width=%d height=%d bitPlane=%d", srcDrawable, dstDrawable, gc, srcX, srcY, dstX, dstY, width, height, bitPlane)
+	var srcCanvas js.Value
+	var currentColormap xID
+	srcWinInfo, srcIsWindow := w.windows[srcDrawable]
+	srcPixmapInfo, srcIsPixmap := w.pixmaps[srcDrawable]
+
+	if srcIsWindow {
+		srcCanvas = srcWinInfo.canvas
+	} else if srcIsPixmap {
+		srcCanvas = srcPixmapInfo.canvas
+	} else {
+		debugf("X11: CopyPlane source drawable %d not found", srcDrawable)
+		return
+	}
+
+	dstWinInfo, dstIsWindow := w.windows[dstDrawable]
+	if !dstIsWindow {
+		debugf("X11: CopyPlane destination drawable %d not found or not a window", dstDrawable)
+		return
+	}
+	currentColormap = dstWinInfo.colormap
+
+	if !srcCanvas.IsNull() && !dstWinInfo.canvas.IsNull() {
+		// Get the source image data
+		srcImageData := srcCanvas.Call("getContext", "2d").Call("getImageData", srcX, srcY, width, height)
+		srcData := srcImageData.Get("data")
+		jsImgData := js.Global().Get("Uint8ClampedArray").New(int(width * height * 4))
+
+		r, g, b := w.GetRGBColor(currentColormap, gc.Foreground)
+		fgR, fgG, fgB := r, g, b
+
+		r, g, b = w.GetRGBColor(currentColormap, gc.Background)
+		bgR, bgG, bgB := r, g, b
+
+		// Iterate over the source image data and apply the bitPlane mask
+		for i := 0; i < srcData.Length(); i += 4 {
+			// For a CopyPlane request, the source is treated as a bitmap.
+			// If a bit is set in the specified bit-plane of the source, the foreground pixel is drawn.
+			// Otherwise, the background pixel is drawn.
+			// We'll treat any non-zero pixel value as having the bit set.
+			pixelValue := srcData.Index(i).Int() | (srcData.Index(i+1).Int() << 8) | (srcData.Index(i+2).Int() << 16)
+			if (pixelValue & int(bitPlane)) != 0 {
+				jsImgData.SetIndex(i+0, int(fgR))
+				jsImgData.SetIndex(i+1, int(fgG))
+				jsImgData.SetIndex(i+2, int(fgB))
+			} else {
+				jsImgData.SetIndex(i+0, int(bgR))
+				jsImgData.SetIndex(i+1, int(bgG))
+				jsImgData.SetIndex(i+2, int(bgB))
+			}
+			jsImgData.SetIndex(i+3, 255) // Alpha
+		}
+
+		// Create a new ImageData object and put it on the destination canvas
+		newImageData := js.Global().Get("ImageData").New(jsImgData, width, height)
+		dstWinInfo.ctx.Call("putImageData", newImageData, dstX, dstY)
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "copyPlane",
+		Args: []any{srcDrawable.local, dstDrawable.local, gc, srcX, srcY, dstX, dstY, width, height, bitPlane},
+	})
+}
 func (w *wasmX11Frontend) GetImage(drawable xID, x, y, width, height int32, format uint32) ([]byte, error) {
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
@@ -1231,13 +1385,20 @@ func (w *wasmX11Frontend) GetImage(drawable xID, x, y, width, height int32, form
 	return nil, fmt.Errorf("window or canvas not found for drawable %d", drawable)
 }
 
-func (w *wasmX11Frontend) ImageText8(drawable xID, gc GC, x, y int32, text []byte) {
+func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []byte) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	decodedTextForLog := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(text)).String()
 	decodedTextForLog = strings.ReplaceAll(decodedTextForLog, "\x00", "") // Trim null terminators
 	debugf("X11: imageText8 drawable=%s gc=%v x=%d y=%d text=%s", drawable, gc, x, y, decodedTextForLog)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
@@ -1262,7 +1423,11 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gc GC, x, y int32, text []byt
 	})
 }
 
-func (w *wasmX11Frontend) ImageText16(drawable xID, gc GC, x, y int32, text []uint16) {
+func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text []uint16) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	// Convert []uint16 to []byte for TextDecoder
 	textBytes := make([]byte, len(text)*2)
 	for i, r := range text {
@@ -1274,6 +1439,9 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gc GC, x, y int32, text []ui
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
@@ -1298,11 +1466,18 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gc GC, x, y int32, text []ui
 	})
 }
 
-func (w *wasmX11Frontend) PolyText8(drawable xID, gc GC, x, y int32, items []PolyText8Item) {
+func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyText8Item) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyText8 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
 	color := "?????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyClipping(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
@@ -1334,11 +1509,30 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gc GC, x, y int32, items []Pol
 }
 
 func (w *wasmX11Frontend) SetDashes(gc xID, dashOffset uint16, dashes []byte) {
-	debugf("X11: SetDashes (not implemented)")
+	debugf("X11: setDashes gc=%s dashOffset=%d dashes=%v", gc, dashOffset, dashes)
+	if existingGC, ok := w.gcs[gc]; ok {
+		existingGC.DashOffset = uint32(dashOffset)
+		w.gcs[gc] = existingGC
+	}
+	w.dashPatterns[gc] = dashes
+	w.recordOperation(CanvasOperation{
+		Type: "setDashes",
+		Args: []any{gc.local, dashOffset, dashes},
+	})
 }
 
 func (w *wasmX11Frontend) SetClipRectangles(gc xID, clippingX, clippingY int16, rectangles []Rectangle, ordering byte) {
-	debugf("X11: SetClipRectangles (not implemented)")
+	debugf("X11: setClipRectangles gc=%s clippingX=%d clippingY=%d rectangles=%v ordering=%d", gc, clippingX, clippingY, rectangles, ordering)
+	if existingGC, ok := w.gcs[gc]; ok {
+		existingGC.ClipXOrigin = int32(clippingX)
+		existingGC.ClipYOrigin = int32(clippingY)
+		w.gcs[gc] = existingGC
+	}
+	w.clippingRects[gc] = rectangles
+	w.recordOperation(CanvasOperation{
+		Type: "setClipRectangles",
+		Args: []any{gc.local, clippingX, clippingY, rectangles, ordering},
+	})
 }
 
 func (w *wasmX11Frontend) RecolorCursor(cursorID xID, foreColor, backColor [3]uint16) {
@@ -1428,7 +1622,11 @@ func (w *wasmX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCod
 	return 0, nil, nil
 }
 
-func (w *wasmX11Frontend) PolyText16(drawable xID, gc GC, x, y int32, items []PolyText16Item) {
+func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyText16Item) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	debugf("X11: polyText16 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
