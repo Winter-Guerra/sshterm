@@ -128,15 +128,23 @@ const (
 )
 
 const (
-	ValueErrorCode    byte = 2
-	WindowErrorCode   byte = 3
-	PixmapErrorCode   byte = 4
-	AtomErrorCode     byte = 5
-	CursorErrorCode   byte = 6
-	ColormapErrorCode byte = 12
-	GContextErrorCode byte = 13
-	IDChoiceErrorCode byte = 14
-	NameErrorCode     byte = 15
+	RequestErrorCode        byte = 1
+	ValueErrorCode          byte = 2
+	WindowErrorCode         byte = 3
+	PixmapErrorCode         byte = 4
+	AtomErrorCode           byte = 5
+	CursorErrorCode         byte = 6
+	FontErrorCode           byte = 7
+	MatchErrorCode          byte = 8
+	DrawableErrorCode       byte = 9
+	AccessErrorCode         byte = 10
+	AllocErrorCode          byte = 11
+	ColormapErrorCode       byte = 12
+	GContextErrorCode       byte = 13
+	IDChoiceErrorCode       byte = 14
+	NameErrorCode           byte = 15
+	LengthErrorCode         byte = 16
+	ImplementationErrorCode byte = 17
 )
 
 const (
