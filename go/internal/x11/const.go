@@ -169,28 +169,22 @@ const (
 	CWCursor           = 1 << 14
 	CWSibling          = 1 << 15
 	CWStackMode        = 1 << 16
-
-	// Graphics functions
-	GXclear        = 0x0 // 0
-	GXand          = 0x1 // src AND dst
-	GXandReverse   = 0x2 // src AND NOT dst
-	GXcopy         = 0x3 // src
-	GXandInverted  = 0x4 // NOT src AND dst
-	GXnoop         = 0x5 // dst
-	GXxor          = 0x6 // src XOR dst
-	GXor           = 0x7 // src OR dst
-	GXnor          = 0x8 // NOT (src OR dst)
-	GXequiv        = 0x9 // NOT (src XOR dst)
-	GXinvert       = 0xa // NOT dst
-	GXorReverse    = 0xb // src OR NOT dst
-	GXcopyInverted = 0xc // NOT src
-	GXorInverted   = 0xd // NOT src OR dst
-	GXnand         = 0xe // NOT (src AND dst)
-	GXset          = 0xf // 1
 )
 
 const (
 	DoRed   byte = 1 << 0
 	DoGreen byte = 1 << 1
 	DoBlue  byte = 1 << 2
+)
+
+// Constants for Keyboard Control
+const (
+	KBKeyClickPercent = 1 << 0
+	KBBellPercent     = 1 << 1
+	KBBellPitch       = 1 << 2
+	KBBellDuration    = 1 << 3
+	KBLed             = 1 << 4
+	KBLedMode         = 1 << 5
+	KBKey             = 1 << 6
+	KBAutoRepeatMode  = 1 << 7
 )

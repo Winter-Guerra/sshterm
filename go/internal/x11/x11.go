@@ -1032,7 +1032,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			if p.ValueMask&GCDashOffset != 0 {
 				existingGC.DashOffset = p.Values.DashOffset
 			}
-			if p.ValueMask&GCDashList != 0 {
+			if p.ValueMask&GCDashes != 0 {
 				existingGC.Dashes = p.Values.Dashes
 			}
 			if p.ValueMask&GCArcMode != 0 {

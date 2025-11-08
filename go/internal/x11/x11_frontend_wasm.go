@@ -843,7 +843,7 @@ func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc GC) {
 	if valueMask&GCDashOffset != 0 {
 		existingGC.DashOffset = gc.DashOffset
 	}
-	if valueMask&GCDashList != 0 {
+	if valueMask&GCDashes != 0 {
 		existingGC.Dashes = gc.Dashes
 	}
 	if valueMask&GCArcMode != 0 {
@@ -996,37 +996,37 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gc GC) {
 	// function (logic op)
 	// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
 	switch gc.Function {
-	case GXclear:
+	case FunctionClear:
 		ctx.Set("globalCompositeOperation", "destination-out")
-	case GXand:
+	case FunctionAnd:
 		// Not directly supported
-	case GXandReverse:
+	case FunctionAndReverse:
 		// Not directly supported
-	case GXcopy:
+	case FunctionCopy:
 		ctx.Set("globalCompositeOperation", "source-over")
-	case GXandInverted:
+	case FunctionAndInverted:
 		// Not directly supported
-	case GXnoop:
+	case FunctionNoOp:
 		// No operation
-	case GXxor:
+	case FunctionXor:
 		ctx.Set("globalCompositeOperation", "xor")
-	case GXor:
+	case FunctionOr:
 		// Not directly supported
-	case GXnor:
+	case FunctionNor:
 		// Not directly supported
-	case GXequiv:
+	case FunctionEquiv:
 		// Not directly supported
-	case GXinvert:
+	case FunctionInvert:
 		ctx.Set("globalCompositeOperation", "difference")
-	case GXorReverse:
+	case FunctionOrReverse:
 		// Not directly supported
-	case GXcopyInverted:
+	case FunctionCopyInverted:
 		// Not directly supported
-	case GXorInverted:
+	case FunctionOrInverted:
 		// Not directly supported
-	case GXnand:
+	case FunctionNand:
 		// Not directly supported
-	case GXset:
+	case FunctionSet:
 		// Not directly supported
 	}
 
@@ -2681,7 +2681,6 @@ func (w *wasmX11Frontend) ListFonts(maxNames uint16, pattern string) []string {
 
 	return matchingFonts
 }
-
 
 func (w *wasmX11Frontend) GetWindowAttributes(xid xID) WindowAttributes {
 	// Not implemented for wasm

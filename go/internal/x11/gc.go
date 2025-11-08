@@ -25,8 +25,28 @@ const (
 	GCClipYOrigin       = 1 << 18
 	GCClipMask          = 1 << 19
 	GCDashOffset        = 1 << 20
-	GCDashList          = 1 << 21
-	GCArcMode = 1 << 22
+	GCDashes            = 1 << 21
+	GCArcMode           = 1 << 22
+)
+
+const (
+	// Graphics functions
+	FunctionClear        = 0
+	FunctionAnd          = 1
+	FunctionAndReverse   = 2
+	FunctionCopy         = 3
+	FunctionAndInverted  = 4
+	FunctionNoOp         = 5
+	FunctionXor          = 6
+	FunctionOr           = 7
+	FunctionNor          = 8
+	FunctionEquiv        = 9
+	FunctionInvert       = 10
+	FunctionOrReverse    = 11
+	FunctionCopyInverted = 12
+	FunctionOrInverted   = 13
+	FunctionNand         = 14
+	FunctionSet          = 15
 )
 
 const (
@@ -61,25 +81,13 @@ const (
 )
 
 const (
-	ArcModeChord    = 0
-	ArcModePieSlice = 1
-)
-
-const (
 	SubwindowModeClipByChildren   = 0
 	SubwindowModeIncludeInferiors = 1
 )
 
-// Constants for Keyboard Control
 const (
-	KBKeyClickPercent = 1 << 0
-	KBBellPercent     = 1 << 1
-	KBBellPitch       = 1 << 2
-	KBBellDuration    = 1 << 3
-	KBLed             = 1 << 4
-	KBLedMode         = 1 << 5
-	KBKey             = 1 << 6
-	KBAutoRepeatMode  = 1 << 7
+	ArcModeChord    = 0
+	ArcModePieSlice = 1
 )
 
 // GC represents a Graphics Context.
