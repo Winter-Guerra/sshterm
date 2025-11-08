@@ -421,10 +421,15 @@ func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
 		return nil, 0, err
 	}
 	length := client.byteOrder.Uint16(header[2:4])
+	if length == 0 {
+		length = 1
+	}
 	raw := make([]byte, 4*length)
 	copy(raw, header[:])
-	if _, err := io.ReadFull(client.conn, raw[4:]); err != nil {
-		return nil, 0, err
+	if length > 1 {
+		if _, err := io.ReadFull(client.conn, raw[4:]); err != nil {
+			return nil, 0, err
+		}
 	}
 	debugf("X11DEBUG: RAW Request: %x", raw)
 	req, err := parseRequest(client.byteOrder, raw)
