@@ -113,7 +113,9 @@ type GC struct {
 	ClipXOrigin       int32
 	ClipYOrigin       int32
 	ClipMask          uint32
-	DashOffset        uint32
-	Dashes            uint32
-	ArcMode           uint32
+	DashOffset         uint32
+	Dashes             uint32
+	ArcMode            uint32
+	ClippingRectangles []Rectangle
+	DashPattern        []byte
 }

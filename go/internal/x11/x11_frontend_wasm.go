@@ -67,13 +67,11 @@ type wasmX11Frontend struct {
 	document         js.Value
 	body             js.Value
 	windows          map[xID]*windowInfo    // Map to store window elements (div)
-	pixmaps          map[xID]*pixmapInfo    // Map to store pixmap elements (canvas)
-	gcs              map[xID]GC             // Map to store graphics contexts (Go representation)
-	clippingRects    map[xID][]Rectangle    // Map to store clipping rectangles for GCs
-	dashPatterns     map[xID][]byte         // Map to store dash patterns for GCs
-	fonts            map[xID]*fontInfo      // Map to store opened fonts
-	cursors          map[xID]*cursorInfo    // Map to store cursor info
-	focusedWindowID  xID                    // Track the currently focused window
+	pixmaps          map[xID]*pixmapInfo // Map to store pixmap elements (canvas)
+	gcs              map[xID]GC          // Map to store graphics contexts (Go representation)
+	fonts            map[xID]*fontInfo   // Map to store opened fonts
+	cursors          map[xID]*cursorInfo // Map to store cursor info
+	focusedWindowID  xID                 // Track the currently focused window
 	server           *x11Server             // To call back into the server for pointer updates
 	canvasOperations []CanvasOperation      // Store canvas operations for testing
 	atoms            map[string]uint32      // Map atom names to IDs
@@ -164,8 +162,6 @@ func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
 		windows:       make(map[xID]*windowInfo),
 		pixmaps:       make(map[xID]*pixmapInfo),
 		gcs:           make(map[xID]GC),
-		clippingRects: make(map[xID][]Rectangle),
-		dashPatterns:  make(map[xID][]byte),
 		fonts:         make(map[xID]*fontInfo),
 		cursors:       make(map[xID]*cursorInfo),
 		server:        s,
@@ -992,7 +988,11 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	})
 }
 
-func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gc GC) {
+func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
 	// function (logic op)
 	// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
 	switch gc.Function {
@@ -1116,6 +1116,24 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gc GC) {
 			ctx.Set("font", font.cssFont)
 		}
 	}
+	// clipping
+	if gc.ClippingRectangles != nil && len(gc.ClippingRectangles) > 0 {
+		ctx.Call("beginPath")
+		for _, rect := range gc.ClippingRectangles {
+			ctx.Call("rect", rect.X, rect.Y, rect.Width, rect.Height)
+		}
+		ctx.Call("clip")
+	}
+
+	// dashes
+	if gc.DashPattern != nil && len(gc.DashPattern) > 0 {
+		jsDashes := js.Global().Get("Array").New(len(gc.DashPattern))
+		for i, v := range gc.DashPattern {
+			jsDashes.SetIndex(i, js.ValueOf(v))
+		}
+		ctx.Call("setLineDash", jsDashes)
+		ctx.Set("lineDashOffset", gc.DashOffset)
+	}
 }
 
 func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
@@ -1138,9 +1156,7 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
-		w.applyDashes(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		ctx.Call("beginPath")
 		if len(points) >= 2 {
@@ -1156,29 +1172,6 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 		Args:        []any{drawable.local, gc, points},
 		StrokeStyle: color,
 	})
-}
-
-func (w *wasmX11Frontend) applyClipping(gcID xID, ctx js.Value) {
-	if rects, ok := w.clippingRects[gcID]; ok && len(rects) > 0 {
-		ctx.Call("beginPath")
-		for _, rect := range rects {
-			ctx.Call("rect", rect.X, rect.Y, rect.Width, rect.Height)
-		}
-		ctx.Call("clip")
-	}
-}
-
-func (w *wasmX11Frontend) applyDashes(gcID xID, ctx js.Value) {
-	if dashes, ok := w.dashPatterns[gcID]; ok && len(dashes) > 0 {
-		jsDashes := js.Global().Get("Array").New(len(dashes))
-		for i, v := range dashes {
-			jsDashes.SetIndex(i, js.ValueOf(v))
-		}
-		ctx.Call("setLineDash", jsDashes)
-		if gc, ok := w.gcs[gcID]; ok {
-			ctx.Set("lineDashOffset", gc.DashOffset)
-		}
-	}
 }
 
 func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint32) {
@@ -1201,8 +1194,7 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		for i := 0; i < len(rects); i += 4 {
 			ctx.Call("fillRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
@@ -1235,8 +1227,7 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		ctx.Call("beginPath")
 		if len(points) >= 2 {
@@ -1284,9 +1275,7 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
-		w.applyDashes(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		for i := 0; i < len(segments); i += 4 {
 			ctx.Call("beginPath")
@@ -1322,8 +1311,7 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		for i := 0; i < len(points); i += 2 {
 			ctx.Call("fillRect", points[i], points[i+1], 1, 1)
@@ -1356,9 +1344,7 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
-		w.applyDashes(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		for i := 0; i < len(rects); i += 4 {
 			ctx.Call("strokeRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
@@ -1391,9 +1377,7 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
-		w.applyDashes(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		for i := 0; i < len(arcs); i += 6 {
 			ctx.Call("beginPath")
@@ -1437,8 +1421,7 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 	if !ctx.IsUndefined() {
 		ctx.Call("save")
 		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gc)
-		w.applyClipping(gcID, ctx)
+		w.applyGC(ctx, colormap, gcID)
 		color = w.getForegroundColor(colormap, gc)
 		for i := 0; i < len(arcs); i += 6 {
 			ctx.Call("beginPath")
@@ -1626,7 +1609,7 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 		if !winInfo.canvas.IsNull() {
 			winInfo.ctx.Call("save")
 			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
+			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
@@ -1669,7 +1652,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 		if !winInfo.canvas.IsNull() {
 			winInfo.ctx.Call("save")
 			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
+			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
@@ -1705,7 +1688,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 		if !winInfo.canvas.IsNull() {
 			winInfo.ctx.Call("save")
 			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
+			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
@@ -1736,30 +1719,30 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 	}
 }
 
-func (w *wasmX11Frontend) SetDashes(gc xID, dashOffset uint16, dashes []byte) {
-	debugf("X11: setDashes gc=%s dashOffset=%d dashes=%v", gc, dashOffset, dashes)
-	if existingGC, ok := w.gcs[gc]; ok {
-		existingGC.DashOffset = uint32(dashOffset)
-		w.gcs[gc] = existingGC
+func (w *wasmX11Frontend) SetDashes(gcID xID, dashOffset uint16, dashes []byte) {
+	debugf("X11: setDashes gc=%s dashOffset=%d dashes=%v", gcID, dashOffset, dashes)
+	if gc, ok := w.gcs[gcID]; ok {
+		gc.DashOffset = uint32(dashOffset)
+		gc.DashPattern = dashes
+		w.gcs[gcID] = gc
 	}
-	w.dashPatterns[gc] = dashes
 	w.recordOperation(CanvasOperation{
 		Type: "setDashes",
-		Args: []any{gc.local, dashOffset, dashes},
+		Args: []any{gcID.local, dashOffset, dashes},
 	})
 }
 
-func (w *wasmX11Frontend) SetClipRectangles(gc xID, clippingX, clippingY int16, rectangles []Rectangle, ordering byte) {
-	debugf("X11: setClipRectangles gc=%s clippingX=%d clippingY=%d rectangles=%v ordering=%d", gc, clippingX, clippingY, rectangles, ordering)
-	if existingGC, ok := w.gcs[gc]; ok {
-		existingGC.ClipXOrigin = int32(clippingX)
-		existingGC.ClipYOrigin = int32(clippingY)
-		w.gcs[gc] = existingGC
+func (w *wasmX11Frontend) SetClipRectangles(gcID xID, clippingX, clippingY int16, rectangles []Rectangle, ordering byte) {
+	debugf("X11: setClipRectangles gc=%s clippingX=%d clippingY=%d rectangles=%v ordering=%d", gcID, clippingX, clippingY, rectangles, ordering)
+	if gc, ok := w.gcs[gcID]; ok {
+		gc.ClipXOrigin = int32(clippingX)
+		gc.ClipYOrigin = int32(clippingY)
+		gc.ClippingRectangles = rectangles
+		w.gcs[gcID] = gc
 	}
-	w.clippingRects[gc] = rectangles
 	w.recordOperation(CanvasOperation{
 		Type: "setClipRectangles",
-		Args: []any{gc.local, clippingX, clippingY, rectangles, ordering},
+		Args: []any{gcID.local, clippingX, clippingY, rectangles, ordering},
 	})
 }
 
@@ -1933,8 +1916,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 		if !winInfo.canvas.IsNull() {
 			winInfo.ctx.Call("save")
 			defer winInfo.ctx.Call("restore")
-			w.applyGC(winInfo.ctx, winInfo.colormap, gc)
-			w.applyClipping(gcID, winInfo.ctx)
+			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
