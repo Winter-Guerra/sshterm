@@ -2749,38 +2749,13 @@ func min(a, b int) int {
 	return b
 }
 func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) (GC, int, error) {
-	// http://www.x.org/releases/X11R7.6/doc/xproto/x11protocol.html#requests:CreateGC
-	gc := GC{
-		Function:          GXcopy,
-		PlaneMask:         ^uint32(0),
-		Foreground:        0,
-		Background:        1,
-		LineWidth:         0,
-		LineStyle:         LineStyleSolid,
-		CapStyle:          CapStyleButt,
-		JoinStyle:         JoinStyleMiter,
-		FillStyle:         FillStyleSolid,
-		FillRule:          FillRuleEvenOdd,
-		ArcMode:           ArcModePieSlice,
-		Tile:              0, // pixmap of unspecified size filled with foreground pixel
-		Stipple:           0, // pixmap of unspecified size filled with ones
-		TileStipXOrigin:   0,
-		TileStipYOrigin:   0,
-		Font:              0, // server-dependent
-		SubwindowMode:     SubwindowModeClipByChildren,
-		GraphicsExposures: 1, // true
-		ClipXOrigin:       0,
-		ClipYOrigin:       0,
-		ClipMask:          0, // no clip mask
-		DashOffset:        0,
-		Dashes:            4,
-	}
+	gc := GC{}
 	offset := 0
 	if valueMask&GCFunction != 0 {
 		if len(valuesData) < offset+4 {
 			return gc, 0, fmt.Errorf("%w: gc values too short for function", errParseError)
 		}
-		gc.Function = order.Uint32(valuesData[offset : offset+4])
+		gc.Function = uint32(valuesData[offset])
 		offset += 4
 	}
 	if valueMask&GCPlaneMask != 0 {
@@ -2788,6 +2763,146 @@ func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) 
 			return gc, 0, fmt.Errorf("%w: gc values too short for plane mask", errParseError)
 		}
 		gc.PlaneMask = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCForeground != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for foreground", errParseError)
+		}
+		gc.Foreground = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCBackground != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for background", errParseError)
+		}
+		gc.Background = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCLineWidth != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for line width", errParseError)
+		}
+		gc.LineWidth = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCLineStyle != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for line style", errParseError)
+		}
+		gc.LineStyle = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCCapStyle != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for cap style", errParseError)
+		}
+		gc.CapStyle = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCJoinStyle != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for join style", errParseError)
+		}
+		gc.JoinStyle = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCFillStyle != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for fill style", errParseError)
+		}
+		gc.FillStyle = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCFillRule != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for fill rule", errParseError)
+		}
+		gc.FillRule = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCTile != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for tile", errParseError)
+		}
+		gc.Tile = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCStipple != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for stipple", errParseError)
+		}
+		gc.Stipple = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCTileStipXOrigin != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for tile stip x origin", errParseError)
+		}
+		gc.TileStipXOrigin = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCTileStipYOrigin != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for tile stip y origin", errParseError)
+		}
+		gc.TileStipYOrigin = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCFont != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for font", errParseError)
+		}
+		gc.Font = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCSubwindowMode != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for subwindow mode", errParseError)
+		}
+		gc.SubwindowMode = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCGraphicsExposures != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for graphics exposures", errParseError)
+		}
+		gc.GraphicsExposures = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCClipXOrigin != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for clip x origin", errParseError)
+		}
+		gc.ClipXOrigin = int32(order.Uint32(valuesData[offset : offset+4]))
+		offset += 4
+	}
+	if valueMask&GCClipYOrigin != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for clip y origin", errParseError)
+		}
+		gc.ClipYOrigin = int32(order.Uint32(valuesData[offset : offset+4]))
+		offset += 4
+	}
+	if valueMask&GCClipMask != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for clip mask", errParseError)
+		}
+		gc.ClipMask = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCDashOffset != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for dash offset", errParseError)
+		}
+		gc.DashOffset = order.Uint32(valuesData[offset : offset+4])
+		offset += 4
+	}
+	if valueMask&GCDashList != 0 {
+		if len(valuesData) < offset+4 {
+			return gc, 0, fmt.Errorf("%w: gc values too short for dash list", errParseError)
+		}
+		gc.Dashes = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCForeground != 0 {

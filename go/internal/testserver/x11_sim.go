@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -251,11 +253,240 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn) {
 
 	s.simulateXEyes(x11Channel)
 	s.simulateColorOperations(x11Channel, replyChan)
+	s.simulateGCOperations(x11Channel)
 
 	s.t.Log("All drawing commands sent successfully")
 	close(s.x11SimDone)
 	time.Sleep(2 * time.Second)
 	x11Channel.Close()
+}
+
+const (
+	GCFunction          = 1 << 0
+	GCPlaneMask         = 1 << 1
+	GCForeground        = 1 << 2
+	GCBackground        = 1 << 3
+	GCLineWidth         = 1 << 4
+	GCLineStyle         = 1 << 5
+	GCCapStyle          = 1 << 6
+	GCJoinStyle         = 1 << 7
+	GCFillStyle         = 1 << 8
+	GCFillRule          = 1 << 9
+	GCTile              = 1 << 10
+	GCStipple           = 1 << 11
+	GCTileStipXOrigin   = 1 << 12
+	GCTileStipYOrigin   = 1 << 13
+	GCFont              = 1 << 14
+	GCSubwindowMode     = 1 << 15
+	GCGraphicsExposures = 1 << 16
+	GCClipXOrigin       = 1 << 17
+	GCClipYOrigin       = 1 << 18
+	GCClipMask          = 1 << 19
+	GCDashOffset        = 1 << 20
+	GCDashList          = 1 << 21
+	GCArcMode           = 1 << 22
+)
+
+func gcValuesToMap(values map[uint32]uint32) map[string]interface{} {
+	m := make(map[string]interface{})
+	if v, ok := values[GCFunction]; ok {
+		m["Function"] = v
+	}
+	if v, ok := values[GCPlaneMask]; ok {
+		m["PlaneMask"] = v
+	}
+	if v, ok := values[GCForeground]; ok {
+		m["Foreground"] = v
+	}
+	if v, ok := values[GCBackground]; ok {
+		m["Background"] = v
+	}
+	if v, ok := values[GCLineWidth]; ok {
+		m["LineWidth"] = v
+	}
+	if v, ok := values[GCLineStyle]; ok {
+		m["LineStyle"] = v
+	}
+	if v, ok := values[GCCapStyle]; ok {
+		m["CapStyle"] = v
+	}
+	if v, ok := values[GCJoinStyle]; ok {
+		m["JoinStyle"] = v
+	}
+	if v, ok := values[GCFillStyle]; ok {
+		m["FillStyle"] = v
+	}
+	if v, ok := values[GCFillRule]; ok {
+		m["FillRule"] = v
+	}
+	if v, ok := values[GCTile]; ok {
+		m["Tile"] = v
+	}
+	if v, ok := values[GCStipple]; ok {
+		m["Stipple"] = v
+	}
+	if v, ok := values[GCTileStipXOrigin]; ok {
+		m["TileStipXOrigin"] = v
+	}
+	if v, ok := values[GCTileStipYOrigin]; ok {
+		m["TileStipYOrigin"] = v
+	}
+	if v, ok := values[GCFont]; ok {
+		m["Font"] = v
+	}
+	if v, ok := values[GCSubwindowMode]; ok {
+		m["SubwindowMode"] = v
+	}
+	if v, ok := values[GCGraphicsExposures]; ok {
+		m["GraphicsExposures"] = v
+	}
+	if v, ok := values[GCClipXOrigin]; ok {
+		m["ClipXOrigin"] = v
+	}
+	if v, ok := values[GCClipYOrigin]; ok {
+		m["ClipYOrigin"] = v
+	}
+	if v, ok := values[GCClipMask]; ok {
+		m["ClipMask"] = v
+	}
+	if v, ok := values[GCDashOffset]; ok {
+		m["DashOffset"] = v
+	}
+	if v, ok := values[GCDashList]; ok {
+		m["Dashes"] = v
+	}
+	if v, ok := values[GCArcMode]; ok {
+		m["ArcMode"] = v
+	}
+	return m
+}
+
+func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
+	s.t.Log("Simulating GC operations")
+
+	// Create a new window for GC tests
+	gcWindowID := uint32(30)
+	if err := s.createWindow(channel, gcWindowID, 1, 220, 220, 300, 300); err != nil {
+		s.t.Errorf("Failed to create GC test window: %v", err)
+		return
+	}
+	if err := s.mapWindow(channel, gcWindowID); err != nil {
+		s.t.Errorf("Failed to map GC test window: %v", err)
+		return
+	}
+
+	// Create GCs with different attributes
+	// GC for thick red line
+	gcThickRed := uint32(300)
+	if err := s.createGCWithAttributes(channel, gcThickRed, gcWindowID, map[uint32]uint32{
+		GCForeground: 0xFF0000,
+		GCLineWidth:  5,
+	}); err != nil {
+		s.t.Errorf("Failed to create thick red GC: %v", err)
+		return
+	}
+	s.polyLine(channel, gcWindowID, gcThickRed, 0, []int16{10, 10, 100, 10})
+
+	// GC for dashed blue line with round caps and joins
+	gcDashedBlue := uint32(301)
+	if err := s.createGCWithAttributes(channel, gcDashedBlue, gcWindowID, map[uint32]uint32{
+		GCForeground: 0x0000FF,
+		GCCapStyle:   2, // Round
+		GCJoinStyle:  1, // Round
+		GCDashList:   4,
+	}); err != nil {
+		s.t.Errorf("Failed to create dashed blue GC: %v", err)
+		return
+	}
+	if err := s.setDashes(channel, gcDashedBlue, 0, []byte{4, 4}); err != nil {
+		s.t.Errorf("Failed to set dashes: %v", err)
+		return
+	}
+	s.polyLine(channel, gcWindowID, gcDashedBlue, 0, []int16{10, 30, 100, 30, 100, 50})
+
+	// GC for winding fill rule
+	gcWindingFill := uint32(302)
+	if err := s.createGCWithAttributes(channel, gcWindingFill, gcWindowID, map[uint32]uint32{
+		GCForeground: 0x00FF00,
+		GCFillRule:   1, // Winding
+	}); err != nil {
+		s.t.Errorf("Failed to create winding fill GC: %v", err)
+		return
+	}
+	points := []int16{150, 10, 180, 60, 120, 60, 150, 10}
+	s.fillPoly(channel, gcWindowID, gcWindingFill, 0, points)
+
+	// Tiled rectangle
+	tilePixmapID := uint32(400)
+	s.createPixmap(channel, tilePixmapID, gcWindowID, 8, 8, 24)
+	gcTile := uint32(303)
+	if err := s.createGCWithAttributes(channel, gcTile, tilePixmapID, map[uint32]uint32{
+		GCForeground: 0xFF00FF,
+	}); err != nil {
+		s.t.Errorf("Failed to create tile GC: %v", err)
+		return
+	}
+	s.polyFillRectangle(channel, tilePixmapID, gcTile, []int16{0, 0, 4, 4})
+	s.polyFillRectangle(channel, tilePixmapID, gcTile, []int16{4, 4, 4, 4})
+	gcTiledFill := uint32(304)
+	if err := s.createGCWithAttributes(channel, gcTiledFill, gcWindowID, map[uint32]uint32{
+		GCFillStyle: 1, // Tiled
+		GCTile:      tilePixmapID,
+	}); err != nil {
+		s.t.Errorf("Failed to create tiled fill GC: %v", err)
+		return
+	}
+	s.polyFillRectangle(channel, gcWindowID, gcTiledFill, []int16{10, 70, 100, 50})
+
+	// Stippled rectangle
+	stipplePixmapID := uint32(401)
+	s.createPixmap(channel, stipplePixmapID, gcWindowID, 8, 8, 1)
+	gcStipple := uint32(305)
+	if err := s.createGCWithAttributes(channel, gcStipple, stipplePixmapID, map[uint32]uint32{
+		GCForeground: 0x000000,
+	}); err != nil {
+		s.t.Errorf("Failed to create stipple GC: %v", err)
+		return
+	}
+	s.polyPoint(channel, stipplePixmapID, gcStipple, 0, []int16{0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7})
+	gcStippledFill := uint32(306)
+	if err := s.createGCWithAttributes(channel, gcStippledFill, gcWindowID, map[uint32]uint32{
+		GCForeground: 0x800080, // Purple
+		GCFillStyle:  2,        // Stippled
+		GCStipple:    stipplePixmapID,
+	}); err != nil {
+		s.t.Errorf("Failed to create stippled fill GC: %v", err)
+		return
+	}
+	s.polyFillRectangle(channel, gcWindowID, gcStippledFill, []int16{120, 70, 100, 50})
+
+	// GC for XOR function
+	gcXOR := uint32(307)
+	if err := s.createGCWithAttributes(channel, gcXOR, gcWindowID, map[uint32]uint32{
+		GCFunction:   6, // GXxor
+		GCForeground: 0xFF00FF,
+	}); err != nil {
+		s.t.Errorf("Failed to create XOR GC: %v", err)
+		return
+	}
+	s.polyFillRectangle(channel, gcWindowID, gcXOR, []int16{10, 130, 50, 50})
+	s.polyFillRectangle(channel, gcWindowID, gcXOR, []int16{40, 160, 50, 50})
+
+	// GC for ArcMode and font
+	fontID := uint32(402)
+	s.openFont(channel, fontID, "-*-helvetica-bold-r-normal--25-*-*-*-*-*-iso8859-1")
+	gcArcFont := uint32(308)
+	if err := s.createGCWithAttributes(channel, gcArcFont, gcWindowID, map[uint32]uint32{
+		GCForeground: 0x000000,
+		GCArcMode:    1, // PieSlice
+		GCFont:       fontID,
+	}); err != nil {
+		s.t.Errorf("Failed to create arc/font GC: %v", err)
+		return
+	}
+	s.polyFillArc(channel, gcWindowID, gcArcFont, []int16{120, 130, 100, 100, 0, 90 * 64})
+	s.imageText8(channel, gcWindowID, gcArcFont, 120, 250, []byte("Arc"))
+	s.closeFont(channel, fontID)
 }
 
 func (s *sshServer) readReplies(channel ssh.Channel) <-chan []byte {
@@ -800,40 +1031,10 @@ func (s *sshServer) createGC(channel ssh.Channel, gcID, drawable, foregroundColo
 }
 
 func (s *sshServer) createGCWithBackground(channel ssh.Channel, gcID, drawable, foregroundColor, backgroundColor uint32) error {
-	gcColors[gcID] = foregroundColor
-	x11Operations = append(x11Operations, X11Operation{
-		Type: "createGC",
-		Args: []any{gcID},
+	return s.createGCWithAttributes(channel, gcID, drawable, map[uint32]uint32{
+		1 << 2: foregroundColor,
+		1 << 3: backgroundColor,
 	})
-
-	// Opcode: 55
-	// Request Length: calculated
-	// GC ID: gcID
-	// Drawable ID: drawable
-	// Value Mask: GCForeground (1<<2) | GCBackground (1<<3)
-	// Value List: foreground pixel, background pixel
-
-	valueMask := uint32((1 << 2) | (1 << 3)) // GCForeground | GCBackground
-
-	// Fixed part of payload (8 bytes)
-	payload := make([]byte, 8)
-	binary.LittleEndian.PutUint32(payload[0:4], gcID)
-	binary.LittleEndian.PutUint32(payload[4:8], drawable)
-
-	// Value Mask (4 bytes)
-	valueMaskBytes := make([]byte, 4)
-	binary.LittleEndian.PutUint32(valueMaskBytes[0:4], valueMask)
-
-	// Value List (8 bytes: foregroundColor, backgroundColor)
-	valueList := make([]byte, 8)
-	binary.LittleEndian.PutUint32(valueList[0:4], foregroundColor)
-	binary.LittleEndian.PutUint32(valueList[4:8], backgroundColor)
-
-	fullPayload := append(payload, valueMaskBytes...)
-	fullPayload = append(fullPayload, valueList...)
-
-	_, err := s.writeX11Request(channel, 55, 0, fullPayload)
-	return err
 }
 
 func (s *sshServer) polyLine(channel ssh.Channel, drawable, gc uint32, coordinateMode byte, points []int16) error {
@@ -1208,41 +1409,11 @@ func (s *sshServer) listFonts(channel ssh.Channel, maxNames uint16, pattern stri
 }
 
 func (s *sshServer) createGCWithFont(channel ssh.Channel, gcID, drawable, foregroundColor, backgroundColor, fontID uint32) error {
-	gcColors[gcID] = foregroundColor
-	x11Operations = append(x11Operations, X11Operation{
-		Type: "createGC",
-		Args: []any{gcID},
+	return s.createGCWithAttributes(channel, gcID, drawable, map[uint32]uint32{
+		1 << 2:  foregroundColor,
+		1 << 3:  backgroundColor,
+		1 << 14: fontID,
 	})
-
-	// Opcode: 55
-	// Request Length: calculated
-	// GC ID: gcID
-	// Drawable ID: drawable
-	// Value Mask: GCForeground (1<<2) | GCBackground (1<<3) | GCFont (1<<14)
-	// Value List: foreground pixel, background pixel, font id
-
-	valueMask := uint32((1 << 2) | (1 << 3) | (1 << 14)) // GCForeground | GCBackground | GCFont
-
-	// Fixed part of payload (8 bytes)
-	payload := make([]byte, 8)
-	binary.LittleEndian.PutUint32(payload[0:4], gcID)
-	binary.LittleEndian.PutUint32(payload[4:8], drawable)
-
-	// Value Mask (4 bytes)
-	valueMaskBytes := make([]byte, 4)
-	binary.LittleEndian.PutUint32(valueMaskBytes[0:4], valueMask)
-
-	// Value List (12 bytes: foregroundColor, backgroundColor, fontID)
-	valueList := make([]byte, 12)
-	binary.LittleEndian.PutUint32(valueList[0:4], foregroundColor)
-	binary.LittleEndian.PutUint32(valueList[4:8], backgroundColor)
-	binary.LittleEndian.PutUint32(valueList[8:12], fontID)
-
-	_, err := s.writeX11Request(channel, 55, 0, append(append(payload, valueMaskBytes...), valueList...))
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func uint16SliceToString(s []uint16) string {
@@ -1492,5 +1663,72 @@ func (s *sshServer) freeColors(channel ssh.Channel, cmap, planeMask uint32, pixe
 	}
 
 	_, err := s.writeX11Request(channel, 88, 0, payload)
+	return err
+}
+
+func (s *sshServer) createGCWithAttributes(channel ssh.Channel, gcID, drawable uint32, values map[uint32]uint32) error {
+	if foregroundColor, ok := values[GCForeground]; ok {
+		gcColors[gcID] = foregroundColor
+	}
+
+	var valueMask uint32
+	var sortedMasks []uint32
+	for mask := range values {
+		sortedMasks = append(sortedMasks, mask)
+	}
+	sort.Slice(sortedMasks, func(i, j int) bool {
+		return sortedMasks[i] < sortedMasks[j]
+	})
+
+	var valueList []byte
+	for _, mask := range sortedMasks {
+		valueMask |= mask
+		valueBytes := make([]byte, 4)
+		binary.LittleEndian.PutUint32(valueBytes, values[mask])
+		valueList = append(valueList, valueBytes...)
+	}
+
+	payload := make([]byte, 12) // gcID, drawable, valueMask
+	binary.LittleEndian.PutUint32(payload[0:4], gcID)
+	binary.LittleEndian.PutUint32(payload[4:8], drawable)
+	binary.LittleEndian.PutUint32(payload[8:12], valueMask)
+	payload = append(payload, valueList...)
+
+	x11Operations = append(x11Operations, X11Operation{
+		Type: "createGCWithAttributes",
+		Args: []any{gcID, valueMask, gcValuesToMap(values)},
+	})
+
+	_, err := s.writeX11Request(channel, 55, 0, payload)
+	return err
+}
+
+func (s *sshServer) setDashes(channel ssh.Channel, gcID uint32, dashOffset uint16, dashes []byte) error {
+	x11Operations = append(x11Operations, X11Operation{
+		Type: "setDashes",
+		Args: []any{gcID, dashOffset, base64.StdEncoding.EncodeToString(dashes)},
+	})
+	payload := make([]byte, 8+len(dashes))
+	binary.LittleEndian.PutUint32(payload[0:4], gcID)
+	binary.LittleEndian.PutUint16(payload[4:6], dashOffset)
+	binary.LittleEndian.PutUint16(payload[6:8], uint16(len(dashes)))
+	copy(payload[8:], dashes)
+
+	_, err := s.writeX11Request(channel, 58, 0, payload)
+	return err
+}
+
+func (s *sshServer) createPixmap(channel ssh.Channel, pid, drawable, width, height, depth uint32) error {
+	x11Operations = append(x11Operations, X11Operation{
+		Type: "createPixmap",
+		Args: []any{pid, drawable, width, height, depth},
+	})
+	payload := make([]byte, 16)
+	binary.LittleEndian.PutUint32(payload[0:4], pid)
+	binary.LittleEndian.PutUint32(payload[4:8], drawable)
+	binary.LittleEndian.PutUint16(payload[8:10], uint16(width))
+	binary.LittleEndian.PutUint16(payload[10:12], uint16(height))
+	payload[12] = 0 // unused
+	_, err := s.writeX11Request(channel, 53, byte(depth), payload)
 	return err
 }

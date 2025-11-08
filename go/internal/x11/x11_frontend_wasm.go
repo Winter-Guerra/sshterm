@@ -758,12 +758,12 @@ func (w *wasmX11Frontend) getLowestZIndex() int {
 	}
 	return lowest
 }
-func (w *wasmX11Frontend) CreateGC(xid xID, gc GC) {
-	debugf("X11: createGC id=%s gc=%+v", xid, gc)
-	w.gcs[xid] = gc
+func (w *wasmX11Frontend) CreateGCWithAttributes(xid xID, valueMask uint32, values GC) {
+	debugf("X11: createGC id=%s gc=%+v", xid, values)
+	w.gcs[xid] = values
 	w.recordOperation(CanvasOperation{
-		Type: "createGC",
-		Args: []any{xid.local},
+		Type: "createGCWithAttributes",
+		Args: []any{xid.local, valueMask, values},
 	})
 }
 
@@ -993,58 +993,93 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 }
 
 func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gc GC) {
-	ctx.Set("lineWidth", gc.LineWidth)
-	switch gc.CapStyle {
-	case 0: // CapNotLast
-		ctx.Set("lineCap", "butt")
-	case 1: // CapButt
-		ctx.Set("lineCap", "butt")
-	case 2: // CapRound
-		ctx.Set("lineCap", "round")
-	case 3: // CapProjecting
-		ctx.Set("lineCap", "square")
+	// function (logic op)
+	// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
+	switch gc.Function {
+	case GXclear:
+		ctx.Set("globalCompositeOperation", "destination-out")
+	case GXand:
+		// Not directly supported
+	case GXandReverse:
+		// Not directly supported
+	case GXcopy:
+		ctx.Set("globalCompositeOperation", "source-over")
+	case GXandInverted:
+		// Not directly supported
+	case GXnoop:
+		// No operation
+	case GXxor:
+		ctx.Set("globalCompositeOperation", "xor")
+	case GXor:
+		// Not directly supported
+	case GXnor:
+		// Not directly supported
+	case GXequiv:
+		// Not directly supported
+	case GXinvert:
+		ctx.Set("globalCompositeOperation", "difference")
+	case GXorReverse:
+		// Not directly supported
+	case GXcopyInverted:
+		// Not directly supported
+	case GXorInverted:
+		// Not directly supported
+	case GXnand:
+		// Not directly supported
+	case GXset:
+		// Not directly supported
 	}
-	switch gc.JoinStyle {
-	case 0: // JoinMiter
-		ctx.Set("lineJoin", "miter")
-	case 1: // JoinRound
-		ctx.Set("lineJoin", "round")
-	case 2: // JoinBevel
-		ctx.Set("lineJoin", "bevel")
-	}
-	// function (logic op) - This is not directly supported by the HTML5 canvas.
-	// A possible implementation is to get the destination image data,
-	// perform the logical operation pixel by pixel, and then put the modified
-	// image data back onto the canvas. This would be computationally expensive.
-	// For now, we will ignore this attribute.
-	//
-	// plane-mask - This is not directly supported by the HTML5 canvas.
-	// This could be implemented by manipulating the pixels of the image data
-	// before drawing. For now, we will ignore this attribute.
-	//
+
 	// foreground
 	color := w.getForegroundColor(colormap, gc)
 	ctx.Set("strokeStyle", color)
+	ctx.Set("fillStyle", color)
+
+	// line-width
+	ctx.Set("lineWidth", gc.LineWidth)
+
+	// line-style, cap-style, join-style
+	switch gc.LineStyle {
+	case LineStyleOnOffDash, LineStyleDoubleDash:
+		// Dashes are handled in applyDashes
+	case LineStyleSolid:
+		ctx.Call("setLineDash", js.Global().Get("Array").New())
+	}
+
+	switch gc.CapStyle {
+	case CapStyleNotLast, CapStyleButt:
+		ctx.Set("lineCap", "butt")
+	case CapStyleRound:
+		ctx.Set("lineCap", "round")
+	case CapStyleProjecting:
+		ctx.Set("lineCap", "square")
+	}
+
+	switch gc.JoinStyle {
+	case JoinStyleMiter:
+		ctx.Set("lineJoin", "miter")
+	case JoinStyleRound:
+		ctx.Set("lineJoin", "round")
+	case JoinStyleBevel:
+		ctx.Set("lineJoin", "bevel")
+	}
 
 	// fill-style
 	switch gc.FillStyle {
-	case 0: // FillStyleSolid
+	case FillStyleSolid:
 		ctx.Set("fillStyle", color)
-	case 1: // FillStyleTiled
-		if tilePixmap, ok := w.pixmaps[xID{0, gc.Tile}]; ok {
+	case FillStyleTiled:
+		if tilePixmap, ok := w.pixmaps[xID{local: gc.Tile}]; ok {
 			pattern := ctx.Call("createPattern", tilePixmap.canvas, "repeat")
 			ctx.Set("fillStyle", pattern)
 		}
-	case 2: // FillStyleStippled
-		if stipplePixmap, ok := w.pixmaps[xID{0, gc.Stipple}]; ok {
-			// Create a new canvas to draw the stipple pattern
+	case FillStyleStippled:
+		if stipplePixmap, ok := w.pixmaps[xID{local: gc.Stipple}]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
-			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width").Int())
-			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height").Int())
+			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
+			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height"))
 			stippleCtx := stippleCanvas.Call("getContext", "2d")
 
-			// Draw the stipple pixmap onto the new canvas, replacing black with the foreground color
-			// and white with transparent.
 			stippleCtx.Set("fillStyle", color)
 			stippleCtx.Call("fillRect", 0, 0, stippleCanvas.Get("width"), stippleCanvas.Get("height"))
 			stippleCtx.Set("globalCompositeOperation", "destination-in")
@@ -1053,21 +1088,18 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gc GC) {
 			pattern := ctx.Call("createPattern", stippleCanvas, "repeat")
 			ctx.Set("fillStyle", pattern)
 		}
-	case 3: // FillStyleOpaqueStippled
-		if stipplePixmap, ok := w.pixmaps[xID{0, gc.Stipple}]; ok {
-			// Create a new canvas to draw the stipple pattern
+	case FillStyleOpaqueStippled:
+		if stipplePixmap, ok := w.pixmaps[xID{local: gc.Stipple}]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
-			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width").Int())
-			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height").Int())
+			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
+			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height"))
 			stippleCtx := stippleCanvas.Call("getContext", "2d")
 
-			// Draw the background color
 			r, g, b := w.GetRGBColor(colormap, gc.Background)
 			bgColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
 			stippleCtx.Set("fillStyle", bgColor)
 			stippleCtx.Call("fillRect", 0, 0, stippleCanvas.Get("width"), stippleCanvas.Get("height"))
 
-			// Draw the foreground color where the stipple pixmap is set
 			stippleCtx.Set("fillStyle", color)
 			stippleCtx.Call("fillRect", 0, 0, stippleCanvas.Get("width"), stippleCanvas.Get("height"))
 			stippleCtx.Set("globalCompositeOperation", "destination-in")
@@ -1078,23 +1110,12 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gc GC) {
 		}
 	}
 
-	// background
-	// line-style - Implemented via applyDashes
-	// fill-style - Not applicable to line drawing
-	// fill-rule - Not applicable to line drawing
-	// arc-mode - Not applicable to line drawing
-	// tile - Not applicable to line drawing, part of fill style
-	// stipple - Not applicable to line drawing, part of fill style
-	// tile-stipple-x-origin - Not applicable
-	// tile-stipple-y-origin - Not applicable
-	// font - Not applicable
-	// subwindow-mode - Not applicable
-	// graphics-exposures - Not applicable
-	// clip-x-origin - Handled in applyClipping
-	// clip-y-origin - Handled in applyClipping
-	// clip-mask - Handled in applyClipping
-	// dash-offset - Handled in applyDashes
-	// dashes - Handled in applyDashes
+	// font
+	if gc.Font != 0 {
+		if font, ok := w.fonts[xID{local: gc.Font}]; ok {
+			ctx.Set("font", font.cssFont)
+		}
+	}
 }
 
 func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {

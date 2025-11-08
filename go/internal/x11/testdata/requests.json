@@ -473,59 +473,59 @@
   },
   {
     "raw": "37000400050000000100000000000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x5, Drawable:0x1, ValueMask:0x0, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0x1, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x5, Drawable:0x1, ValueMask:0x0, Values:x11.GC{Function:0x0, PlaneMask:0x0, Foreground:0x0, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x0, ArcMode:0x0}}"
   },
   {
     "raw": "37000400070000000600000000000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x7, Drawable:0x6, ValueMask:0x0, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0x1, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x7, Drawable:0x6, ValueMask:0x0, Values:x11.GC{Function:0x0, PlaneMask:0x0, Foreground:0x0, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x0, ArcMode:0x0}}"
   },
   {
     "raw": "370004000d0000000900000000000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0xd, Drawable:0x9, ValueMask:0x0, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0x1, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0xd, Drawable:0x9, ValueMask:0x0, Values:x11.GC{Function:0x0, PlaneMask:0x0, Foreground:0x0, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x0, ArcMode:0x0}}"
   },
   {
     "raw": "37000500000000000000000008000000ffffff00",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x0, Drawable:0x0, ValueMask:0x8, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x0, Drawable:0x0, ValueMask:0x8, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "37000500090000000800000008000000ffffff00",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x9, Drawable:0x8, ValueMask:0x8, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x9, Drawable:0x8, ValueMask:0x8, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "370005000c000000090000000000010000000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0xc, Drawable:0x9, ValueMask:0x10000, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0x1, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0xc, Drawable:0x9, ValueMask:0x10000, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0x1, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "370006000a000000080000000c000000ffffff0000000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0xa, Drawable:0x8, ValueMask:0xc, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0xa, Drawable:0x8, ValueMask:0xc, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "370006000a0000000900000008400000ffffff0008000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0xa, Drawable:0x9, ValueMask:0x4008, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x8, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0xa, Drawable:0x9, ValueMask:0x4008, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x8, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "370006000b0000000900000004000100ffffff0000000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0xb, Drawable:0x9, ValueMask:0x10004, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x1, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0xb, Drawable:0x9, ValueMask:0x10004, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x1, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "370006000f0000000e0000000c0000000100000000000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0xf, Drawable:0xe, ValueMask:0xc, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x1, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0xf, Drawable:0xe, ValueMask:0xc, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x1, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "37000700100000000600000008090000ffffff00030000000e000000",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x10, Drawable:0x6, ValueMask:0x908, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x3, FillRule:0x0, Tile:0x0, Stipple:0xe, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x10, Drawable:0x6, ValueMask:0x908, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x3, FillRule:0x0, Tile:0x0, Stipple:0xe, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x0, SubwindowMode:0x0, GraphicsExposures:0x1, ClipXOrigin:0, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "37000800120000000600000008400300ffffff001100000000000000806b6e1c",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x12, Drawable:0x6, ValueMask:0x34008, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x11, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:476998528, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x12, Drawable:0x6, ValueMask:0x34008, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0x0, Background:0xffffff, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x11, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:476998528, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "3700090013000000060000000c400300ffffff00000000001100000000000000806b6e1c",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x13, Drawable:0x6, ValueMask:0x3400c, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x11, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:476998528, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x13, Drawable:0x6, ValueMask:0x3400c, Values:x11.GC{Function:0x3, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x11, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:476998528, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "37000a0014000000060000000d40030006000000ffffff00000000001100000000000000806b6e1c",
-    "want": "\u0026x11.CreateGCRequest{Cid:0x14, Drawable:0x6, ValueMask:0x3400d, Values:x11.GC{Function:0x6, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x1, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x11, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:476998528, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x1}}"
+    "want": "\u0026x11.CreateGCRequest{Cid:0x14, Drawable:0x6, ValueMask:0x3400d, Values:x11.GC{Function:0x6, PlaneMask:0xffffffff, Foreground:0xffffff, Background:0x0, LineWidth:0x0, LineStyle:0x0, CapStyle:0x0, JoinStyle:0x0, FillStyle:0x0, FillRule:0x0, Tile:0x0, Stipple:0x0, TileStipXOrigin:0x0, TileStipYOrigin:0x0, Font:0x11, SubwindowMode:0x0, GraphicsExposures:0x0, ClipXOrigin:476998528, ClipYOrigin:0, ClipMask:0x0, DashOffset:0x0, Dashes:0x4, ArcMode:0x0}}"
   },
   {
     "raw": "3c00020000000000",
