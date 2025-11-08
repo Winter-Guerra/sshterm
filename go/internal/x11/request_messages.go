@@ -2749,13 +2749,38 @@ func min(a, b int) int {
 	return b
 }
 func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) (GC, int, error) {
-	gc := GC{}
+	// http://www.x.org/releases/X11R7.6/doc/xproto/x11protocol.html#requests:CreateGC
+	gc := GC{
+		Function:          FunctionCopy,
+		PlaneMask:         ^uint32(0),
+		Foreground:        0,
+		Background:        1,
+		LineWidth:         0,
+		LineStyle:         LineStyleSolid,
+		CapStyle:          CapStyleButt,
+		JoinStyle:         JoinStyleMiter,
+		FillStyle:         FillStyleSolid,
+		FillRule:          FillRuleEvenOdd,
+		Tile:              0, // pixmap of unspecified size filled with foreground pixel
+		Stipple:           0, // pixmap of unspecified size filled with ones
+		TileStipXOrigin:   0,
+		TileStipYOrigin:   0,
+		Font:              0, // server-dependent
+		SubwindowMode:     SubwindowModeClipByChildren,
+		GraphicsExposures: 1, // true
+		ClipXOrigin:       0,
+		ClipYOrigin:       0,
+		ClipMask:          0, // no clip mask
+		DashOffset:        0,
+		Dashes:            4,
+		ArcMode:           ArcModePieSlice,
+	}
 	offset := 0
 	if valueMask&GCFunction != 0 {
 		if len(valuesData) < offset+4 {
 			return gc, 0, fmt.Errorf("%w: gc values too short for function", errParseError)
 		}
-		gc.Function = uint32(valuesData[offset])
+		gc.Function = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCPlaneMask != 0 {
@@ -2898,7 +2923,7 @@ func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) 
 		gc.DashOffset = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
-	if valueMask&GCDashList != 0 {
+	if valueMask&GCDashes != 0 {
 		if len(valuesData) < offset+4 {
 			return gc, 0, fmt.Errorf("%w: gc values too short for dash list", errParseError)
 		}

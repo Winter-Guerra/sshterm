@@ -44,7 +44,7 @@ type X11FrontendAPI interface {
 	ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes)
 	GetWindowAttributes(xid xID) WindowAttributes
 	ChangeProperty(xid xID, property, typeAtom, format uint32, data []byte)
-	CreateGC(xid xID, gc GC)
+	CreateGCWithAttributes(xid xID, valueMask uint32, values GC)
 	ChangeGC(xid xID, valueMask uint32, gc GC)
 	DestroyWindow(xid xID)
 	DestroyAllWindowsForClient(clientID uint32)
@@ -423,13 +423,18 @@ func (s *x11Server) rootWindowID() uint32 {
 }
 
 func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
+	client.sequence++
 	var header [4]byte
+	lengthError := func() {
+		client.send(NewError(LengthErrorCode, client.sequence, 0, 0, reqCode(header[0])))
+	}
 	if _, err := io.ReadFull(client.conn, header[:]); err != nil {
 		return nil, 0, err
 	}
 	length := client.byteOrder.Uint16(header[2:4])
 	if length == 0 {
-		length = 1
+		lengthError()
+		return nil, 0, errParseError
 	}
 	raw := make([]byte, 4*length)
 	copy(raw, header[:])
@@ -441,9 +446,9 @@ func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
 	debugf("X11DEBUG: RAW Request: %x", raw)
 	req, err := parseRequest(client.byteOrder, raw)
 	if err != nil {
+		lengthError()
 		return nil, 0, err
 	}
-	client.sequence++
 	return req, client.sequence, nil
 }
 
@@ -959,7 +964,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 		s.gcs[xid] = p.Values
-		s.frontend.CreateGC(xid, p.Values)
+		s.frontend.CreateGCWithAttributes(xid, p.ValueMask, p.Values)
 
 	case *ChangeGCRequest:
 		xid := client.xID(uint32(p.Gc))
@@ -1027,7 +1032,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			if p.ValueMask&GCDashOffset != 0 {
 				existingGC.DashOffset = p.Values.DashOffset
 			}
-			if p.ValueMask&GCDashList != 0 {
+			if p.ValueMask&GCDashes != 0 {
 				existingGC.Dashes = p.Values.Dashes
 			}
 			if p.ValueMask&GCArcMode != 0 {

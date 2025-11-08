@@ -3,57 +3,21 @@
 package x11
 
 import (
-	"syscall/js"
 	"encoding/json"
+	"syscall/js"
 )
 
 func (w *wasmX11Frontend) recordOperation(op CanvasOperation) {
 	for i, arg := range op.Args {
-		if gc, ok := arg.(*GC); ok {
-			op.Args[i] = map[string]interface{}{
-				"Function":          gc.Function,
-				"PlaneMask":         gc.PlaneMask,
-				"Foreground":        gc.Foreground,
-				"Background":        gc.Background,
-				"LineWidth":         gc.LineWidth,
-				"LineStyle":         gc.LineStyle,
-				"CapStyle":          gc.CapStyle,
-				"JoinStyle":         gc.JoinStyle,
-				"FillStyle":         gc.FillStyle,
-				"FillRule":          gc.FillRule,
-				"Tile":              gc.Tile,
-				"Stipple":           gc.Stipple,
-				"TileStipXOrigin":   gc.TileStipXOrigin,
-				"TileStipYOrigin":   gc.TileStipYOrigin,
-				"Font":              gc.Font,
-				"SubwindowMode":     gc.SubwindowMode,
-				"GraphicsExposures": gc.GraphicsExposures,
-				"ClipXOrigin":       gc.ClipXOrigin,
-				"ClipYOrigin":       gc.ClipYOrigin,
-				"ClipMask":          gc.ClipMask,
-				"DashOffset":        gc.DashOffset,
-				"Dashes":            gc.Dashes,
-				"ArcMode":           gc.ArcMode,
-			}
-		} else if slice, ok := arg.([]uint32); ok {
-			anySlice := make([]any, len(slice))
-			for j, v := range slice {
-				anySlice[j] = v
-			}
-			op.Args[i] = anySlice
-		} else if items, ok := arg.([]PolyText8Item); ok {
-			anySlice := make([]any, len(items))
-			for j, v := range items {
-				anySlice[j] = map[string]any{"delta": v.Delta, "text": string(v.Str)}
-			}
-			op.Args[i] = anySlice
-		} else if items, ok := arg.([]PolyText16Item); ok {
-			anySlice := make([]any, len(items))
-			for j, v := range items {
-				anySlice[j] = map[string]any{"delta": v.Delta, "text": uint16SliceToString(v.Str)}
-			}
-			op.Args[i] = anySlice
+		b, err := json.Marshal(arg)
+		if err != nil {
+			debugf("ERR recordOperation: %v", err)
 		}
+		var v any
+		if err := json.Unmarshal(b, &v); err != nil {
+			debugf("ERR recordOperation: %v", err)
+		}
+		op.Args[i] = v
 	}
 	w.canvasOperations = append(w.canvasOperations, op)
 }
@@ -76,16 +40,9 @@ func (w *wasmX11Frontend) initCanvasOperations() {
 		ops := w.GetCanvasOperations()
 		jsOps := make([]interface{}, len(ops))
 		for i, op := range ops {
-			args := make([]any, 0, len(op.Args))
-			for _, arg := range op.Args {
-				b, _ := json.Marshal(arg)
-				var v any
-				json.Unmarshal(b, &v)
-				args = append(args, v)
-			}
 			jsOps[i] = map[string]interface{}{
 				"Type":        op.Type,
-				"Args":        args,
+				"Args":        op.Args,
 				"FillStyle":   op.FillStyle,
 				"StrokeStyle": op.StrokeStyle,
 			}
