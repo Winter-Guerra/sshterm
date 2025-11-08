@@ -773,6 +773,10 @@ func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc GC) {
 	if !ok {
 		// This shouldn't happen, but if it does, treat it as a CreateGC
 		w.gcs[xid] = gc
+		w.recordOperation(CanvasOperation{
+			Type: "createGC",
+			Args: []any{xid.local},
+		})
 		return
 	}
 
@@ -846,6 +850,7 @@ func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc GC) {
 		existingGC.ArcMode = gc.ArcMode
 	}
 
+	w.gcs[xid] = existingGC
 	w.recordOperation(CanvasOperation{
 		Type: "changeGC",
 		Args: []any{xid.local, valueMask},
@@ -987,6 +992,111 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	})
 }
 
+func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gc GC) {
+	ctx.Set("lineWidth", gc.LineWidth)
+	switch gc.CapStyle {
+	case 0: // CapNotLast
+		ctx.Set("lineCap", "butt")
+	case 1: // CapButt
+		ctx.Set("lineCap", "butt")
+	case 2: // CapRound
+		ctx.Set("lineCap", "round")
+	case 3: // CapProjecting
+		ctx.Set("lineCap", "square")
+	}
+	switch gc.JoinStyle {
+	case 0: // JoinMiter
+		ctx.Set("lineJoin", "miter")
+	case 1: // JoinRound
+		ctx.Set("lineJoin", "round")
+	case 2: // JoinBevel
+		ctx.Set("lineJoin", "bevel")
+	}
+	// function (logic op) - This is not directly supported by the HTML5 canvas.
+	// A possible implementation is to get the destination image data,
+	// perform the logical operation pixel by pixel, and then put the modified
+	// image data back onto the canvas. This would be computationally expensive.
+	// For now, we will ignore this attribute.
+	//
+	// plane-mask - This is not directly supported by the HTML5 canvas.
+	// This could be implemented by manipulating the pixels of the image data
+	// before drawing. For now, we will ignore this attribute.
+	//
+	// foreground
+	color := w.getForegroundColor(colormap, gc)
+	ctx.Set("strokeStyle", color)
+
+	// fill-style
+	switch gc.FillStyle {
+	case 0: // FillStyleSolid
+		ctx.Set("fillStyle", color)
+	case 1: // FillStyleTiled
+		if tilePixmap, ok := w.pixmaps[xID{0, gc.Tile}]; ok {
+			pattern := ctx.Call("createPattern", tilePixmap.canvas, "repeat")
+			ctx.Set("fillStyle", pattern)
+		}
+	case 2: // FillStyleStippled
+		if stipplePixmap, ok := w.pixmaps[xID{0, gc.Stipple}]; ok {
+			// Create a new canvas to draw the stipple pattern
+			stippleCanvas := w.document.Call("createElement", "canvas")
+			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width").Int())
+			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height").Int())
+			stippleCtx := stippleCanvas.Call("getContext", "2d")
+
+			// Draw the stipple pixmap onto the new canvas, replacing black with the foreground color
+			// and white with transparent.
+			stippleCtx.Set("fillStyle", color)
+			stippleCtx.Call("fillRect", 0, 0, stippleCanvas.Get("width"), stippleCanvas.Get("height"))
+			stippleCtx.Set("globalCompositeOperation", "destination-in")
+			stippleCtx.Call("drawImage", stipplePixmap.canvas, 0, 0)
+
+			pattern := ctx.Call("createPattern", stippleCanvas, "repeat")
+			ctx.Set("fillStyle", pattern)
+		}
+	case 3: // FillStyleOpaqueStippled
+		if stipplePixmap, ok := w.pixmaps[xID{0, gc.Stipple}]; ok {
+			// Create a new canvas to draw the stipple pattern
+			stippleCanvas := w.document.Call("createElement", "canvas")
+			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width").Int())
+			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height").Int())
+			stippleCtx := stippleCanvas.Call("getContext", "2d")
+
+			// Draw the background color
+			r, g, b := w.GetRGBColor(colormap, gc.Background)
+			bgColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
+			stippleCtx.Set("fillStyle", bgColor)
+			stippleCtx.Call("fillRect", 0, 0, stippleCanvas.Get("width"), stippleCanvas.Get("height"))
+
+			// Draw the foreground color where the stipple pixmap is set
+			stippleCtx.Set("fillStyle", color)
+			stippleCtx.Call("fillRect", 0, 0, stippleCanvas.Get("width"), stippleCanvas.Get("height"))
+			stippleCtx.Set("globalCompositeOperation", "destination-in")
+			stippleCtx.Call("drawImage", stipplePixmap.canvas, 0, 0)
+
+			pattern := ctx.Call("createPattern", stippleCanvas, "repeat")
+			ctx.Set("fillStyle", pattern)
+		}
+	}
+
+	// background
+	// line-style - Implemented via applyDashes
+	// fill-style - Not applicable to line drawing
+	// fill-rule - Not applicable to line drawing
+	// arc-mode - Not applicable to line drawing
+	// tile - Not applicable to line drawing, part of fill style
+	// stipple - Not applicable to line drawing, part of fill style
+	// tile-stipple-x-origin - Not applicable
+	// tile-stipple-y-origin - Not applicable
+	// font - Not applicable
+	// subwindow-mode - Not applicable
+	// graphics-exposures - Not applicable
+	// clip-x-origin - Handled in applyClipping
+	// clip-y-origin - Handled in applyClipping
+	// clip-mask - Handled in applyClipping
+	// dash-offset - Handled in applyDashes
+	// dashes - Handled in applyDashes
+}
+
 func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
@@ -994,23 +1104,31 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 	}
 	debugf("X11: polyLine drawable=%s gc=%v points=%v", drawable, gc, points)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			w.applyDashes(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("strokeStyle", color)
-			winInfo.ctx.Call("beginPath")
-			if len(points) >= 2 {
-				winInfo.ctx.Call("moveTo", points[0], points[1])
-				for i := 2; i < len(points); i += 2 {
-					winInfo.ctx.Call("lineTo", points[i], points[i+1])
-				}
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		w.applyDashes(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		ctx.Call("beginPath")
+		if len(points) >= 2 {
+			ctx.Call("moveTo", points[0], points[1])
+			for i := 2; i < len(points); i += 2 {
+				ctx.Call("lineTo", points[i], points[i+1])
 			}
-			winInfo.ctx.Call("stroke")
 		}
+		ctx.Call("stroke")
 	}
 	w.recordOperation(CanvasOperation{
 		Type:        "polyLine",
@@ -1049,17 +1167,24 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 	}
 	debugf("X11: polyFillRectangle drawable=%s gc=%v rects=%v GCFunction=%d", drawable, gc, rects, gc.Function)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			w.applyDashes(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
-			for i := 0; i < len(rects); i += 4 {
-				winInfo.ctx.Call("fillRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
-			}
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		for i := 0; i < len(rects); i += 4 {
+			ctx.Call("fillRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1076,24 +1201,40 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 	}
 	debugf("X11: fillPoly drawable=%s gc=%v points=%v", drawable, gc, points)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			w.applyDashes(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
-			winInfo.ctx.Call("beginPath")
-			if len(points) >= 2 {
-				winInfo.ctx.Call("moveTo", points[0], points[1])
-				for i := 2; i < len(points); i += 2 {
-					winInfo.ctx.Call("lineTo", points[i], points[i+1])
-				}
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		ctx.Call("beginPath")
+		if len(points) >= 2 {
+			ctx.Call("moveTo", points[0], points[1])
+			for i := 2; i < len(points); i += 2 {
+				ctx.Call("lineTo", points[i], points[i+1])
 			}
-			winInfo.ctx.Call("closePath")
-			winInfo.ctx.Call("fill")
 		}
+		ctx.Call("closePath")
+		var fillRule string
+		switch gc.FillRule {
+		case 0: // EvenOddRule
+			fillRule = "evenodd"
+		case 1: // WindingRule
+			fillRule = "nonzero"
+		default:
+			fillRule = "nonzero"
+		}
+		ctx.Call("fill", fillRule)
 	}
 	w.recordOperation(CanvasOperation{
 		Type:      "fillPoly",
@@ -1109,20 +1250,28 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 	}
 	debugf("X11: polySegment drawable=%s gc=%v segments=%v", drawable, gc, segments)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			w.applyDashes(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("strokeStyle", color)
-			for i := 0; i < len(segments); i += 4 {
-				winInfo.ctx.Call("beginPath")
-				winInfo.ctx.Call("moveTo", segments[i], segments[i+1])
-				winInfo.ctx.Call("lineTo", segments[i+2], segments[i+3])
-				winInfo.ctx.Call("stroke")
-			}
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		w.applyDashes(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		for i := 0; i < len(segments); i += 4 {
+			ctx.Call("beginPath")
+			ctx.Call("moveTo", segments[i], segments[i+1])
+			ctx.Call("lineTo", segments[i+2], segments[i+3])
+			ctx.Call("stroke")
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1139,17 +1288,24 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 	}
 	debugf("X11: polyPoint drawable=%s gc=%v points=%v", drawable, gc, points)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			w.applyDashes(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
-			for i := 0; i < len(points); i += 2 {
-				winInfo.ctx.Call("fillRect", points[i], points[i+1], 1, 1)
-			}
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		for i := 0; i < len(points); i += 2 {
+			ctx.Call("fillRect", points[i], points[i+1], 1, 1)
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1166,17 +1322,25 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 	}
 	debugf("X11: polyRectangle drawable=%s gc=%v rects=%v", drawable, gc, rects)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			w.applyDashes(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("strokeStyle", color)
-			for i := 0; i < len(rects); i += 4 {
-				winInfo.ctx.Call("strokeRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
-			}
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		w.applyDashes(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		for i := 0; i < len(rects); i += 4 {
+			ctx.Call("strokeRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1193,28 +1357,36 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 	}
 	debugf("X11: polyArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			w.applyDashes(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("strokeStyle", color)
-			for i := 0; i < len(arcs); i += 6 {
-				winInfo.ctx.Call("beginPath")
-				// X11 angles are in 1/64th degrees, clockwise. Canvas angles are in radians, clockwise.
-				// Start angle: arcs[i+4] / 64 * (Math.PI / 180)
-				// End angle: (arcs[i+4] + arcs[i+5]) / 64 * (Math.PI / 180)
-				startAngle := float64(arcs[i+4]) / 64 * (math.Pi / 180)
-				endAngle := float64(arcs[i+4]+arcs[i+5]) / 64 * (math.Pi / 180)
-				rx := uint32(arcs[i+2] / 2)
-				ry := uint32(arcs[i+3] / 2)
-				x := uint32(arcs[i] + rx)
-				y := uint32(arcs[i+1] + ry)
-				winInfo.ctx.Call("ellipse", x, y, rx, ry, 0, startAngle, endAngle)
-				winInfo.ctx.Call("stroke")
-			}
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		w.applyDashes(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		for i := 0; i < len(arcs); i += 6 {
+			ctx.Call("beginPath")
+			// X11 angles are in 1/64th degrees, clockwise. Canvas angles are in radians, clockwise.
+			// Start angle: arcs[i+4] / 64 * (Math.PI / 180)
+			// End angle: (arcs[i+4] + arcs[i+5]) / 64 * (Math.PI / 180)
+			startAngle := float64(arcs[i+4]) / 64 * (math.Pi / 180)
+			endAngle := float64(arcs[i+4]+arcs[i+5]) / 64 * (math.Pi / 180)
+			rx := uint32(arcs[i+2] / 2)
+			ry := uint32(arcs[i+3] / 2)
+			x := uint32(arcs[i] + rx)
+			y := uint32(arcs[i+1] + ry)
+			ctx.Call("ellipse", x, y, rx, ry, 0, startAngle, endAngle)
+			ctx.Call("stroke")
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1231,24 +1403,44 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 	}
 	debugf("X11: polyFillArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
 	color := "??????"
+	var ctx js.Value
+	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyClipping(gcID, winInfo.ctx)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
-			for i := 0; i < len(arcs); i += 6 {
-				winInfo.ctx.Call("beginPath")
-				startAngle := float64(arcs[i+4]) / 64 * (math.Pi / 180)
-				endAngle := float64(arcs[i+4]+arcs[i+5]) / 64 * (math.Pi / 180)
-				rx := uint32(arcs[i+2] / 2)
-				ry := uint32(arcs[i+3] / 2)
-				x := uint32(arcs[i] + rx)
-				y := uint32(arcs[i+1] + ry)
-				winInfo.ctx.Call("ellipse", x, y, rx, ry, 0, startAngle, endAngle)
-				winInfo.ctx.Call("fill")
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		ctx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	}
+
+	if !ctx.IsUndefined() {
+		ctx.Call("save")
+		defer ctx.Call("restore")
+		w.applyGC(ctx, colormap, gc)
+		w.applyClipping(gcID, ctx)
+		color = w.getForegroundColor(colormap, gc)
+		for i := 0; i < len(arcs); i += 6 {
+			ctx.Call("beginPath")
+			startAngle := float64(arcs[i+4]) / 64 * (math.Pi / 180)
+			endAngle := float64(arcs[i+4]+arcs[i+5]) / 64 * (math.Pi / 180)
+			rx := uint32(arcs[i+2] / 2)
+			ry := uint32(arcs[i+3] / 2)
+			x := uint32(arcs[i] + rx)
+			y := uint32(arcs[i+1] + ry)
+			ctx.Call("ellipse", x, y, rx, ry, 0, startAngle, endAngle)
+			if gc.ArcMode == 1 { // Pie
+				ctx.Call("lineTo", x, y)
+				ctx.Call("closePath")
 			}
+
+			var fillRule string
+			switch gc.FillRule {
+			case 0: // EvenOddRule
+				fillRule = "evenodd"
+			case 1: // WindingRule
+				fillRule = "nonzero"
+			}
+			ctx.Call("fill", fillRule)
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1559,81 +1751,153 @@ func (w *wasmX11Frontend) RecolorCursor(cursorID xID, foreColor, backColor [3]ui
 	}
 
 	w.CreateCursor(cursorID, cursor.source, cursor.mask, foreColor, backColor, cursor.x, cursor.y)
+	w.recordOperation(CanvasOperation{
+		Type: "recolorCursor",
+		Args: []any{cursorID.local},
+	})
 }
 
 func (w *wasmX11Frontend) SetPointerMapping(pMap []byte) (byte, error) {
 	debugf("X11: SetPointerMapping (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "setPointerMapping",
+		Args: []any{},
+	})
 	return 0, nil
 }
 
 func (w *wasmX11Frontend) GetPointerMapping() ([]byte, error) {
 	debugf("X11: GetPointerMapping (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "getPointerMapping",
+		Args: []any{},
+	})
 	return nil, nil
 }
 
 func (w *wasmX11Frontend) GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error) {
 	debugf("X11: GetKeyboardMapping (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "getKeyboardMapping",
+		Args: []any{},
+	})
 	return nil, nil
 }
 
 func (w *wasmX11Frontend) ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32) {
 	debugf("X11: ChangeKeyboardMapping (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "changeKeyboardMapping",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
 	debugf("X11: ChangeKeyboardControl (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "changeKeyboardControl",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) GetKeyboardControl() (KeyboardControl, error) {
 	debugf("X11: GetKeyboardControl (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "getKeyboardControl",
+		Args: []any{},
+	})
 	return KeyboardControl{}, nil
 }
 
 func (w *wasmX11Frontend) SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte) {
 	debugf("X11: SetScreenSaver (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "setScreenSaver",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) GetScreenSaver() (timeout, interval int16, preferBlank, allowExpose byte, err error) {
 	debugf("X11: GetScreenSaver (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "getScreenSaver",
+		Args: []any{},
+	})
 	return 0, 0, 0, 0, nil
 }
 
 func (w *wasmX11Frontend) ChangeHosts(mode byte, host Host) {
 	debugf("X11: ChangeHosts (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "changeHosts",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) ListHosts() ([]Host, error) {
 	debugf("X11: ListHosts (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "listHosts",
+		Args: []any{},
+	})
 	return nil, nil
 }
 
 func (w *wasmX11Frontend) SetAccessControl(mode byte) {
 	debugf("X11: SetAccessControl (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "setAccessControl",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) SetCloseDownMode(mode byte) {
 	debugf("X11: SetCloseDownMode (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "setCloseDownMode",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) KillClient(resource uint32) {
 	debugf("X11: KillClient (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "killClient",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) RotateProperties(window xID, delta int16, atoms []Atom) {
 	debugf("X11: RotateProperties (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "rotateProperties",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) ForceScreenSaver(mode byte) {
 	debugf("X11: ForceScreenSaver (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "forceScreenSaver",
+		Args: []any{},
+	})
 }
 
 func (w *wasmX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error) {
 	debugf("X11: SetModifierMapping (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "setModifierMapping",
+		Args: []any{},
+	})
 	return 0, nil
 }
 
 func (w *wasmX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCodes []KeyCode, err error) {
 	debugf("X11: GetModifierMapping (not implemented)")
+	w.recordOperation(CanvasOperation{
+		Type: "getModifierMapping",
+		Args: []any{},
+	})
 	return 0, nil, nil
 }
 
@@ -1646,6 +1910,10 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 	color := "??????"
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
+			winInfo.ctx.Call("save")
+			defer winInfo.ctx.Call("restore")
+			w.applyGC(winInfo.ctx, winInfo.colormap, gc)
+			w.applyClipping(gcID, winInfo.ctx)
 			color = w.getForegroundColor(winInfo.colormap, gc)
 			winInfo.ctx.Set("fillStyle", color)
 
@@ -2176,6 +2444,10 @@ func (w *wasmX11Frontend) keyboardEventHandler(xid xID, eventType string) js.Fun
 }
 
 func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []xCharInfo) {
+	w.recordOperation(CanvasOperation{
+		Type: "queryFont",
+		Args: []any{fid.local},
+	})
 	debugf("X11: QueryFont fid=%s", fid)
 
 	fontDescent = 5
@@ -2358,10 +2630,6 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, mi
 
 	debugf("X11: QueryFont fid=%s reply: minBounds=%+v, maxBounds=%+v, minCharOrByte2=%d, maxCharOrByte2=%d, defaultChar=%d, drawDirection=%d, minByte1=%d, maxByte1=%d, allCharsExist=%t, fontAscent=%d, fontDescent=%d, len(charInfos)=%d", fid, minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, len(charInfos))
 
-	w.recordOperation(CanvasOperation{
-		Type: "queryFont",
-		Args: []any{fid.local},
-	})
 	return
 }
 
@@ -2393,8 +2661,13 @@ func (w *wasmX11Frontend) ListFonts(maxNames uint16, pattern string) []string {
 	return matchingFonts
 }
 
+
 func (w *wasmX11Frontend) GetWindowAttributes(xid xID) WindowAttributes {
 	// Not implemented for wasm
+	w.recordOperation(CanvasOperation{
+		Type: "getWindowAttributes",
+		Args: []any{xid.local},
+	})
 	return WindowAttributes{}
 }
 

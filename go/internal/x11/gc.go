@@ -26,7 +26,48 @@ const (
 	GCClipMask          = 1 << 19
 	GCDashOffset        = 1 << 20
 	GCDashList          = 1 << 21
-	GCArcMode           = 1 << 22
+	GCArcMode = 1 << 22
+)
+
+const (
+	LineStyleSolid      = 0
+	LineStyleOnOffDash  = 1
+	LineStyleDoubleDash = 2
+)
+
+const (
+	CapStyleNotLast    = 0
+	CapStyleButt       = 1
+	CapStyleRound      = 2
+	CapStyleProjecting = 3
+)
+
+const (
+	JoinStyleMiter = 0
+	JoinStyleRound = 1
+	JoinStyleBevel = 2
+)
+
+const (
+	FillStyleSolid          = 0
+	FillStyleTiled          = 1
+	FillStyleStippled       = 2
+	FillStyleOpaqueStippled = 3
+)
+
+const (
+	FillRuleEvenOdd = 0
+	FillRuleWinding = 1
+)
+
+const (
+	ArcModeChord    = 0
+	ArcModePieSlice = 1
+)
+
+const (
+	SubwindowModeClipByChildren   = 0
+	SubwindowModeIncludeInferiors = 1
 )
 
 // Constants for Keyboard Control
