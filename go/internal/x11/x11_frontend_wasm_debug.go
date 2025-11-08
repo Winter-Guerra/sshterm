@@ -4,6 +4,7 @@ package x11
 
 import (
 	"syscall/js"
+	"encoding/json"
 )
 
 func (w *wasmX11Frontend) recordOperation(op CanvasOperation) {
@@ -77,11 +78,10 @@ func (w *wasmX11Frontend) initCanvasOperations() {
 		for i, op := range ops {
 			args := make([]any, 0, len(op.Args))
 			for _, arg := range op.Args {
-				if v, ok := arg.(GC); ok {
-					args = append(args, map[string]any{"Foreground": v.Foreground})
-					continue
-				}
-				args = append(args, arg)
+				b, _ := json.Marshal(arg)
+				var v any
+				json.Unmarshal(b, &v)
+				args = append(args, v)
 			}
 			jsOps[i] = map[string]interface{}{
 				"Type":        op.Type,
