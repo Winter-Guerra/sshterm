@@ -44,7 +44,7 @@ type X11FrontendAPI interface {
 	ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes)
 	GetWindowAttributes(xid xID) WindowAttributes
 	ChangeProperty(xid xID, property, typeAtom, format uint32, data []byte)
-	CreateGCWithAttributes(xid xID, valueMask uint32, values GC)
+	CreateGC(xid xID, valueMask uint32, values GC)
 	ChangeGC(xid xID, valueMask uint32, gc GC)
 	DestroyWindow(xid xID)
 	DestroyAllWindowsForClient(clientID uint32)
@@ -964,7 +964,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 		s.gcs[xid] = p.Values
-		s.frontend.CreateGCWithAttributes(xid, p.ValueMask, p.Values)
+		s.frontend.CreateGC(xid, p.ValueMask, p.Values)
 
 	case *ChangeGCRequest:
 		xid := client.xID(uint32(p.Gc))

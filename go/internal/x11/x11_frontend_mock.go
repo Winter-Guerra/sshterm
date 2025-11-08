@@ -377,7 +377,7 @@ func (m *MockX11Frontend) GetAtomName(atom uint32) string {
 	return m.GetAtomNameReturn
 }
 
-func (m *MockX11Frontend) CreateGCWithAttributes(id xID, valueMask uint32, values GC) {
+func (m *MockX11Frontend) CreateGC(id xID, valueMask uint32, values GC) {
 	if m.CreatedGCs == nil {
 		m.CreatedGCs = make(map[xID]GC)
 	}

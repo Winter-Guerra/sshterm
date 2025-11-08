@@ -1695,7 +1695,7 @@ func (s *sshServer) createGCWithAttributes(channel ssh.Channel, gcID, drawable u
 	payload = append(payload, valueList...)
 
 	x11Operations = append(x11Operations, X11Operation{
-		Type: "createGCWithAttributes",
+		Type: "createGC",
 		Args: []any{gcID, valueMask, gcValuesToMap(values)},
 	})
 

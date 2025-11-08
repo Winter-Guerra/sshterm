@@ -758,11 +758,11 @@ func (w *wasmX11Frontend) getLowestZIndex() int {
 	}
 	return lowest
 }
-func (w *wasmX11Frontend) CreateGCWithAttributes(xid xID, valueMask uint32, values GC) {
+func (w *wasmX11Frontend) CreateGC(xid xID, valueMask uint32, values GC) {
 	debugf("X11: createGC id=%s gc=%+v", xid, values)
 	w.gcs[xid] = values
 	w.recordOperation(CanvasOperation{
-		Type: "createGCWithAttributes",
+		Type: "createGC",
 		Args: []any{xid.local, valueMask, values},
 	})
 }

@@ -456,7 +456,7 @@ func compareOperations(t *testing.T, x11Ops []X11Operation, canvasOps []CanvasOp
 				t.Logf("Canvas has %d more %s than X11", -v, k)
 			}
 		}
-		t.Fatalf("Number of operations mismatch: X11=%d, Canvas=%d delta=%+v", len(x11Ops), len(canvasOps), count)
+		t.Fatalf("Number of operations mismatch: X11=%d, Canvas=%d", len(x11Ops), len(canvasOps))
 	}
 
 	for i := 0; i < len(x11Ops); i++ {
