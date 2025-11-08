@@ -174,11 +174,18 @@ type x11Server struct {
 	installedColormap  xID
 	visualID           uint32
 	rootVisual         visualType
+	rootWindowWidth    uint16
+	rootWindowHeight   uint16
 	blackPixel         uint32
 	whitePixel         uint32
 	pointerX, pointerY int16
 	clients            map[uint32]*x11Client
 	nextClientID       uint32
+}
+
+func (s *x11Server) SetRootWindowSize(width, height uint16) {
+	s.rootWindowWidth = width
+	s.rootWindowHeight = height
 }
 
 func (s *x11Server) UpdatePointerPosition(x, y int16) {
@@ -644,6 +651,18 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *GetGeometryRequest:
 		xid := client.xID(uint32(p.Drawable))
+		if xid.local == s.rootWindowID() {
+			return &getGeometryReply{
+				sequence:    seq,
+				depth:       24, // TODO: Get this from rootVisual or screen info
+				root:        s.rootWindowID(),
+				x:           0,
+				y:           0,
+				width:       s.rootWindowWidth,
+				height:      s.rootWindowHeight,
+				borderWidth: 0,
+			}
+		}
 		w, ok := s.windows[xid]
 		if !ok {
 			return nil

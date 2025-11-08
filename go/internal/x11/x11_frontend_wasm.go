@@ -176,6 +176,21 @@ func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
 	frontend.initDefaultCursors()
 	frontend.initCanvasOperations()
 	frontend.initPredefinedAtoms()
+
+	// Set initial root window size and add resize listener
+	win := js.Global().Get("window")
+	width := win.Get("innerWidth").Int()
+	height := win.Get("innerHeight").Int()
+	frontend.server.SetRootWindowSize(uint16(width), uint16(height))
+
+	resizeHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		newWidth := win.Get("innerWidth").Int()
+		newHeight := win.Get("innerHeight").Int()
+		frontend.server.SetRootWindowSize(uint16(newWidth), uint16(newHeight))
+		return nil
+	})
+	win.Call("addEventListener", "resize", resizeHandler)
+
 	return frontend
 }
 
