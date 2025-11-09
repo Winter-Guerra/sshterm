@@ -47,10 +47,13 @@ type X11FrontendAPI interface {
 	CreateGC(xid xID, valueMask uint32, values GC)
 	ChangeGC(xid xID, valueMask uint32, gc GC)
 	DestroyWindow(xid xID)
+	ReparentWindow(window xID, parent xID, x, y int16)
+	DestroySubwindows(xid xID)
 	DestroyAllWindowsForClient(clientID uint32)
 	MapWindow(xid xID)
 	UnmapWindow(xid xID)
 	ConfigureWindow(xid xID, valueMask uint16, values []uint32)
+	CirculateWindow(xid xID, direction byte)
 	PutImage(drawable xID, gcID xID, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, data []byte)
 	PolyLine(drawable xID, gcID xID, points []uint32)
 	PolyFillRectangle(drawable xID, gcID xID, rects []uint32)
@@ -814,13 +817,61 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.DestroyWindow(xid)
 
 	case *DestroySubwindowsRequest:
-		// TODO: implement
+		xid := client.xID(uint32(p.Window))
+		if parent, ok := s.windows[xid]; ok {
+			var destroy func(uint32)
+			destroy = func(windowID uint32) {
+				childXID := client.xID(windowID)
+				if w, ok := s.windows[childXID]; ok {
+					for _, child := range w.children {
+						destroy(child)
+					}
+					delete(s.windows, childXID)
+				}
+			}
+			for _, child := range parent.children {
+				destroy(child)
+			}
+			parent.children = []uint32{}
+		}
+		s.frontend.DestroySubwindows(xid)
 
 	case *ChangeSaveSetRequest:
 		// TODO: implement
 
 	case *ReparentWindowRequest:
-		// TODO: implement
+		windowXID := client.xID(uint32(p.Window))
+		parentXID := client.xID(uint32(p.Parent))
+		window, ok := s.windows[windowXID]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Window), majorOp: ReparentWindow, code: WindowErrorCode})
+		}
+		oldParent, ok := s.windows[client.xID(window.parent)]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: window.parent, majorOp: ReparentWindow, code: WindowErrorCode})
+		}
+		newParent, ok := s.windows[parentXID]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Parent), majorOp: ReparentWindow, code: WindowErrorCode})
+		}
+
+		// Remove from old parent's children
+		for i, childID := range oldParent.children {
+			if childID == window.xid.local {
+				oldParent.children = append(oldParent.children[:i], oldParent.children[i+1:]...)
+				break
+			}
+		}
+
+		// Add to new parent's children
+		newParent.children = append(newParent.children, window.xid.local)
+
+		// Update window's state
+		window.parent = uint32(p.Parent)
+		window.x = p.X
+		window.y = p.Y
+
+		s.frontend.ReparentWindow(windowXID, parentXID, p.X, p.Y)
 
 	case *MapWindowRequest:
 		xid := client.xID(uint32(p.Window))
@@ -858,7 +909,39 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.ConfigureWindow(xid, p.ValueMask, p.Values)
 
 	case *CirculateWindowRequest:
-		// TODO: implement
+		xid := client.xID(uint32(p.Window))
+		window, ok := s.windows[xid]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Window), majorOp: CirculateWindow, code: WindowErrorCode})
+		}
+		parent, ok := s.windows[client.xID(window.parent)]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: window.parent, majorOp: CirculateWindow, code: WindowErrorCode})
+		}
+
+		// Find index of window in parent's children
+		idx := -1
+		for i, childID := range parent.children {
+			if childID == xid.local {
+				idx = i
+				break
+			}
+		}
+
+		if idx != -1 {
+			// Remove window from children slice
+			children := append(parent.children[:idx], parent.children[idx+1:]...)
+
+			if p.Direction == 0 { // RaiseLowest
+				// Add to end of slice
+				parent.children = append(children, xid.local)
+			} else { // LowerHighest
+				// Add to beginning of slice
+				parent.children = append([]uint32{xid.local}, children...)
+			}
+		}
+
+		s.frontend.CirculateWindow(xid, p.Direction)
 
 	case *GetGeometryRequest:
 		xid := client.xID(uint32(p.Drawable))
@@ -890,9 +973,17 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *QueryTreeRequest:
-		// TODO: implement
+		xid := client.xID(uint32(p.Window))
+		window, ok := s.windows[xid]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Window), majorOp: QueryTree, code: WindowErrorCode})
+		}
 		return &queryTreeReply{
-			sequence: seq,
+			sequence:    seq,
+			root:        s.rootWindowID(),
+			parent:      window.parent,
+			numChildren: uint16(len(window.children)),
+			children:    window.children,
 		}
 
 	case *InternAtomRequest:

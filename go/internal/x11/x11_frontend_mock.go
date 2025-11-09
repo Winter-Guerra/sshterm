@@ -100,19 +100,33 @@ type configureWindowCall struct {
 	values    []uint32
 }
 
+type circulateWindowCall struct {
+	id        xID
+	direction byte
+}
+
 type getPropertyCall struct {
 	window   xID
 	property uint32
 }
 
+type reparentWindowCall struct {
+	window xID
+	parent xID
+	x, y   int16
+}
+
 // MockX11Frontend is a mock implementation of the X11FrontendAPI for testing.
 type MockX11Frontend struct {
 	CreateWindowCalls               []*window
+	ReparentWindowCalls             []*reparentWindowCall
 	DestroyWindowCalls              []xID
+	DestroySubwindowsCalls          []xID
 	DestroyAllWindowsForClientCalls []uint32
 	MapWindowCalls                  []xID
 	UnmapWindowCalls                []xID
 	ConfigureWindowCalls            []*configureWindowCall
+	CirculateWindowCalls            []*circulateWindowCall
 	CreatedGCs                      map[xID]GC
 	ChangedGCs                      map[xID]GC
 	ChangedProperties               []*propertyChange
@@ -198,6 +212,14 @@ func (m *MockX11Frontend) DestroyWindow(xid xID) {
 	m.DestroyWindowCalls = append(m.DestroyWindowCalls, xid)
 }
 
+func (m *MockX11Frontend) ReparentWindow(window xID, parent xID, x, y int16) {
+	m.ReparentWindowCalls = append(m.ReparentWindowCalls, &reparentWindowCall{window, parent, x, y})
+}
+
+func (m *MockX11Frontend) DestroySubwindows(xid xID) {
+	m.DestroySubwindowsCalls = append(m.DestroySubwindowsCalls, xid)
+}
+
 func (m *MockX11Frontend) DestroyAllWindowsForClient(clientID uint32) {
 	m.DestroyAllWindowsForClientCalls = append(m.DestroyAllWindowsForClientCalls, clientID)
 }
@@ -212,6 +234,10 @@ func (m *MockX11Frontend) UnmapWindow(xid xID) {
 
 func (m *MockX11Frontend) ConfigureWindow(xid xID, valueMask uint16, values []uint32) {
 	m.ConfigureWindowCalls = append(m.ConfigureWindowCalls, &configureWindowCall{xid, valueMask, values})
+}
+
+func (m *MockX11Frontend) CirculateWindow(xid xID, direction byte) {
+	m.CirculateWindowCalls = append(m.CirculateWindowCalls, &circulateWindowCall{xid, direction})
 }
 
 func (w *MockX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, data []byte) {

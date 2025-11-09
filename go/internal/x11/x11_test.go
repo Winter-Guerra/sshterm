@@ -11,8 +11,8 @@ import (
 // setupTestServer creates a new x11Server with a mock frontend and a single mock client.
 // It returns the server instance and a buffer that captures all data sent to the mock client.
 func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
-	var clientBuffer bytes.Buffer
-	mockConn := &testConn{r: &bytes.Buffer{}, w: &clientBuffer}
+	clientBuffer := &bytes.Buffer{}
+	mockConn := &testConn{r: &bytes.Buffer{}, w: clientBuffer}
 
 	client := &x11Client{
 		id:        1,
@@ -30,7 +30,7 @@ func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
 		passiveGrabs: make(map[xID][]*passiveGrab),
 	}
 
-	return server, &clientBuffer
+	return server, clientBuffer
 }
 
 func TestSendMouseEvent_EventMask_Sent(t *testing.T) {
@@ -274,6 +274,90 @@ func TestSendKeyboardEvent_EventMask_Sent(t *testing.T) {
 
 	if len(client.sentMessages) == 0 {
 		t.Fatal("Expected event to be sent, but no message was recorded")
+	}
+}
+
+func TestWindowHierarchyRequests(t *testing.T) {
+	server, clientBuffer := setupTestServer(t)
+	client := server.clients[1]
+	mockFrontend := server.frontend.(*MockX11Frontend)
+
+	// 1. Create a parent window and a child window
+	parentID := xID{client: 1, local: 10}
+	childID := xID{client: 1, local: 20}
+	server.windows[parentID] = &window{xid: parentID, children: []uint32{childID.local}}
+	server.windows[childID] = &window{xid: childID, parent: parentID.local}
+
+	// 2. Test ReparentWindow
+	newParentID := xID{client: 1, local: 30}
+	server.windows[newParentID] = &window{xid: newParentID}
+	reparentReq := &ReparentWindowRequest{Window: Window(childID.local), Parent: Window(newParentID.local), X: 10, Y: 20}
+	server.handleRequest(client, reparentReq, 2)
+
+	if server.windows[childID].parent != newParentID.local {
+		t.Errorf("ReparentWindow: child's parent was not updated")
+	}
+	if len(server.windows[parentID].children) != 0 {
+		t.Errorf("ReparentWindow: child was not removed from old parent's children")
+	}
+	if len(server.windows[newParentID].children) != 1 || server.windows[newParentID].children[0] != childID.local {
+		t.Errorf("ReparentWindow: child was not added to new parent's children")
+	}
+	if len(mockFrontend.ReparentWindowCalls) != 1 {
+		t.Errorf("ReparentWindow: expected frontend to be called")
+	}
+
+	// 3. Test CirculateWindow
+	circulateReq := &CirculateWindowRequest{Window: Window(childID.local), Direction: 0 /* RaiseLowest */}
+	server.handleRequest(client, circulateReq, 3)
+	if len(mockFrontend.CirculateWindowCalls) != 1 {
+		t.Errorf("CirculateWindow: expected frontend to be called")
+	}
+
+	// 4. Test QueryTree
+	queryTreeReq := &QueryTreeRequest{Window: Window(newParentID.local)}
+	reply := server.handleRequest(client, queryTreeReq, 4)
+	if reply == nil {
+		t.Fatalf("QueryTree: handleRequest returned a nil reply")
+	}
+	encodedReply := reply.encodeMessage(client.byteOrder)
+	if _, err := clientBuffer.Write(encodedReply); err != nil {
+		t.Fatalf("QueryTree: failed to write reply to buffer: %v", err)
+	}
+
+	var header struct {
+		ReplyType   byte
+		Unused      byte
+		Sequence    uint16
+		Length      uint32
+		Root        uint32
+		Parent      uint32
+		NumChildren uint16
+		Padding     [14]byte
+	}
+	if err := binary.Read(clientBuffer, binary.LittleEndian, &header); err != nil {
+		t.Fatalf("QueryTree: failed to read reply header: %v", err)
+	}
+	children := make([]uint32, header.NumChildren)
+	if err := binary.Read(clientBuffer, binary.LittleEndian, &children); err != nil {
+		t.Fatalf("QueryTree: failed to read reply children: %v", err)
+	}
+
+	if header.NumChildren != 1 || children[0] != childID.local {
+		t.Errorf("QueryTree: incorrect children returned. Got %d children: %v", header.NumChildren, children)
+	}
+
+	// 5. Test DestroySubwindows
+	destroyReq := &DestroySubwindowsRequest{Window: Window(newParentID.local)}
+	server.handleRequest(client, destroyReq, 5)
+	if _, exists := server.windows[childID]; exists {
+		t.Errorf("DestroySubwindows: child window was not destroyed")
+	}
+	if len(server.windows[newParentID].children) != 0 {
+		t.Errorf("DestroySubwindows: children were not removed from parent")
+	}
+	if len(mockFrontend.DestroySubwindowsCalls) != 1 {
+		t.Errorf("DestroySubwindows: expected frontend to be called")
 	}
 }
 

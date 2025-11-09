@@ -1197,11 +1197,11 @@ func (r *listFontsWithInfoReply) encodeMessage(order binary.ByteOrder) []byte {
 
 // QueryTree: 15
 type queryTreeReply struct {
-	sequence  uint16
-	root      uint32
-	parent    uint32
-	nChildren uint16
-	children  []uint32
+	sequence    uint16
+	root        uint32
+	parent      uint32
+	numChildren uint16
+	children    []uint32
 }
 
 func (r *queryTreeReply) encodeMessage(order binary.ByteOrder) []byte {
@@ -1211,7 +1211,7 @@ func (r *queryTreeReply) encodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint32(reply[4:8], uint32(len(r.children)))
 	order.PutUint32(reply[8:12], r.root)
 	order.PutUint32(reply[12:16], r.parent)
-	order.PutUint16(reply[16:18], r.nChildren)
+	order.PutUint16(reply[16:18], r.numChildren)
 	for i, child := range r.children {
 		order.PutUint32(reply[32+i*4:], child)
 	}

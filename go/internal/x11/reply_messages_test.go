@@ -41,11 +41,11 @@ func TestReplyMessages(t *testing.T) {
 
 	t.Run("QueryTree", func(t *testing.T) {
 		reply := &queryTreeReply{
-			sequence:  5,
-			root:      1,
-			parent:    2,
-			nChildren: 1,
-			children:  []uint32{3},
+			sequence:    5,
+			root:        1,
+			parent:      2,
+			numChildren: 1,
+			children:    []uint32{3},
 		}
 		encoded := reply.encodeMessage(binary.LittleEndian)
 		expected := make([]byte, 36)

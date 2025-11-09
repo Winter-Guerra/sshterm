@@ -572,6 +572,67 @@ func (w *wasmX11Frontend) DestroyWindow(wid xID) {
 	w.destroyWindow(wid, true)
 }
 
+func (w *wasmX11Frontend) DestroySubwindows(xid xID) {
+	debugf("X11: destroySubwindows id=%s", xid)
+	if winInfo, ok := w.windows[xid]; ok {
+		// Create a slice to hold children to be removed, to avoid modifying the list while iterating
+		var toRemove []js.Value
+		children := winInfo.div.Get("childNodes")
+		for i := 0; i < children.Length(); i++ {
+			child := children.Index(i)
+			// Check if the child is a window managed by us
+			childXIDStr := child.Get("id").String()
+			if strings.HasPrefix(childXIDStr, "x11-window-") {
+				toRemove = append(toRemove, child)
+			}
+		}
+		for _, child := range toRemove {
+			childXIDStr := strings.TrimPrefix(child.Get("id").String(), "x11-window-")
+			parts := strings.Split(childXIDStr, "-")
+			if len(parts) == 2 {
+				client, _ := strconv.Atoi(parts[0])
+				local, _ := strconv.Atoi(parts[1])
+				w.destroyWindow(xID{uint32(client), uint32(local)}, false)
+			}
+		}
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "destroySubwindows",
+		Args: []any{xid.local},
+	})
+}
+
+func (w *wasmX11Frontend) ReparentWindow(windowID, parentID xID, x, y int16) {
+	debugf("X11: ReparentWindow window=%s parent=%s x=%d y=%d", windowID, parentID, x, y)
+
+	winInfo, ok := w.windows[windowID]
+	if !ok {
+		debugf("X11: ReparentWindow: window %s not found", windowID)
+		return
+	}
+
+	var parentDiv js.Value
+	if parentID.local == w.server.rootWindowID() {
+		parentDiv = w.body
+	} else if parentInfo, ok := w.windows[parentID]; ok {
+		parentDiv = parentInfo.div
+	} else {
+		debugf("X11: ReparentWindow: parent window %s not found", parentID)
+		return
+	}
+
+	style := winInfo.div.Get("style")
+	style.Set("left", fmt.Sprintf("%dpx", x))
+	style.Set("top", fmt.Sprintf("%dpx", y))
+
+	parentDiv.Call("appendChild", winInfo.div)
+
+	w.recordOperation(CanvasOperation{
+		Type: "reparentWindow",
+		Args: []any{windowID.local, parentID.local, x, y},
+	})
+}
+
 func (w *wasmX11Frontend) destroyWindow(wid xID, logit bool) {
 	if winInfo, ok := w.windows[wid]; ok {
 		// Remove event listeners from the document and window elements
@@ -684,6 +745,22 @@ func (w *wasmX11Frontend) UnmapWindow(wid xID) {
 	w.recordOperation(CanvasOperation{
 		Type: "unmapWindow",
 		Args: []any{wid.local},
+	})
+}
+
+func (w *wasmX11Frontend) CirculateWindow(xid xID, direction byte) {
+	debugf("X11: circulateWindow id=%s direction=%d", xid, direction)
+	if winInfo, ok := w.windows[xid]; ok {
+		parent := winInfo.div.Get("parentNode")
+		if direction == 0 { // RaiseLowest
+			parent.Call("appendChild", winInfo.div)
+		} else { // LowerHighest
+			parent.Call("insertBefore", winInfo.div, parent.Get("firstChild"))
+		}
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "circulateWindow",
+		Args: []any{xid.local, direction},
 	})
 }
 

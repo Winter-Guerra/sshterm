@@ -4,7 +4,9 @@ package x11
 
 import (
 	"io"
+	"net"
 	"testing"
+	"time"
 )
 
 type testLogger struct {
@@ -37,5 +39,25 @@ func (c *testConn) Write(p []byte) (n int, err error) {
 }
 
 func (c *testConn) Close() error {
+	return nil
+}
+
+func (c *testConn) LocalAddr() net.Addr {
+	return nil
+}
+
+func (c *testConn) RemoteAddr() net.Addr {
+	return nil
+}
+
+func (c *testConn) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *testConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *testConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
