@@ -1523,7 +1523,6 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 	}
 	debugf("X11: copyPlane src=%s dst=%s gc=%v srcX=%d srcY=%d dstX=%d dstY=%d width=%d height=%d bitPlane=%d", srcDrawable, dstDrawable, gc, srcX, srcY, dstX, dstY, width, height, bitPlane)
 	var srcCanvas js.Value
-	var currentColormap xID
 	srcWinInfo, srcIsWindow := w.windows[srcDrawable]
 	srcPixmapInfo, srcIsPixmap := w.pixmaps[srcDrawable]
 
@@ -1536,15 +1535,30 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 		return
 	}
 
+	var dstCtx js.Value
+	var currentColormap xID
 	dstWinInfo, dstIsWindow := w.windows[dstDrawable]
-	if !dstIsWindow {
-		debugf("X11: CopyPlane destination drawable %d not found or not a window", dstDrawable)
+	dstPixmapInfo, dstIsPixmap := w.pixmaps[dstDrawable]
+
+	if dstIsWindow {
+		dstCtx = dstWinInfo.ctx
+		currentColormap = dstWinInfo.colormap
+	} else if dstIsPixmap {
+		dstCtx = dstPixmapInfo.context
+		currentColormap = xID{0, w.server.defaultColormap}
+	} else {
+		debugf("X11: CopyPlane destination drawable %d not found", dstDrawable)
 		return
 	}
-	currentColormap = dstWinInfo.colormap
 
-	if !srcCanvas.IsNull() && !dstWinInfo.canvas.IsNull() {
-		// Get the source image data
+	if !srcCanvas.IsNull() && !dstCtx.IsUndefined() {
+		// 1. Create a temporary canvas to prepare the source image.
+		tempCanvas := w.document.Call("createElement", "canvas")
+		tempCanvas.Set("width", width)
+		tempCanvas.Set("height", height)
+		tempCtx := tempCanvas.Call("getContext", "2d")
+
+		// 2. Get the image data from the source drawable.
 		srcImageData := srcCanvas.Call("getContext", "2d").Call("getImageData", srcX, srcY, width, height)
 		srcData := srcImageData.Get("data")
 		jsImgData := js.Global().Get("Uint8ClampedArray").New(int(width * height * 4))
@@ -1555,28 +1569,37 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 		r, g, b = w.GetRGBColor(currentColormap, gc.Background)
 		bgR, bgG, bgB := r, g, b
 
-		// Iterate over the source image data and apply the bitPlane mask
+		// 3. Iterate through the source image data and check the bitPlane.
 		for i := 0; i < srcData.Length(); i += 4 {
-			// For a CopyPlane request, the source is treated as a bitmap.
-			// If a bit is set in the specified bit-plane of the source, the foreground pixel is drawn.
-			// Otherwise, the background pixel is drawn.
-			// We'll treat any non-zero pixel value as having the bit set.
-			pixelValue := srcData.Index(i).Int() | (srcData.Index(i+1).Int() << 8) | (srcData.Index(i+2).Int() << 16)
-			if (pixelValue & int(bitPlane)) != 0 {
+			// The source is treated as a bitmap. We get the pixel value from the source,
+			// and if the bit corresponding to bitPlane is set, we use the foreground color.
+			// Otherwise, we use the background color.
+			pixelValue := uint32(srcData.Index(i).Int()) | (uint32(srcData.Index(i+1).Int()) << 8) | (uint32(srcData.Index(i+2).Int()) << 16)
+
+			// 4. Populate the temporary canvas with foreground or background color.
+			if (pixelValue & uint32(bitPlane)) != 0 {
 				jsImgData.SetIndex(i+0, int(fgR))
 				jsImgData.SetIndex(i+1, int(fgG))
 				jsImgData.SetIndex(i+2, int(fgB))
+				jsImgData.SetIndex(i+3, 255) // Alpha for foreground
 			} else {
 				jsImgData.SetIndex(i+0, int(bgR))
 				jsImgData.SetIndex(i+1, int(bgG))
 				jsImgData.SetIndex(i+2, int(bgB))
+				jsImgData.SetIndex(i+3, 255) // Alpha for background
 			}
-			jsImgData.SetIndex(i+3, 255) // Alpha
 		}
 
-		// Create a new ImageData object and put it on the destination canvas
 		newImageData := js.Global().Get("ImageData").New(jsImgData, width, height)
-		dstWinInfo.ctx.Call("putImageData", newImageData, dstX, dstY)
+		tempCtx.Call("putImageData", newImageData, 0, 0)
+
+		// 5. Apply the GC to the destination context.
+		dstCtx.Call("save")
+		defer dstCtx.Call("restore")
+		w.applyGC(dstCtx, currentColormap, gcID)
+
+		// 6. Draw the temporary canvas image to the destination drawable.
+		dstCtx.Call("drawImage", tempCanvas, dstX, dstY)
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyPlane",
