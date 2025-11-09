@@ -188,3 +188,55 @@ const (
 	KBKey             = 1 << 6
 	KBAutoRepeatMode  = 1 << 7
 )
+
+const (
+	KeyPressMask             = 1 << 0
+	KeyReleaseMask           = 1 << 1
+	ButtonPressMask          = 1 << 2
+	ButtonReleaseMask        = 1 << 3
+	EnterWindowMask          = 1 << 4
+	LeaveWindowMask          = 1 << 5
+	PointerMotionMask        = 1 << 6
+	PointerMotionHintMask    = 1 << 7
+	Button1MotionMask        = 1 << 8
+	Button2MotionMask        = 1 << 9
+	Button3MotionMask        = 1 << 10
+	Button4MotionMask        = 1 << 11
+	Button5MotionMask        = 1 << 12
+	ButtonMotionMask         = 1 << 13
+	KeymapStateMask          = 1 << 14
+	ExposureMask             = 1 << 15
+	VisibilityChangeMask     = 1 << 16
+	StructureNotifyMask      = 1 << 17
+	ResizeRedirectMask       = 1 << 18
+	SubstructureNotifyMask   = 1 << 19
+	SubstructureRedirectMask = 1 << 20
+	FocusChangeMask          = 1 << 21
+	PropertyChangeMask       = 1 << 22
+	ColormapChangeMask       = 1 << 23
+	OwnerGrabButtonMask      = 1 << 24
+)
+
+const (
+	ShiftMask   = 1 << 0
+	LockMask    = 1 << 1
+	ControlMask = 1 << 2
+	Mod1Mask    = 1 << 3
+	Mod2Mask    = 1 << 4
+	Mod3Mask    = 1 << 5
+	Mod4Mask    = 1 << 6
+	Mod5Mask    = 1 << 7
+	Button1Mask = 1 << 8
+	Button2Mask = 1 << 9
+	Button3Mask = 1 << 10
+	Button4Mask = 1 << 11
+	Button5Mask = 1 << 12
+)
+
+const (
+	GrabSuccess      byte = 0
+	AlreadyGrabbed   byte = 1
+	GrabInvalidTime  byte = 2
+	GrabNotViewable  byte = 3
+	GrabFrozen       byte = 4
+)

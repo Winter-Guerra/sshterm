@@ -39,21 +39,3 @@ func (c *testConn) Write(p []byte) (n int, err error) {
 func (c *testConn) Close() error {
 	return nil
 }
-
-// MockX11Client is a mock implementation of x11Client for testing.
-type MockX11Client struct {
-	conn     io.ReadWriteCloser
-	sequence uint16
-}
-
-func (m *MockX11Client) Read(p []byte) (n int, err error) {
-	return m.conn.Read(p)
-}
-
-func (m *MockX11Client) Write(p []byte) (n int, err error) {
-	return m.conn.Write(p)
-}
-
-func (m *MockX11Client) Close() error {
-	return m.conn.Close()
-}

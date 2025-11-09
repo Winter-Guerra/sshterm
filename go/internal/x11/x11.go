@@ -161,26 +161,42 @@ type colormap struct {
 }
 
 type x11Server struct {
-	logger             Logger
-	byteOrder          binary.ByteOrder
-	frontend           X11FrontendAPI
-	windows            map[xID]*window
-	gcs                map[xID]GC
-	pixmaps            map[xID]bool
-	cursors            map[xID]bool
-	selections         map[xID]uint32
-	colormaps          map[xID]*colormap
-	defaultColormap    uint32
-	installedColormap  xID
-	visualID           uint32
-	rootVisual         visualType
-	rootWindowWidth    uint16
-	rootWindowHeight   uint16
-	blackPixel         uint32
-	whitePixel         uint32
-	pointerX, pointerY int16
-	clients            map[uint32]*x11Client
-	nextClientID       uint32
+	logger               Logger
+	byteOrder            binary.ByteOrder
+	frontend             X11FrontendAPI
+	windows              map[xID]*window
+	gcs                  map[xID]GC
+	pixmaps              map[xID]bool
+	cursors              map[xID]bool
+	selections           map[xID]uint32
+	colormaps            map[xID]*colormap
+	defaultColormap      uint32
+	installedColormap    xID
+	visualID             uint32
+	rootVisual           visualType
+	rootWindowWidth      uint16
+	rootWindowHeight     uint16
+	blackPixel           uint32
+	whitePixel           uint32
+	pointerX, pointerY   int16
+	clients              map[uint32]*x11Client
+	nextClientID         uint32
+	pointerGrabWindow    xID
+	keyboardGrabWindow   xID
+	pointerGrabTime      uint32
+	keyboardGrabTime     uint32
+	pointerGrabOwner     bool
+	keyboardGrabOwner    bool
+	pointerGrabEventMask uint16
+	passiveGrabs         map[xID][]*passiveGrab
+}
+
+type passiveGrab struct {
+	button    byte
+	modifiers uint16
+	owner     bool
+	eventMask uint16
+	cursor    xID
 }
 
 func (s *x11Server) SetRootWindowSize(width, height uint16) {
@@ -195,15 +211,85 @@ func (s *x11Server) UpdatePointerPosition(x, y int16) {
 
 func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32) {
 	debugf("X11: SendMouseEvent xid=%s type=%s x=%d y=%d detail=%d", xid, eventType, x, y, detail)
+
+	originalXID := xid
+	grabActive := s.pointerGrabWindow.local != 0
+
+	if grabActive {
+		xid = s.pointerGrabWindow
+	}
+	var eventMask uint32
+	state := uint16(detail >> 16)
+
+	switch eventType {
+	case "mousedown":
+		eventMask = ButtonPressMask
+	case "mouseup":
+		eventMask = ButtonReleaseMask
+	case "mousemove":
+		eventMask = PointerMotionMask
+		if state&Button1Mask != 0 {
+			eventMask |= Button1MotionMask
+		}
+		if state&Button2Mask != 0 {
+			eventMask |= Button2MotionMask
+		}
+		if state&Button3Mask != 0 {
+			eventMask |= Button3MotionMask
+		}
+		if state&Button4Mask != 0 {
+			eventMask |= Button4MotionMask
+		}
+		if state&Button5Mask != 0 {
+			eventMask |= Button5MotionMask
+		}
+		if state&uint16(ButtonPressMask|ButtonReleaseMask) != 0 {
+			eventMask |= ButtonMotionMask
+		}
+	}
+
+	if grabActive {
+		if (uint32(s.pointerGrabEventMask) & eventMask) == 0 {
+			return
+		}
+	} else {
+		w, ok := s.windows[xid]
+		if !ok {
+			log.Printf("X11: Failed to write mount event: window not found")
+			return
+		}
+		if w.attributes.EventMask&eventMask == 0 {
+			return
+		}
+	}
+
 	client, ok := s.clients[xid.client]
 	if !ok {
 		log.Print("X11: Failed to write mount event: client not found")
 		return
 	}
 
+	eventWindowID := originalXID.local
+	if grabActive && !s.pointerGrabOwner {
+		eventWindowID = s.pointerGrabWindow.local
+	}
+
 	// Unpack button and state from detail
-	state := uint16(detail >> 16)
 	button := byte(detail & 0xFFFF)
+
+	if !grabActive && eventType == "mousedown" {
+		if grabs, ok := s.passiveGrabs[originalXID]; ok {
+			for _, grab := range grabs {
+				if grab.button == button && (grab.modifiers == 0 || grab.modifiers == state) {
+					s.pointerGrabWindow = originalXID
+					s.pointerGrabOwner = grab.owner
+					s.pointerGrabEventMask = grab.eventMask
+					grabActive = true
+					break
+				}
+			}
+		}
+	}
 
 	var event messageEncoder
 	switch eventType {
@@ -213,7 +299,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 			detail:     button,
 			time:       0, // 0 for now
 			root:       s.rootWindowID(),
-			event:      xid.local,
+			event:      eventWindowID,
 			child:      0, // 0 for now
 			rootX:      int16(x),
 			rootY:      int16(y),
@@ -228,7 +314,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 			detail:     button,
 			time:       0, // 0 for now
 			root:       s.rootWindowID(),
-			event:      xid.local,
+			event:      eventWindowID,
 			child:      0, // 0 for now
 			rootX:      int16(x),
 			rootY:      int16(y),
@@ -243,7 +329,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 			detail:     0, // 0 for Normal
 			time:       0, // 0 for now
 			root:       s.rootWindowID(),
-			event:      xid.local,
+			event:      eventWindowID,
 			child:      0, // 0 for now
 			rootX:      int16(x),
 			rootY:      int16(y),
@@ -266,6 +352,30 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	// Implement sending keyboard event to client
 	// This will involve constructing an X11 event packet and writing it to client.conn
 	debugf("X11: SendKeyboardEvent xid=%s type=%s code=%s alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
+
+	originalXID := xid
+	grabActive := s.keyboardGrabWindow.local != 0
+
+	if grabActive {
+		xid = s.keyboardGrabWindow
+	}
+
+	var eventMask uint32
+	if eventType == "keydown" {
+		eventMask = KeyPressMask
+	} else if eventType == "keyup" {
+		eventMask = KeyReleaseMask
+	}
+
+	w, ok := s.windows[xid]
+	if !ok {
+		debugf("X11: SendKeyboardEvent unknown window %d", xid)
+		return
+	}
+	if !grabActive && w.attributes.EventMask&eventMask == 0 {
+		return
+	}
+
 	client, ok := s.clients[xid.client]
 	if !ok {
 		debugf("X11: SendKeyboardEvent unknown client %d", xid.client)
@@ -291,12 +401,17 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 		keycode = jsCodeToX11Keycode["Unidentified"]
 	}
 
+	eventWindowID := originalXID.local
+	if grabActive && !s.keyboardGrabOwner {
+		eventWindowID = s.keyboardGrabWindow.local
+	}
+
 	event := &keyEvent{
 		sequence:   client.sequence,
 		detail:     keycode,
 		time:       0, // TODO: Get actual time
 		root:       s.rootWindowID(),
-		event:      xid.local,
+		event:      eventWindowID,
 		child:      0, // No child for now
 		rootX:      s.pointerX,
 		rootY:      s.pointerY,
@@ -869,34 +984,76 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *GrabPointerRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
-		status := s.frontend.GrabPointer(grabWindow, p.OwnerEvents, p.EventMask, p.PointerMode, p.KeyboardMode, uint32(p.ConfineTo), uint32(p.Cursor), uint32(p.Time))
+		if s.pointerGrabWindow.local != 0 {
+			return &grabPointerReply{
+				sequence: seq,
+				status:   AlreadyGrabbed,
+			}
+		}
+
+		s.pointerGrabWindow = grabWindow
+		s.pointerGrabOwner = p.OwnerEvents
+		s.pointerGrabEventMask = p.EventMask
+		s.pointerGrabTime = uint32(p.Time)
+
 		return &grabPointerReply{
 			sequence: seq,
-			status:   status,
+			status:   GrabSuccess,
 		}
 
 	case *UngrabPointerRequest:
-		s.frontend.UngrabPointer(uint32(p.Time))
+		s.pointerGrabWindow = xID{}
+		s.pointerGrabOwner = false
+		s.pointerGrabEventMask = 0
+		s.pointerGrabTime = 0
 
 	case *GrabButtonRequest:
-		// TODO: implement
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		grab := &passiveGrab{
+			button:    p.Button,
+			modifiers: p.Modifiers,
+			owner:     p.OwnerEvents,
+			eventMask: p.EventMask,
+			cursor:    client.xID(uint32(p.Cursor)),
+		}
+		s.passiveGrabs[grabWindow] = append(s.passiveGrabs[grabWindow], grab)
 
 	case *UngrabButtonRequest:
-		// TODO: implement
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		if grabs, ok := s.passiveGrabs[grabWindow]; ok {
+			for i, grab := range grabs {
+				if grab.button == p.Button && grab.modifiers == p.Modifiers {
+					s.passiveGrabs[grabWindow] = append(grabs[:i], grabs[i+1:]...)
+					break
+				}
+			}
+		}
 
 	case *ChangeActivePointerGrabRequest:
 		// TODO: implement
 
 	case *GrabKeyboardRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
-		status := s.frontend.GrabKeyboard(grabWindow, p.OwnerEvents, uint32(p.Time), p.PointerMode, p.KeyboardMode)
+		if s.keyboardGrabWindow.local != 0 {
+			return &grabKeyboardReply{
+				sequence: seq,
+				status:   AlreadyGrabbed,
+			}
+		}
+
+		s.keyboardGrabWindow = grabWindow
+		s.keyboardGrabOwner = p.OwnerEvents
+		s.keyboardGrabTime = uint32(p.Time)
+
 		return &grabKeyboardReply{
 			sequence: seq,
-			status:   status,
+			status:   GrabSuccess,
 		}
 
 	case *UngrabKeyboardRequest:
-		s.frontend.UngrabKeyboard(uint32(p.Time))
+		s.keyboardGrabWindow = xID{}
+		s.keyboardGrabOwner = false
+		s.keyboardGrabTime = 0
 
 	case *GrabKeyRequest:
 		// TODO: implement
@@ -1763,6 +1920,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client) {
 					defaultColormap: 0x1,
 					clients:         make(map[uint32]*x11Client),
 					nextClientID:    1,
+					passiveGrabs:    make(map[xID][]*passiveGrab),
 				}
 				x11ServerInstance.frontend = newX11Frontend(logger, x11ServerInstance)
 			})
