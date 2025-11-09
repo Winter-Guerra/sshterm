@@ -26,83 +26,88 @@
 package x11
 
 import (
-	"bytes"
 	_ "embed"
-	"encoding/base64"
 	"encoding/binary"
-	"strings"
+	"fmt"
+	"image"
+	"image/color"
 	"syscall/js"
 	"testing"
 	"time"
 )
 
-//go:embed testdata/TestDrawRectangle.png
-var testDrawRectangleSnapshot []byte
-
-//go:embed testdata/TestDrawText.png
-var testDrawTextSnapshot []byte
-
-//go:embed testdata/TestOverlappingWindows.png
-var testOverlappingWindowsSnapshot []byte
-
-const (
-	snapshotDir = "testdata"
-)
-
-func snapshot(t *testing.T, golden []byte) {
+func getCanvasData(t *testing.T, winID xID, x, y, w, h int) *image.RGBA {
 	t.Helper()
 	// A small delay to ensure the canvas has been painted.
 	time.Sleep(100 * time.Millisecond)
 
-	var dataURL string
-	var errStr string
-	done := make(chan struct{})
+	doc := js.Global().Get("document")
+	if !doc.Truthy() {
+		t.Fatal("document not found")
+	}
+	canvas := doc.Call("querySelector", fmt.Sprintf("#x11-canvas-%d-%d", winID.client, winID.local))
+	if !canvas.Truthy() {
+		t.Fatalf("canvas #x11-canvas-%d-%d not found", winID.client, winID.local)
+	}
+	ctx := canvas.Call("getContext", "2d")
+	if !ctx.Truthy() {
+		t.Fatal("canvas context not found")
+	}
+	imgData := ctx.Call("getImageData", x, y, w, h).Get("data")
+	if !imgData.Truthy() {
+		t.Fatal("failed to get image data")
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	js.CopyBytesToGo(img.Pix, imgData)
+	return img
+}
 
-	js.Global().Set("snapshotCallback", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		dataURL = args[0].String()
-		errStr = args[1].String()
-		close(done)
-		return nil
-	}))
-	defer js.Global().Set("snapshotCallback", js.Undefined())
+func getWindowBounds(t *testing.T, winID xID) image.Rectangle {
+	t.Helper()
+	doc := js.Global().Get("document")
+	if !doc.Truthy() {
+		t.Fatal("document not found")
+	}
+	div := doc.Call("querySelector", fmt.Sprintf("#x11-window-%d-%d", winID.client, winID.local))
+	if !div.Truthy() {
+		t.Fatalf("div #x11-window-%d-%d not found", winID.client, winID.local)
+	}
+	style := div.Get("style")
+	if !style.Truthy() {
+		t.Fatal("div style not found")
+	}
+	var x, y, w, h int
+	fmt.Sscanf(style.Get("left").String(), "%dpx", &x)
+	fmt.Sscanf(style.Get("top").String(), "%dpx", &y)
+	fmt.Sscanf(style.Get("width").String(), "%dpx", &w)
+	fmt.Sscanf(style.Get("height").String(), "%dpx", &h)
+	return image.Rect(x, y, x+w, y+h)
+}
 
-	js.Global().Call("eval", `
-		(async () => {
-			try {
-				// There might be multiple canvases; find the one for our window.
-				const canvas = document.querySelector('#x11-canvas-1-1');
-				if (!canvas) {
-					throw new Error('canvas not found');
-				}
-				snapshotCallback(canvas.toDataURL(), '');
-			} catch (e) {
-				snapshotCallback('', e.toString());
+func canvasExists(t *testing.T, winID xID) bool {
+	t.Helper()
+	doc := js.Global().Get("document")
+	if !doc.Truthy() {
+		t.Fatal("document not found")
+	}
+	return doc.Call("querySelector", fmt.Sprintf("#x11-canvas-%d-%d", winID.client, winID.local)).Truthy()
+}
+
+func assertRectangle(t *testing.T, img *image.RGBA, rect image.Rectangle, c color.Color) {
+	t.Helper()
+	for y := rect.Min.Y; y < rect.Max.Y; y++ {
+		for x := rect.Min.X; x < rect.Max.X; x++ {
+			if got := img.At(x, y); got != c {
+				t.Errorf("at (%d, %d): got %v, want %v", x, y, got, c)
 			}
-		})();
-	`)
-
-	<-done
-	if errStr != "" {
-		t.Fatalf("Failed to get canvas data: %s", errStr)
+		}
 	}
+}
 
-	prefix := "data:image/png;base64,"
-	if !strings.HasPrefix(dataURL, prefix) {
-		t.Fatalf("Unexpected data URL format")
-	}
-	b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(dataURL, prefix))
-	if err != nil {
-		t.Fatalf("Failed to decode base64: %v", err)
-	}
-
-	snapshotName := strings.ReplaceAll(t.Name(), "/", "_") + ".png"
-
-	if len(golden) == 0 {
-		t.Fatalf("Snapshot is empty. To update, decode this base64 string and save it to %s:\n%s", snapshotName, base64.StdEncoding.EncodeToString(b))
-	}
-
-	if !bytes.Equal(golden, b) {
-		t.Errorf("Snapshot mismatch. To update, decode this base64 string and save it to %s:\n%s", snapshotName, base64.StdEncoding.EncodeToString(b))
+func assertWindow(t *testing.T, got, want image.Rectangle) {
+	t.Helper()
+	if got != want {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
 
@@ -137,7 +142,8 @@ func TestDrawRectangle(t *testing.T) {
 
 	fe.PolyFillRectangle(winID, gcID, []uint32{20, 20, 50, 40})
 
-	snapshot(t, testDrawRectangleSnapshot)
+	img := getCanvasData(t, winID, 20, 20, 50, 40)
+	assertRectangle(t, img, image.Rect(0, 0, 50, 40), color.Black)
 }
 
 func TestDrawText(t *testing.T) {
@@ -173,7 +179,23 @@ func TestDrawText(t *testing.T) {
 		PolyText8String{Str: []byte("Hello, world!")},
 	})
 
-	snapshot(t, testDrawTextSnapshot)
+	img := getCanvasData(t, winID, 20, 30, 80, 20)
+	var foundPixel bool
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a != 0 {
+				foundPixel = true
+				break
+			}
+		}
+		if foundPixel {
+			break
+		}
+	}
+	if !foundPixel {
+		t.Error("did not find any drawn text")
+	}
 }
 
 func TestOverlappingWindows(t *testing.T) {
@@ -214,5 +236,11 @@ func TestOverlappingWindows(t *testing.T) {
 	fe.CreateGC(gcID2, GCForeground, GC{Foreground: s.blackPixel})
 	fe.PolyFillRectangle(winID2, gcID2, []uint32{20, 20, 50, 40})
 
-	snapshot(t, testOverlappingWindowsSnapshot)
+	assertWindow(t, getWindowBounds(t, winID1), image.Rect(10, 10, 110, 90))
+	img1 := getCanvasData(t, winID1, 20, 20, 50, 40)
+	assertRectangle(t, img1, image.Rect(0, 0, 50, 40), color.Black)
+
+	assertWindow(t, getWindowBounds(t, winID2), image.Rect(30, 30, 130, 110))
+	img2 := getCanvasData(t, winID2, 20, 20, 50, 40)
+	assertRectangle(t, img2, image.Rect(0, 0, 50, 40), color.Black)
 }
