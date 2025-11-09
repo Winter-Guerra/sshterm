@@ -139,6 +139,90 @@ func (e *motionNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
+// EnterNotify: 7
+type EnterNotifyEvent struct {
+	sequence       uint16
+	detail         byte
+	time           uint32
+	root           uint32
+	event          uint32
+	child          uint32
+	rootX, rootY   int16
+	eventX, eventY int16
+	state          uint16
+	mode           byte
+	sameScreen     bool
+	focus          bool
+}
+
+func (e *EnterNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
+	event := make([]byte, 32)
+	event[0] = 7 // EnterNotify event code
+	event[1] = e.detail
+	order.PutUint16(event[2:4], e.sequence)
+	order.PutUint32(event[4:8], e.time)
+	order.PutUint32(event[8:12], e.root)
+	order.PutUint32(event[12:16], e.event)
+	order.PutUint32(event[16:20], e.child)
+	order.PutUint16(event[20:22], uint16(e.rootX))
+	order.PutUint16(event[22:24], uint16(e.rootY))
+	order.PutUint16(event[24:26], uint16(e.eventX))
+	order.PutUint16(event[26:28], uint16(e.eventY))
+	order.PutUint16(event[28:30], e.state)
+	event[30] = e.mode
+	var sameScreenFocusByte byte
+	if e.sameScreen {
+		sameScreenFocusByte |= 1
+	}
+	if e.focus {
+		sameScreenFocusByte |= 2
+	}
+	event[31] = sameScreenFocusByte
+	return event
+}
+
+// LeaveNotify: 8
+type LeaveNotifyEvent struct {
+	sequence       uint16
+	detail         byte
+	time           uint32
+	root           uint32
+	event          uint32
+	child          uint32
+	rootX, rootY   int16
+	eventX, eventY int16
+	state          uint16
+	mode           byte
+	sameScreen     bool
+	focus          bool
+}
+
+func (e *LeaveNotifyEvent) encodeMessage(order binary.ByteOrder) []byte {
+	event := make([]byte, 32)
+	event[0] = 8 // LeaveNotify event code
+	event[1] = e.detail
+	order.PutUint16(event[2:4], e.sequence)
+	order.PutUint32(event[4:8], e.time)
+	order.PutUint32(event[8:12], e.root)
+	order.PutUint32(event[12:16], e.event)
+	order.PutUint32(event[16:20], e.child)
+	order.PutUint16(event[20:22], uint16(e.rootX))
+	order.PutUint16(event[22:24], uint16(e.rootY))
+	order.PutUint16(event[24:26], uint16(e.eventX))
+	order.PutUint16(event[26:28], uint16(e.eventY))
+	order.PutUint16(event[28:30], e.state)
+	event[30] = e.mode
+	var sameScreenFocusByte byte
+	if e.sameScreen {
+		sameScreenFocusByte |= 1
+	}
+	if e.focus {
+		sameScreenFocusByte |= 2
+	}
+	event[31] = sameScreenFocusByte
+	return event
+}
+
 // Expose: 12
 type exposeEvent struct {
 	sequence      uint16

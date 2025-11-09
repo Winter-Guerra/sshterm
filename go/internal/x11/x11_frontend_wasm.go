@@ -486,6 +486,8 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	mouseEvents["mouseup"] = w.mouseEventHandler(xid, "mouseup")
 	mouseEvents["mousemove"] = w.mouseEventHandler(xid, "mousemove")
 	mouseEvents["wheel"] = w.mouseEventHandler(xid, "wheel")
+	mouseEvents["mouseenter"] = w.pointerCrossingEventHandler(xid, true)
+	mouseEvents["mouseleave"] = w.pointerCrossingEventHandler(xid, false)
 
 	keyDownEvent := w.keyboardEventHandler(xid, "keydown")
 	keyUpEvent := w.keyboardEventHandler(xid, "keyup")
@@ -523,6 +525,8 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	canvas.Call("addEventListener", "mouseup", mouseEvents["mouseup"])
 	canvas.Call("addEventListener", "mousemove", mouseEvents["mousemove"])
 	canvas.Call("addEventListener", "wheel", mouseEvents["wheel"])
+	canvas.Call("addEventListener", "mouseenter", mouseEvents["mouseenter"])
+	canvas.Call("addEventListener", "mouseleave", mouseEvents["mouseleave"])
 
 	// Attach focus/blur event listeners
 	windowDiv.Set("tabIndex", 0) // Make the div focusable
@@ -587,6 +591,8 @@ func (w *wasmX11Frontend) destroyWindow(wid xID, logit bool) {
 		winInfo.canvas.Call("removeEventListener", "mouseup", winInfo.mouseEvents["mouseup"])
 		winInfo.canvas.Call("removeEventListener", "mousemove", winInfo.mouseEvents["mousemove"])
 		winInfo.canvas.Call("removeEventListener", "wheel", winInfo.mouseEvents["wheel"])
+		winInfo.canvas.Call("removeEventListener", "mouseenter", winInfo.mouseEvents["mouseenter"])
+		winInfo.canvas.Call("removeEventListener", "mouseleave", winInfo.mouseEvents["mouseleave"])
 
 		winInfo.div.Call("removeEventListener", "focus", winInfo.focusEvent)
 		winInfo.div.Call("removeEventListener", "blur", winInfo.blurEvent)
@@ -2525,6 +2531,52 @@ func (w *wasmX11Frontend) mouseEventHandler(xid xID, eventType string) js.Func {
 		if eventType == "mousemove" {
 			w.server.UpdatePointerPosition(int16(offsetX), int16(offsetY))
 		}
+		return nil
+	})
+}
+
+func keyMask(event js.Value) uint16 {
+	state := uint16(0)
+	if event.Get("shiftKey").Bool() {
+		state |= 1 // ShiftMask
+	}
+	if event.Get("ctrlKey").Bool() {
+		state |= 4 // ControlMask
+	}
+	if event.Get("altKey").Bool() {
+		state |= 8 // Mod1Mask
+	}
+	// Map JS `buttons` bitmask to X11 button state masks
+	jsButtons := event.Get("buttons").Int()
+	if (jsButtons & 1) != 0 {
+		state |= 0x0100
+	} // Button1Mask
+	if (jsButtons & 2) != 0 {
+		state |= 0x0400
+	} // Button3Mask
+	if (jsButtons & 4) != 0 {
+		state |= 0x0200
+	} // Button2Mask
+	return state
+}
+
+// pointerCrossingEventHandler creates a js.Func for mouse enter/leave events.
+func (w *wasmX11Frontend) pointerCrossingEventHandler(xid xID, isEnter bool) js.Func {
+	return js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if _, ok := w.windows[xid]; !ok {
+			return nil
+		}
+		event := args[0]
+		rootX := int16(event.Get("clientX").Int())
+		rootY := int16(event.Get("clientY").Int())
+		eventX := int16(event.Get("offsetX").Int())
+		eventY := int16(event.Get("offsetY").Int())
+		state := keyMask(event)
+		mode := byte(0)   // Normal
+		detail := byte(0) // Not used for crossing events
+
+		w.server.SendPointerCrossingEvent(isEnter, xid, rootX, rootY, eventX, eventY, state, mode, detail)
+		debugf("Pointer crossing event: window=%s, isEnter=%t, rootX=%d, rootY=%d, eventX=%d, eventY=%d, state=%d", xid, isEnter, rootX, rootY, eventX, eventY, state)
 		return nil
 	})
 }

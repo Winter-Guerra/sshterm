@@ -320,6 +320,55 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 }
 
+func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY, eventX, eventY int16, state uint16, mode, detail byte) {
+	client, ok := s.clients[xid.client]
+	if !ok {
+		log.Printf("X11: Failed to write pointer crossing event: client %d not found", xid.client)
+		return
+	}
+
+	var event messageEncoder
+	if isEnter {
+		event = &EnterNotifyEvent{
+			sequence:   client.sequence,
+			detail:     detail,
+			time:       0, // Timestamp (not implemented)
+			root:       s.rootWindowID(),
+			event:      xid.local,
+			child:      0, // Or a child window ID if applicable
+			rootX:      rootX,
+			rootY:      rootY,
+			eventX:     eventX,
+			eventY:     eventY,
+			state:      state,
+			mode:       mode,
+			sameScreen: true,
+			focus:      s.frontend.GetFocusWindow(client.id) == xid,
+		}
+	} else {
+		event = &LeaveNotifyEvent{
+			sequence:   client.sequence,
+			detail:     detail,
+			time:       0, // Timestamp (not implemented)
+			root:       s.rootWindowID(),
+			event:      xid.local,
+			child:      0, // Or a child window ID if applicable
+			rootX:      rootX,
+			rootY:      rootY,
+			eventX:     eventX,
+			eventY:     eventY,
+			state:      state,
+			mode:       mode,
+			sameScreen: true,
+			focus:      s.frontend.GetFocusWindow(client.id) == xid,
+		}
+	}
+
+	if err := client.send(event); err != nil {
+		debugf("X11: Failed to write pointer crossing event: %v", err)
+	}
+}
+
 func (s *x11Server) sendConfigureNotifyEvent(windowID xID, x, y int16, width, height uint16) {
 	debugf("X11: Sending ConfigureNotify event for window %d", windowID)
 	client, ok := s.clients[windowID.client]
