@@ -1,6 +1,7 @@
 output/
 ssh.wasm
 tests.wasm
+tests.x11.wasm
 wasm_exec.js
 node_modules
 xterm.css
