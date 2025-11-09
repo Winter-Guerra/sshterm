@@ -231,6 +231,7 @@ const (
 	Button3Mask = 1 << 10
 	Button4Mask = 1 << 11
 	Button5Mask = 1 << 12
+	AnyModifier = 1 << 15
 )
 
 const (

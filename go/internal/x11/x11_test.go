@@ -69,6 +69,101 @@ func TestSendMouseEvent_EventMask_Blocked(t *testing.T) {
 	}
 }
 
+func TestSendKeyboardEvent_PassiveGrab_Activates(t *testing.T) {
+	server, _ := setupTestServer(t)
+	client := server.clients[1]
+
+	windowID := xID{client: 1, local: 10}
+	server.windows[windowID] = &window{
+		xid:        windowID,
+		attributes: WindowAttributes{EventMask: KeyPressMask},
+	}
+	req := &GrabKeyRequest{
+		GrabWindow: Window(windowID.local),
+		Modifiers:  AnyModifier,
+		Key:        38, // KeyA
+	}
+	server.handleRequest(client, req, 2)
+
+	// Send a key press event that should activate the grab
+	server.SendKeyboardEvent(windowID, "keydown", "KeyA", false, false, false, false)
+
+	// Check that the keyboard grab is now active
+	if server.keyboardGrabWindow != windowID {
+		t.Errorf("Expected keyboard grab to be activated on window %s, but it was not", windowID)
+	}
+}
+
+func TestUngrabKeyRequest(t *testing.T) {
+	server, _ := setupTestServer(t)
+	client := server.clients[1]
+
+	windowID := xID{client: 1, local: 10}
+	server.windows[windowID] = &window{
+		xid: windowID,
+	}
+
+	// 1. Grab a key
+	grabReq := &GrabKeyRequest{
+		GrabWindow:  Window(windowID.local),
+		Modifiers:   ShiftMask,
+		Key:         38, // KeyA
+		OwnerEvents: false,
+	}
+	server.handleRequest(client, grabReq, 2)
+
+	// Verify grab exists
+	if len(server.passiveGrabs[windowID]) != 1 {
+		t.Fatalf("GrabKey did not create a passive grab. Expected 1, got %d", len(server.passiveGrabs[windowID]))
+	}
+
+	// 2. Ungrab the key
+	ungrabReq := &UngrabKeyRequest{
+		GrabWindow: Window(windowID.local),
+		Modifiers:  ShiftMask,
+		Key:        38, // KeyA
+	}
+	server.handleRequest(client, ungrabReq, 3)
+
+	// Verify grab is removed
+	if len(server.passiveGrabs[windowID]) != 0 {
+		t.Errorf("UngrabKey did not remove the passive grab. Expected 0, got %d", len(server.passiveGrabs[windowID]))
+	}
+}
+
+func TestUngrabKeyRequest_AnyModifier(t *testing.T) {
+	server, _ := setupTestServer(t)
+	client := server.clients[1]
+
+	windowID := xID{client: 1, local: 10}
+	server.windows[windowID] = &window{
+		xid: windowID,
+	}
+
+	// 1. Grab a key with different modifiers
+	grabReq1 := &GrabKeyRequest{GrabWindow: Window(windowID.local), Modifiers: ShiftMask, Key: 38}
+	grabReq2 := &GrabKeyRequest{GrabWindow: Window(windowID.local), Modifiers: ControlMask, Key: 38}
+	server.handleRequest(client, grabReq1, 2)
+	server.handleRequest(client, grabReq2, 3)
+
+	if len(server.passiveGrabs[windowID]) != 2 {
+		t.Fatalf("GrabKey did not create passive grabs. Expected 2, got %d", len(server.passiveGrabs[windowID]))
+	}
+
+	// 2. Ungrab the key with AnyModifier
+	ungrabReq := &UngrabKeyRequest{
+		GrabWindow: Window(windowID.local),
+		Modifiers:  AnyModifier,
+		Key:        38, // KeyA
+	}
+	server.handleRequest(client, ungrabReq, 4)
+
+	// Verify all grabs for that key are removed
+	if len(server.passiveGrabs[windowID]) != 0 {
+		t.Errorf("UngrabKey with AnyModifier did not remove all passive grabs. Expected 0, got %d", len(server.passiveGrabs[windowID]))
+	}
+}
+
 func TestSendMouseEvent_ActivePointerGrab_Redirected(t *testing.T) {
 	server, _ := setupTestServer(t)
 	client := server.clients[1]

@@ -197,6 +197,7 @@ type x11Server struct {
 
 type passiveGrab struct {
 	button    byte
+	key       KeyCode
 	modifiers uint16
 	owner     bool
 	eventMask uint16
@@ -284,11 +285,12 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	if !grabActive && eventType == "mousedown" {
 		if grabs, ok := s.passiveGrabs[originalXID]; ok {
 			for _, grab := range grabs {
-				if grab.button == button && (grab.modifiers == 0 || grab.modifiers == state) {
+				if grab.button == button && (grab.modifiers == AnyModifier || grab.modifiers == state) {
 					s.pointerGrabWindow = originalXID
 					s.pointerGrabOwner = grab.owner
 					s.pointerGrabEventMask = grab.eventMask
 					grabActive = true
+					s.frontend.SetWindowCursor(originalXID, grab.cursor)
 					break
 				}
 			}
@@ -408,6 +410,19 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	eventWindowID := originalXID.local
 	if grabActive && !s.keyboardGrabOwner {
 		eventWindowID = s.keyboardGrabWindow.local
+	}
+
+	if !grabActive && eventType == "keydown" {
+		if grabs, ok := s.passiveGrabs[originalXID]; ok {
+			for _, grab := range grabs {
+				if grab.key == KeyCode(keycode) && (grab.modifiers == AnyModifier || grab.modifiers == state) {
+					s.keyboardGrabWindow = originalXID
+					s.keyboardGrabOwner = grab.owner
+					grabActive = true
+					break
+				}
+			}
+		}
 	}
 
 	event := &keyEvent{
@@ -1148,10 +1163,25 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.keyboardGrabTime = 0
 
 	case *GrabKeyRequest:
-		// TODO: implement
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		grab := &passiveGrab{
+			key:       p.Key,
+			modifiers: p.Modifiers,
+			owner:     p.OwnerEvents,
+		}
+		s.passiveGrabs[grabWindow] = append(s.passiveGrabs[grabWindow], grab)
 
 	case *UngrabKeyRequest:
-		// TODO: implement
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		if grabs, ok := s.passiveGrabs[grabWindow]; ok {
+			newGrabs := make([]*passiveGrab, 0, len(grabs))
+			for _, grab := range grabs {
+				if !(grab.key == p.Key && (p.Modifiers == AnyModifier || grab.modifiers == p.Modifiers)) {
+					newGrabs = append(newGrabs, grab)
+				}
+			}
+			s.passiveGrabs[grabWindow] = newGrabs
+		}
 
 	case *AllowEventsRequest:
 		s.frontend.AllowEvents(client.id, p.Mode, uint32(p.Time))
