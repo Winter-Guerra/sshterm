@@ -403,6 +403,48 @@ func TestSSHTerm(t *testing.T) {
 		}
 		t.Log("X11 test completed")
 	})
+
+	t.Run("WASM X11 Tests", func(t *testing.T) {
+		ctx, cancel = context.WithTimeout(t.Context(), 5*time.Minute)
+		defer cancel()
+		ctx, cancel = chromedp.NewRemoteAllocator(ctx, *withChromeDP)
+		defer cancel()
+
+		ctx, cancel = chromedp.NewContext(ctx,
+			chromedp.WithErrorf(t.Logf),
+			chromedp.WithLogf(t.Logf),
+		)
+		defer cancel()
+
+		chromedp.ListenTarget(ctx, func(ev any) {
+			switch ev := ev.(type) {
+			case *cdproto.Message:
+			case *runtime.EventConsoleAPICalled:
+				logConsole(ev)
+			case *runtime.EventExceptionThrown:
+				t.Logf("Exception: * %s", ev.ExceptionDetails.Error())
+			default:
+			}
+		})
+		clearX11Operations()
+		// Navigate to the WASM app to display the X11 output
+		var buf []byte
+		if err := chromedp.Run(ctx,
+			chromedp.Navigate("https://devtest.local:8443/tests.x11.html"),
+			chromedp.WaitVisible("#x11-wasm-tests-done"),
+			chromedp.CaptureScreenshot(&buf),
+		); err != nil {
+			t.Fatalf("Failed to run chromedp actions: %v", err)
+		}
+		if *outputDir != "" {
+			screenshotPath := filepath.Join(*outputDir, "x11_wasm_screenshot.png")
+			if err := os.WriteFile(screenshotPath, buf, 0o644); err != nil {
+				t.Fatalf("Failed to save screenshot: %v", err)
+			}
+			t.Logf("X11 screenshot saved to %s", screenshotPath)
+		}
+		t.Log("X11 WASM tests completed")
+	})
 }
 
 // CanvasOperation represents a single canvas drawing operation captured from the frontend.
