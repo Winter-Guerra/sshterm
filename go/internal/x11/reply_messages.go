@@ -25,44 +25,46 @@ func boolToByte(b bool) byte {
 
 // GetWindowAttributes: 3
 type getWindowAttributesReply struct {
-	sequence           uint16
-	backingStore       byte
-	visualID           uint32
-	class              uint16
-	bitGravity         byte
-	winGravity         byte
-	backingPlanes      uint32
-	backingPixel       uint32
-	saveUnder          bool
-	mapped             bool
-	mapState           byte
-	overrideRedirect   bool
-	colormap           uint32
-	allEventMasks      uint32
-	yourEventMask      uint32
-	doNotPropagateMask uint16
+	ReplyType          byte
+	BackingStore       byte
+	Sequence           uint16
+	Length             uint32
+	VisualID           uint32
+	Class              uint16
+	BitGravity         byte
+	WinGravity         byte
+	BackingPlanes      uint32
+	BackingPixel       uint32
+	SaveUnder          byte
+	MapIsInstalled     byte
+	MapState           byte
+	OverrideRedirect   byte
+	Colormap           uint32
+	AllEventMasks      uint32
+	YourEventMask      uint32
+	DoNotPropagateMask uint16
 }
 
 func (r *getWindowAttributesReply) encodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 44)
 	reply[0] = 1 // Reply type
-	reply[1] = r.backingStore
-	order.PutUint16(reply[2:4], r.sequence)
+	reply[1] = r.BackingStore
+	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 3) // Reply length (3 * 4 bytes = 12 bytes, plus 32 bytes header = 44 bytes total)
-	order.PutUint32(reply[8:12], r.visualID)
-	order.PutUint16(reply[12:14], r.class)
-	reply[14] = r.bitGravity
-	reply[15] = r.winGravity
-	order.PutUint32(reply[16:20], r.backingPlanes)
-	order.PutUint32(reply[20:24], r.backingPixel)
-	reply[24] = boolToByte(r.saveUnder)
-	reply[25] = boolToByte(r.mapped)
-	reply[26] = r.mapState
-	reply[27] = boolToByte(r.overrideRedirect)
-	order.PutUint32(reply[28:32], r.colormap)
-	order.PutUint32(reply[32:36], r.allEventMasks)
-	order.PutUint32(reply[36:40], r.yourEventMask)
-	order.PutUint16(reply[40:42], r.doNotPropagateMask)
+	order.PutUint32(reply[8:12], r.VisualID)
+	order.PutUint16(reply[12:14], r.Class)
+	reply[14] = r.BitGravity
+	reply[15] = r.WinGravity
+	order.PutUint32(reply[16:20], r.BackingPlanes)
+	order.PutUint32(reply[20:24], r.BackingPixel)
+	reply[24] = r.SaveUnder
+	reply[25] = r.MapIsInstalled
+	reply[26] = r.MapState
+	reply[27] = r.OverrideRedirect
+	order.PutUint32(reply[28:32], r.Colormap)
+	order.PutUint32(reply[32:36], r.AllEventMasks)
+	order.PutUint32(reply[36:40], r.YourEventMask)
+	order.PutUint16(reply[40:42], r.DoNotPropagateMask)
 	// reply[42:44] is padding
 	return reply
 }

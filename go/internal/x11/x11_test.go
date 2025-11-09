@@ -69,6 +69,105 @@ func TestSendMouseEvent_EventMask_Blocked(t *testing.T) {
 	}
 }
 
+func TestGetWindowAttributesRequest(t *testing.T) {
+	server, clientBuffer := setupTestServer(t)
+	client := server.clients[1]
+
+	// 1. Create a window with known attributes
+	windowID := xID{client: 1, local: 10}
+	server.windows[windowID] = &window{
+		xid: windowID,
+		attributes: WindowAttributes{
+			Class:              InputOutput,
+			BitGravity:         NorthWestGravity,
+			WinGravity:         NorthWestGravity,
+			BackingStore:       NotUseful,
+			BackingPlanes:      0,
+			BackingPixel:       0,
+			SaveUnder:          false,
+			MapIsInstalled:     false,
+			MapState:           IsUnmapped,
+			OverrideRedirect:   true,
+			Colormap:           0,
+			Cursor:             0,
+			EventMask:          ButtonPressMask | KeyPressMask,
+		},
+	}
+
+	// 2. Create and handle the GetWindowAttributes request
+	req := &GetWindowAttributesRequest{Window: Window(windowID.local)}
+	reply := server.handleRequest(client, req, 2)
+	if reply == nil {
+		t.Fatalf("handleRequest returned a nil reply")
+	}
+
+	// 3. Encode the reply and write to the client's buffer
+	encodedReply := reply.encodeMessage(client.byteOrder)
+	if _, err := clientBuffer.Write(encodedReply); err != nil {
+		t.Fatalf("Failed to write reply to buffer: %v", err)
+	}
+
+	// 4. Decode the reply from the buffer
+	var parsedReply getWindowAttributesReply
+	err := binary.Read(clientBuffer, binary.LittleEndian, &parsedReply)
+	if err != nil {
+		t.Fatalf("Failed to read reply from buffer: %v", err)
+	}
+
+	// 5. Assert the reply fields match the window attributes
+	if parsedReply.ReplyType != 1 {
+		t.Errorf("Expected ReplyType 1, got %d", parsedReply.ReplyType)
+	}
+	if parsedReply.BackingStore != NotUseful {
+		t.Errorf("Expected BackingStore %d, got %d", NotUseful, parsedReply.BackingStore)
+	}
+	if parsedReply.Sequence != 2 {
+		t.Errorf("Expected Sequence 2, got %d", parsedReply.Sequence)
+	}
+	if parsedReply.Length != 3 { // 12 bytes / 4 = 3
+		t.Errorf("Expected Length 3, got %d", parsedReply.Length)
+	}
+	if parsedReply.VisualID != 0 {
+		t.Errorf("Expected VisualID 0, got %d", parsedReply.VisualID)
+	}
+	if parsedReply.Class != InputOutput {
+		t.Errorf("Expected Class %d, got %d", InputOutput, parsedReply.Class)
+	}
+	if parsedReply.BitGravity != NorthWestGravity {
+		t.Errorf("Expected BitGravity %d, got %d", NorthWestGravity, parsedReply.BitGravity)
+	}
+	if parsedReply.WinGravity != NorthWestGravity {
+		t.Errorf("Expected WinGravity %d, got %d", NorthWestGravity, parsedReply.WinGravity)
+	}
+	if parsedReply.BackingPlanes != 0 {
+		t.Errorf("Expected BackingPlanes 0, got %d", parsedReply.BackingPlanes)
+	}
+	if parsedReply.BackingPixel != 0 {
+		t.Errorf("Expected BackingPixel 0, got %d", parsedReply.BackingPixel)
+	}
+	if parsedReply.SaveUnder != 0 { // 0 for false
+		t.Errorf("Expected SaveUnder false (0), got %d", parsedReply.SaveUnder)
+	}
+	if parsedReply.MapIsInstalled != 0 { // 0 for false
+		t.Errorf("Expected MapIsInstalled false (0), got %d", parsedReply.MapIsInstalled)
+	}
+	if parsedReply.MapState != IsUnmapped {
+		t.Errorf("Expected MapState %d, got %d", IsUnmapped, parsedReply.MapState)
+	}
+	if parsedReply.OverrideRedirect != 1 { // 1 for true
+		t.Errorf("Expected OverrideRedirect true (1), got %d", parsedReply.OverrideRedirect)
+	}
+	if parsedReply.Colormap != 0 {
+		t.Errorf("Expected Colormap 0, got %d", parsedReply.Colormap)
+	}
+	if parsedReply.AllEventMasks != (ButtonPressMask | KeyPressMask) {
+		t.Errorf("Expected AllEventMasks %d, got %d", (ButtonPressMask | KeyPressMask), parsedReply.AllEventMasks)
+	}
+	if parsedReply.YourEventMask != (ButtonPressMask | KeyPressMask) {
+		t.Errorf("Expected YourEventMask %d, got %d", (ButtonPressMask | KeyPressMask), parsedReply.YourEventMask)
+	}
+}
+
 func TestSendKeyboardEvent_PassiveGrab_Activates(t *testing.T) {
 	server, _ := setupTestServer(t)
 	client := server.clients[1]

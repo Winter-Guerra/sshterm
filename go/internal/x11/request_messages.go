@@ -397,22 +397,26 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 // auxiliary data structures
 
 type WindowAttributes struct {
-	BackgroundPixmap   Pixmap
-	BackgroundPixel    uint32
-	BackgroundPixelSet bool
-	BorderPixmap       Pixmap
-	BorderPixel        uint32
-	BitGravity         uint32
-	WinGravity         uint32
-	BackingStore       uint32
-	BackingPlanes      uint32
-	BackingPixel       uint32
-	OverrideRedirect   uint32
-	SaveUnder          uint32
-	EventMask          uint32
-	DontPropagateMask  uint32
-	Colormap           Colormap
-	Cursor             Cursor
+	BackgroundPixmap  Pixmap
+	BackgroundPixel   uint32
+	BorderPixmap      Pixmap
+	BorderPixel       uint32
+	BitGravity        uint32
+	WinGravity        uint32
+	BackingStore      uint32
+	BackingPlanes     uint32
+	BackingPixel      uint32
+	OverrideRedirect  bool
+	SaveUnder         bool
+	EventMask         uint32
+	DontPropagateMask uint32
+	Colormap          Colormap
+	Cursor            Cursor
+
+	// Not part of value-mask, but part of window state
+	Class          uint32
+	MapIsInstalled bool
+	MapState       uint32
 }
 
 // PolyTextItem is an interface for items in a PolyText request.
@@ -510,7 +514,7 @@ func parseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []by
 }
 
 type GetWindowAttributesRequest struct {
-	Drawable Drawable
+	Window Window
 }
 
 func (GetWindowAttributesRequest) OpCode() reqCode { return GetWindowAttributes }
@@ -520,7 +524,7 @@ func parseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte)
 		return nil, fmt.Errorf("%w: get window attributes request too short", errParseError)
 	}
 	req := &GetWindowAttributesRequest{}
-	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
+	req.Window = Window(order.Uint32(requestBody[0:4]))
 	return req, nil
 }
 
@@ -2988,7 +2992,6 @@ func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData 
 			return wa, 0, fmt.Errorf("%w: window attributes too short for background pixel", errParseError)
 		}
 		wa.BackgroundPixel = order.Uint32(valuesData[offset : offset+4])
-		wa.BackgroundPixelSet = true
 		offset += 4
 	}
 	if valueMask&CWBorderPixmap != 0 {
@@ -3044,14 +3047,14 @@ func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData 
 		if len(valuesData) < offset+4 {
 			return wa, 0, fmt.Errorf("%w: window attributes too short for override redirect", errParseError)
 		}
-		wa.OverrideRedirect = order.Uint32(valuesData[offset : offset+4])
+		wa.OverrideRedirect = order.Uint32(valuesData[offset:offset+4]) != 0
 		offset += 4
 	}
 	if valueMask&CWSaveUnder != 0 {
 		if len(valuesData) < offset+4 {
 			return wa, 0, fmt.Errorf("%w: window attributes too short for save under", errParseError)
 		}
-		wa.SaveUnder = order.Uint32(valuesData[offset : offset+4])
+		wa.SaveUnder = order.Uint32(valuesData[offset:offset+4]) != 0
 		offset += 4
 	}
 	if valueMask&CWEventMask != 0 {

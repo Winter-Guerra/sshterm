@@ -214,6 +214,14 @@ func (s *x11Server) UpdatePointerPosition(x, y int16) {
 	s.pointerY = y
 }
 
+func (s *x11Server) GetWindowAttributes(xid xID) (WindowAttributes, bool) {
+	w, ok := s.windows[xid]
+	if !ok {
+		return WindowAttributes{}, false
+	}
+	return w.attributes, true
+}
+
 func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32) {
 	debugf("X11: SendMouseEvent xid=%s type=%s x=%d y=%d detail=%d", xid, eventType, x, y, detail)
 
@@ -802,28 +810,28 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.ChangeWindowAttributes(xid, p.ValueMask, p.Values)
 
 	case *GetWindowAttributesRequest:
-		xid := client.xID(uint32(p.Drawable))
-		w, ok := s.windows[xid]
+		xid := client.xID(uint32(p.Window))
+		attrs, ok := s.GetWindowAttributes(xid)
 		if !ok {
-			return nil
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Window), majorOp: GetWindowAttributes, code: WindowErrorCode})
 		}
 		return &getWindowAttributesReply{
-			sequence:           seq,
-			backingStore:       byte(w.attributes.BackingStore),
-			visualID:           s.visualID,
-			class:              1, // Class: InputOutput
-			bitGravity:         byte(w.attributes.BitGravity),
-			winGravity:         byte(w.attributes.WinGravity),
-			backingPlanes:      w.attributes.BackingPlanes,
-			backingPixel:       w.attributes.BackingPixel,
-			saveUnder:          w.attributes.SaveUnder != 0,
-			mapped:             w.mapped,
-			mapState:           w.mapState(),
-			overrideRedirect:   w.attributes.OverrideRedirect != 0,
-			colormap:           uint32(w.attributes.Colormap),
-			allEventMasks:      w.attributes.EventMask,
-			yourEventMask:      w.attributes.EventMask, // Assuming client's event mask is the same for now
-			doNotPropagateMask: 0,                      // Not explicitly stored in window attributes
+			Sequence:           seq,
+			BackingStore:       byte(attrs.BackingStore),
+			VisualID:           s.visualID,
+			Class:              uint16(attrs.Class),
+			BitGravity:         byte(attrs.BitGravity),
+			WinGravity:         byte(attrs.WinGravity),
+			BackingPlanes:      attrs.BackingPlanes,
+			BackingPixel:       attrs.BackingPixel,
+			SaveUnder:          boolToByte(attrs.SaveUnder),
+			MapIsInstalled:     boolToByte(attrs.MapIsInstalled),
+			MapState:           byte(attrs.MapState),
+			OverrideRedirect:   boolToByte(attrs.OverrideRedirect),
+			Colormap:           uint32(attrs.Colormap),
+			AllEventMasks:      attrs.EventMask,
+			YourEventMask:      attrs.EventMask,
+			DoNotPropagateMask: uint16(attrs.DontPropagateMask),
 		}
 
 	case *DestroyWindowRequest:
