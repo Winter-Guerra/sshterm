@@ -40,6 +40,72 @@ func (e *keyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
+// ButtonPress: 4
+type ButtonPressEvent struct {
+	sequence       uint16
+	detail         byte // button
+	time           uint32
+	root           uint32
+	event          uint32
+	child          uint32
+	rootX, rootY   int16
+	eventX, eventY int16
+	state          uint16
+	sameScreen     bool
+}
+
+func (e *ButtonPressEvent) encodeMessage(order binary.ByteOrder) []byte {
+	event := make([]byte, 32)
+	event[0] = 4 // ButtonPress event code
+	event[1] = e.detail
+	order.PutUint16(event[2:4], e.sequence)
+	order.PutUint32(event[4:8], e.time)
+	order.PutUint32(event[8:12], e.root)
+	order.PutUint32(event[12:16], e.event)
+	order.PutUint32(event[16:20], e.child)
+	order.PutUint16(event[20:22], uint16(e.rootX))
+	order.PutUint16(event[22:24], uint16(e.rootY))
+	order.PutUint16(event[24:26], uint16(e.eventX))
+	order.PutUint16(event[26:28], uint16(e.eventY))
+	order.PutUint16(event[28:30], e.state)
+	event[30] = boolToByte(e.sameScreen)
+	// event[31] is unused
+	return event
+}
+
+// ButtonRelease: 5
+type ButtonReleaseEvent struct {
+	sequence       uint16
+	detail         byte // button
+	time           uint32
+	root           uint32
+	event          uint32
+	child          uint32
+	rootX, rootY   int16
+	eventX, eventY int16
+	state          uint16
+	sameScreen     bool
+}
+
+func (e *ButtonReleaseEvent) encodeMessage(order binary.ByteOrder) []byte {
+	event := make([]byte, 32)
+	event[0] = 5 // ButtonRelease event code
+	event[1] = e.detail
+	order.PutUint16(event[2:4], e.sequence)
+	order.PutUint32(event[4:8], e.time)
+	order.PutUint32(event[8:12], e.root)
+	order.PutUint32(event[12:16], e.event)
+	order.PutUint32(event[16:20], e.child)
+	order.PutUint16(event[20:22], uint16(e.rootX))
+	order.PutUint16(event[22:24], uint16(e.rootY))
+	order.PutUint16(event[24:26], uint16(e.eventX))
+	order.PutUint16(event[26:28], uint16(e.eventY))
+	order.PutUint16(event[28:30], e.state)
+	event[30] = boolToByte(e.sameScreen)
+	// event[31] is unused
+	return event
+}
+
 // MotionNotify: 6
 type motionNotifyEvent struct {
 	sequence       uint16

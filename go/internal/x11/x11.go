@@ -201,19 +201,60 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		return
 	}
 
-	event := &motionNotifyEvent{
-		sequence:   client.sequence,
-		detail:     0, // 0 for Normal
-		time:       0, // 0 for now
-		root:       s.rootWindowID(),
-		event:      xid.local,
-		child:      0, // 0 for now
-		rootX:      int16(x),
-		rootY:      int16(y),
-		eventX:     int16(x),
-		eventY:     int16(y),
-		state:      uint16(detail),
-		sameScreen: true,
+	// Unpack button and state from detail
+	state := uint16(detail >> 16)
+	button := byte(detail & 0xFFFF)
+
+	var event messageEncoder
+	switch eventType {
+	case "mousedown":
+		event = &ButtonPressEvent{
+			sequence:   client.sequence,
+			detail:     button,
+			time:       0, // 0 for now
+			root:       s.rootWindowID(),
+			event:      xid.local,
+			child:      0, // 0 for now
+			rootX:      int16(x),
+			rootY:      int16(y),
+			eventX:     int16(x),
+			eventY:     int16(y),
+			state:      state,
+			sameScreen: true,
+		}
+	case "mouseup":
+		event = &ButtonReleaseEvent{
+			sequence:   client.sequence,
+			detail:     button,
+			time:       0, // 0 for now
+			root:       s.rootWindowID(),
+			event:      xid.local,
+			child:      0, // 0 for now
+			rootX:      int16(x),
+			rootY:      int16(y),
+			eventX:     int16(x),
+			eventY:     int16(y),
+			state:      state,
+			sameScreen: true,
+		}
+	case "mousemove":
+		event = &motionNotifyEvent{
+			sequence:   client.sequence,
+			detail:     0, // 0 for Normal
+			time:       0, // 0 for now
+			root:       s.rootWindowID(),
+			event:      xid.local,
+			child:      0, // 0 for now
+			rootX:      int16(x),
+			rootY:      int16(y),
+			eventX:     int16(x),
+			eventY:     int16(y),
+			state:      state,
+			sameScreen: true,
+		}
+	default:
+		debugf("X11: Unknown mouse event type: %s", eventType)
+		return
 	}
 
 	if err := client.send(event); err != nil {

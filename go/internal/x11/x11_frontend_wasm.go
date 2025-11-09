@@ -2431,40 +2431,98 @@ func (w *wasmX11Frontend) mouseEventHandler(xid xID, eventType string) js.Func {
 			return nil
 		}
 		event := args[0]
-		valOffsetX := event.Get("offsetX")
-		offsetX := int32(0)
-		if valOffsetX.Type() == js.TypeNumber {
-			offsetX = int32(valOffsetX.Int())
+		offsetX := int32(event.Get("offsetX").Int())
+		offsetY := int32(event.Get("offsetY").Int())
+
+		// The state should be the mask *before* the event.
+		// The `buttons` property is the state *after* the `mousedown` event,
+		// and *before* the `mouseup` event. So for mouseup, it's correct.
+		// For mousedown, we need to remove the current button from the mask.
+		state := 0
+		if event.Get("shiftKey").Bool() {
+			state |= 1 // ShiftMask
+		}
+		if event.Get("ctrlKey").Bool() {
+			state |= 4 // ControlMask
+		}
+		if event.Get("altKey").Bool() {
+			state |= 8 // Mod1Mask
 		}
 
-		valOffsetY := event.Get("offsetY")
-		offsetY := int32(0)
-		if valOffsetY.Type() == js.TypeNumber {
-			offsetY = int32(valOffsetY.Int())
-		}
+		// Map JS `buttons` bitmask to X11 button state masks
+		jsButtons := event.Get("buttons").Int()
+		buttonsMask := 0
+		if (jsButtons & 1) != 0 {
+			buttonsMask |= 0x0100
+		} // Button1Mask
+		if (jsButtons & 2) != 0 {
+			buttonsMask |= 0x0400
+		} // Button3Mask
+		if (jsButtons & 4) != 0 {
+			buttonsMask |= 0x0200
+		} // Button2Mask
+		state |= buttonsMask
 
-		valButtons := event.Get("buttons")
-		buttons := uint32(0)
-		if valButtons.Type() == js.TypeNumber {
-			buttons = uint32(valButtons.Int())
-		}
+		button := 0
+		if eventType == "mousedown" || eventType == "mouseup" {
+			// JS button: 0=left, 1=middle, 2=right
+			// X11 button: 1=left, 2=middle, 3=right
+			jsButton := event.Get("button").Int()
+			switch jsButton {
+			case 0:
+				button = 1
+			case 1:
+				button = 2
+			case 2:
+				button = 3
+			}
 
-		valDeltaY := event.Get("deltaY")
-		deltaY := int32(0)
-		if valDeltaY.Type() == js.TypeNumber {
-			deltaY = int32(valDeltaY.Int())
+			if eventType == "mousedown" {
+				// For mousedown, remove the current button from the state mask
+				switch button {
+				case 1:
+					state &^= 0x0100
+				case 2:
+					state &^= 0x0200
+				case 3:
+					state &^= 0x0400
+				}
+			}
 		}
 
 		if eventType == "wheel" {
 			event.Call("preventDefault") // Prevent page scrolling
-			w.server.SendMouseEvent(xid, eventType, offsetX, offsetY, deltaY)
-			debugf("Mouse wheel event: window=%s, x=%d, y=%d, deltaY=%d", xid, offsetX, offsetY, deltaY)
+			deltaY := event.Get("deltaY").Float()
+			if deltaY < 0 {
+				button = 4 // Wheel up
+			} else {
+				button = 5 // Wheel down
+			}
+			// Simulate a press and release for wheel events.
+			detailDown := (state << 16) | button
+			w.server.SendMouseEvent(xid, "mousedown", offsetX, offsetY, int32(detailDown))
+
+			// For the release event, the state should include the button that was pressed.
+			stateUp := state
+			switch button {
+			case 4:
+				stateUp |= 0x0800 // Button4Mask
+			case 5:
+				stateUp |= 0x1000 // Button5Mask
+			}
+			detailUp := (stateUp << 16) | button
+			w.server.SendMouseEvent(xid, "mouseup", offsetX, offsetY, int32(detailUp))
+
+			debugf("Mouse wheel event: window=%s, x=%d, y=%d, button=%d, state=%d", xid, offsetX, offsetY, button, state)
 		} else {
-			w.server.SendMouseEvent(xid, eventType, offsetX, offsetY, int32(buttons))
-			debugf("Mouse event: window=%s, type=%s, x=%d, y=%d, buttons=%d", xid, eventType, offsetX, offsetY, buttons)
+			// Pack button and state into a single int32
+			// Use top 16 bits for state, bottom 16 for button
+			detail := (state << 16) | button
+			w.server.SendMouseEvent(xid, eventType, offsetX, offsetY, int32(detail))
+			debugf("Mouse event: window=%s, type=%s, x=%d, y=%d, button=%d, state=%d (packed_detail=%d)", xid, eventType, offsetX, offsetY, button, state, detail)
 		}
+
 		if eventType == "mousemove" {
-			debugf("Mouse move event: window=%s, x=%d, y=%d", xid, offsetX, offsetY)
 			w.server.UpdatePointerPosition(int16(offsetX), int16(offsetY))
 		}
 		return nil
