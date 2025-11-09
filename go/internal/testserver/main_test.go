@@ -416,11 +416,25 @@ func TestSSHTerm(t *testing.T) {
 		)
 		defer cancel()
 
+		pass := make(chan bool, 1)
+		sendPass := func(v bool) {
+			select {
+			case pass <- v:
+			default:
+			}
+		}
 		chromedp.ListenTarget(ctx, func(ev any) {
 			switch ev := ev.(type) {
 			case *cdproto.Message:
 			case *runtime.EventConsoleAPICalled:
 				logConsole(ev)
+				if len(ev.Args) > 0 {
+					if v := ev.Args[0].Value.String(); v == `"Exit status 0"` {
+						sendPass(true)
+					} else if strings.HasPrefix(v, `"Exit status`) {
+						sendPass(false)
+					}
+				}
 			case *runtime.EventExceptionThrown:
 				t.Logf("Exception: * %s", ev.ExceptionDetails.Error())
 			default:
@@ -444,6 +458,10 @@ func TestSSHTerm(t *testing.T) {
 			t.Logf("X11 screenshot saved to %s", screenshotPath)
 		}
 		t.Log("X11 WASM tests completed")
+		cancel()
+		if !<-pass {
+			t.Error("Test failed")
+		}
 	})
 }
 
