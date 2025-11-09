@@ -309,7 +309,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	switch eventType {
 	case "mousedown":
 		event = &ButtonPressEvent{
-			sequence:   client.sequence,
+			sequence:   client.sequence - 1,
 			detail:     button,
 			time:       0, // 0 for now
 			root:       s.rootWindowID(),
@@ -324,7 +324,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		}
 	case "mouseup":
 		event = &ButtonReleaseEvent{
-			sequence:   client.sequence,
+			sequence:   client.sequence - 1,
 			detail:     button,
 			time:       0, // 0 for now
 			root:       s.rootWindowID(),
@@ -339,7 +339,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		}
 	case "mousemove":
 		event = &motionNotifyEvent{
-			sequence:   client.sequence,
+			sequence:   client.sequence - 1,
 			detail:     0, // 0 for Normal
 			time:       0, // 0 for now
 			root:       s.rootWindowID(),
@@ -434,7 +434,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	event := &keyEvent{
-		sequence:   client.sequence,
+		sequence:   client.sequence - 1,
 		detail:     keycode,
 		time:       0, // TODO: Get actual time
 		root:       s.rootWindowID(),
@@ -472,7 +472,7 @@ func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY
 	var event messageEncoder
 	if isEnter {
 		event = &EnterNotifyEvent{
-			sequence:   client.sequence,
+			sequence:   client.sequence - 1,
 			detail:     detail,
 			time:       0, // Timestamp (not implemented)
 			root:       s.rootWindowID(),
@@ -489,7 +489,7 @@ func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY
 		}
 	} else {
 		event = &LeaveNotifyEvent{
-			sequence:   client.sequence,
+			sequence:   client.sequence - 1,
 			detail:     detail,
 			time:       0, // Timestamp (not implemented)
 			root:       s.rootWindowID(),
@@ -520,7 +520,7 @@ func (s *x11Server) sendConfigureNotifyEvent(windowID xID, x, y int16, width, he
 	}
 
 	event := &configureNotifyEvent{
-		sequence:         client.sequence,
+		sequence:         client.sequence - 1,
 		event:            windowID.local,
 		window:           windowID.local,
 		aboveSibling:     0, // None
@@ -546,7 +546,7 @@ func (s *x11Server) sendExposeEvent(windowID xID, x, y, width, height uint16) {
 	}
 
 	event := &exposeEvent{
-		sequence: client.sequence,
+		sequence: client.sequence - 1,
 		window:   windowID.local,
 		x:        x,
 		y:        y,
@@ -569,7 +569,7 @@ func (s *x11Server) SendClientMessageEvent(windowID xID, messageTypeAtom uint32,
 	}
 
 	event := &clientMessageEvent{
-		sequence:    client.sequence,
+		sequence:    client.sequence - 1,
 		format:      32, // Format is always 32 for ClientMessage
 		window:      windowID.local,
 		messageType: messageTypeAtom,
@@ -589,7 +589,7 @@ func (s *x11Server) SendSelectionNotify(requestor xID, selection, target, proper
 	}
 
 	event := &selectionNotifyEvent{
-		sequence:  client.sequence,
+		sequence:  client.sequence - 1,
 		requestor: requestor.local,
 		selection: selection,
 		target:    target,
@@ -1565,7 +1565,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 					continue
 				}
 				event := &colormapNotifyEvent{
-					sequence: client.sequence,
+					sequence: client.sequence - 1,
 					window:   winID.local,
 					colormap: uint32(p.Cmap),
 					new:      true,
@@ -1595,7 +1595,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 					continue
 				}
 				event := &colormapNotifyEvent{
-					sequence: client.sequence,
+					sequence: client.sequence - 1,
 					window:   winID.local,
 					colormap: uint32(p.Cmap),
 					new:      false,
