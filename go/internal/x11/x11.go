@@ -262,10 +262,10 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	}
 }
 
-func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, keyCode int, altKey, ctrlKey, shiftKey, metaKey bool) {
+func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, altKey, ctrlKey, shiftKey, metaKey bool) {
 	// Implement sending keyboard event to client
 	// This will involve constructing an X11 event packet and writing it to client.conn
-	debugf("X11: SendKeyboardEvent xid=%s type=%s keyCode=%d alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, keyCode, altKey, ctrlKey, shiftKey, metaKey)
+	debugf("X11: SendKeyboardEvent xid=%s type=%s code=%s alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
 	client, ok := s.clients[xid.client]
 	if !ok {
 		debugf("X11: SendKeyboardEvent unknown client %d", xid.client)
@@ -286,9 +286,14 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, keyCode int, al
 		state |= 64 // Mod4Mask (Meta key)
 	}
 
+	keycode, ok := jsCodeToX11Keycode[code]
+	if !ok {
+		keycode = jsCodeToX11Keycode["Unidentified"]
+	}
+
 	event := &keyEvent{
 		sequence:   client.sequence,
-		detail:     byte(keyCode),
+		detail:     keycode,
 		time:       0, // TODO: Get actual time
 		root:       s.rootWindowID(),
 		event:      xid.local,

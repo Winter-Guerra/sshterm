@@ -2536,14 +2536,14 @@ func (w *wasmX11Frontend) keyboardEventHandler(xid xID, eventType string) js.Fun
 			return nil
 		}
 		event := args[0]
-		keyCode := event.Get("keyCode").Int()
+		code := event.Get("code").String()
 		altKey := event.Get("altKey").Bool()
 		ctrlKey := event.Get("ctrlKey").Bool()
 		shiftKey := event.Get("shiftKey").Bool()
 		metaKey := event.Get("metaKey").Bool()
 
-		w.server.SendKeyboardEvent(w.focusedWindowID, eventType, keyCode, altKey, ctrlKey, shiftKey, metaKey)
-		debugf("Keyboard event: window=%s, type=%s, keyCode=%d, alt=%t, ctrl=%t, shift=%t, meta=%t", w.focusedWindowID, eventType, keyCode, altKey, ctrlKey, shiftKey, metaKey)
+		w.server.SendKeyboardEvent(w.focusedWindowID, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
+		debugf("Keyboard event: window=%s, type=%s, code=%s, alt=%t, ctrl=%t, shift=%t, meta=%t", w.focusedWindowID, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
 		return nil
 	})
 }
