@@ -4,6 +4,7 @@ package x11
 
 import (
 	"encoding/json"
+	"fmt"
 	"syscall/js"
 )
 
@@ -17,7 +18,7 @@ func (w *wasmX11Frontend) recordOperation(op CanvasOperation) {
 		if err := json.Unmarshal(b, &v); err != nil {
 			debugf("ERR recordOperation: %v", err)
 		}
-		op.Args[i] = v
+		op.Args[i] = fmt.Sprint(v)
 	}
 	w.canvasOperations = append(w.canvasOperations, op)
 }

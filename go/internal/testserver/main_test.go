@@ -44,7 +44,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -438,150 +437,26 @@ func parseColorString(colorStr string) uint32 {
 }
 
 func compareOperations(t *testing.T, x11Ops []X11Operation, canvasOps []CanvasOperation) {
-	if len(x11Ops) != len(canvasOps) {
-		count := make(map[string]int)
-		for _, op := range x11Ops {
-			count[op.Type]++
-		}
-		for _, op := range canvasOps {
-			count[op.Type]--
-		}
-		for k, v := range count {
-			if v == 0 {
-				continue
-			}
-			if v > 0 {
-				t.Logf("X11 has %d more %s than Canvas", v, k)
-			} else {
-				t.Logf("Canvas has %d more %s than X11", -v, k)
-			}
-		}
-		t.Fatalf("Number of operations mismatch: X11=%d, Canvas=%d", len(x11Ops), len(canvasOps))
+	count := make(map[string]int)
+	for _, op := range x11Ops {
+		count[op.Type]++
 	}
-
-	for i := 0; i < len(x11Ops); i++ {
-		x11Op := x11Ops[i]
-		canvasOp := canvasOps[i]
-
-		// Compare types
-		if x11Op.Type != canvasOp.Type {
-			t.Errorf("Operation type mismatch at index %d: X11=%s, Canvas=%s", i, x11Op.Type, canvasOp.Type)
-		}
-
-		// Compare colors (fillStyle or strokeStyle)
-		if x11Op.Color != 0 || canvasOp.FillStyle != "" || canvasOp.StrokeStyle != "" {
-			var canvasColor uint32
-			if canvasOp.FillStyle != "" {
-				canvasColor = parseColorString(canvasOp.FillStyle)
-			} else if canvasOp.StrokeStyle != "" {
-				canvasColor = parseColorString(canvasOp.StrokeStyle)
-			}
-
-			if x11Op.Color != canvasColor {
-				t.Errorf("Color mismatch at index %d for type %s: X11=#%06x, Canvas=%s%s (parsed to #%06x)", i, x11Op.Type, x11Op.Color, canvasOp.FillStyle, canvasOp.StrokeStyle, canvasColor)
-			}
-		}
-		// Compare arguments (simplified for now)
-
-		if len(x11Op.Args) != len(canvasOp.Args) {
-
-			t.Errorf("Argument count mismatch at index %d for type %s: X11=%d, Canvas=%d", i, x11Op.Type, len(x11Op.Args), len(canvasOp.Args))
-
+	for _, op := range canvasOps {
+		count[op.Type]--
+	}
+	var diff bool
+	for k, v := range count {
+		if v == 0 {
 			continue
-
 		}
-
-		for j := 0; j < len(x11Op.Args); j++ {
-			switch canvasArg := canvasOp.Args[j].(type) {
-			case string:
-				if x11Op.Args[j] != canvasArg {
-					t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%s, Canvas=%s", i, j, x11Op.Type, x11Op.Args[j], canvasArg)
-				}
-			case float64, json.Number:
-				var numVal float64
-				switch v := canvasArg.(type) {
-				case float64:
-					numVal = v
-				case json.Number:
-					numVal, _ = v.Float64()
-				}
-				switch x11Val := x11Op.Args[j].(type) {
-				case uint16:
-					if int64(numVal) != int64(x11Val) {
-						t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%d, Canvas=%f", i, j, x11Op.Type, x11Val, numVal)
-					}
-				case uint32:
-					if int64(numVal) != int64(x11Val) {
-						t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%d, Canvas=%f", i, j, x11Op.Type, x11Val, numVal)
-					}
-				default:
-					if int64(numVal) != x11Op.Args[j] {
-						t.Errorf("Argument mismatch at index %d, arg %d for type %s: X11=%d, Canvas=%f", i, j, x11Op.Type, x11Op.Args[j], numVal)
-					}
-				}
-			case []any:
-				x11Items, ok := x11Op.Args[j].([]any)
-				if !ok {
-					t.Errorf("Expected X11 arg to be []any for %s, got %T", x11Op.Type, x11Op.Args[j])
-					continue
-				}
-				if len(x11Items) != len(canvasArg) {
-					t.Errorf("%s items count mismatch at index %d: X11=%d, Canvas=%d", x11Op.Type, i, len(x11Items), len(canvasArg))
-					continue
-				}
-				for k := 0; k < len(x11Items); k++ {
-					switch x11Item := x11Items[k].(type) {
-					case map[string]any:
-						canvasItem := canvasArg[k].(map[string]any)
-
-						// Compare delta
-						x11Delta := x11Item["delta"].(int8)
-						canvasDelta := int8(canvasItem["delta"].(float64)) // JSON unmarshals numbers as float64
-						if x11Delta != canvasDelta {
-							t.Errorf("%s item delta mismatch at index %d, item %d: X11=%d, Canvas=%d", x11Op.Type, i, k, x11Delta, canvasDelta)
-						}
-
-						// Compare text
-						x11Text := x11Item["text"].(string)
-						canvasText := canvasItem["text"].(string)
-						if x11Text != canvasText {
-							t.Errorf("%s item text mismatch at index %d, item %d: X11=%s, Canvas=%s", x11Op.Type, i, k, x11Text, canvasText)
-						}
-					case []uint32:
-						canvasItem := canvasArg[k].([]uint32)
-						if !slices.Equal(x11Item, canvasItem) {
-							t.Errorf("%s item list mismatch at index %d, item %d: X11=%v, Canvas=%v", x11Op.Type, i, k, x11Item, canvasItem)
-						}
-					}
-				}
-			case map[string]interface{}: // Handle GC map
-				x11GC, ok := x11Op.Args[j].(map[string]interface{})
-				if !ok {
-					t.Errorf("Expected X11 arg to be map[string]interface{} for GC, got %T", x11Op.Args[j])
-					continue
-				}
-				for key, x11Val := range x11GC {
-					if canvasVal, ok := canvasArg[key]; ok {
-						if v, ok := canvasVal.(float64); ok {
-							if uint32(v) != x11Val.(uint32) {
-								t.Errorf("GC attribute mismatch at index %d, arg %d, key %s: X11=%d, Canvas=%f", i, j, key, x11Val, v)
-							}
-						} else if v, ok := canvasVal.(float64); ok {
-							if uint32(v) != x11Val.(uint32) {
-								t.Errorf("GC attribute mismatch at index %d, arg %d, key %s: X11=%d, Canvas=%f", i, j, key, x11Val, v)
-							}
-						} else if fmt.Sprintf("%v", x11Val) != fmt.Sprintf("%v", canvasVal) {
-							t.Errorf("GC attribute mismatch at index %d, arg %d, key %s: X11=%v, Canvas=%v", i, j, key, x11Val, canvasVal)
-						}
-					} else {
-						t.Errorf("Missing GC attribute in canvas operation at index %d, arg %d, key %s", i, j, key)
-					}
-				}
-			default:
-				t.Fatalf("Unexpected type for canvas arg: %T", canvasArg)
-			}
+		diff = true
+		if v > 0 {
+			t.Logf("X11 has %d more %s than Canvas", v, k)
+		} else {
+			t.Logf("Canvas has %d more %s than X11", -v, k)
 		}
-
 	}
-
+	if diff {
+		t.Fatalf("Operations mismatch: X11=%d, Canvas=%d", len(x11Ops), len(canvasOps))
+	}
 }

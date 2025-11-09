@@ -689,6 +689,11 @@ func (s *sshServer) simulateColorOperations(channel ssh.Channel, replyChan <-cha
 }
 
 func GetX11Operations() []X11Operation {
+	for i := range x11Operations {
+		for j := range x11Operations[i].Args {
+			x11Operations[i].Args[j] = fmt.Sprint(x11Operations[i].Args[j])
+		}
+	}
 	return x11Operations
 }
 
