@@ -241,3 +241,19 @@ const (
 	GrabNotViewable byte = 3
 	GrabFrozen      byte = 4
 )
+
+const (
+	InputOutput = 1 // Window class
+)
+
+const (
+	NorthWestGravity = 1 // Bit gravity
+)
+
+const (
+	NotUseful = 0 // Backing store
+)
+
+const (
+	IsUnmapped = 0 // Map state
+)

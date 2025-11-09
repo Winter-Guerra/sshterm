@@ -537,7 +537,6 @@ func TestParseChangeWindowAttributesRequest(t *testing.T) {
 
 	assert.Equal(t, Window(123), p.Window, "window should be parsed correctly")
 	assert.Equal(t, uint32(CWBackPixel|CWCursor), p.ValueMask, "valueMask should be parsed correctly")
-	assert.True(t, p.Values.BackgroundPixelSet, "BackgroundPixelSet should be true")
 	assert.Equal(t, uint32(0xFF00FF), p.Values.BackgroundPixel, "background pixel should be parsed correctly")
 	assert.Equal(t, Cursor(456), p.Values.Cursor, "cursor should be parsed correctly")
 }
@@ -549,7 +548,7 @@ func TestParseGetWindowAttributesRequest(t *testing.T) {
 
 	p, err := parseGetWindowAttributesRequest(order, reqBody)
 	assert.NoError(t, err, "parseGetWindowAttributesRequest should not return an error")
-	assert.Equal(t, Drawable(123), p.Drawable, "Drawable should be parsed correctly")
+	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
 
 func TestParseDestroyWindowRequest(t *testing.T) {

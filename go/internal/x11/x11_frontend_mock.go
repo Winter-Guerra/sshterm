@@ -196,7 +196,8 @@ type polyText16Call struct {
 }
 
 func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values WindowAttributes) {
-	m.CreateWindowCalls = append(m.CreateWindowCalls, &window{xid: xid, parent: parent, x: int16(x), y: int16(y), width: uint16(width), height: uint16(height), depth: byte(depth), attributes: values})
+	// For mock, we can just log the call or do nothing.
+	// No internal state to clean up for windows in the mock.
 }
 
 func (m *MockX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes) {

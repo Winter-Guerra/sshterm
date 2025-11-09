@@ -198,22 +198,22 @@ func TestReplyMessages(t *testing.T) {
 
 	t.Run("GetWindowAttributes", func(t *testing.T) {
 		reply := &getWindowAttributesReply{
-			sequence:           10,
-			backingStore:       1,
-			visualID:           2,
-			class:              3,
-			bitGravity:         4,
-			winGravity:         5,
-			backingPlanes:      6,
-			backingPixel:       7,
-			saveUnder:          true,
-			mapped:             true,
-			mapState:           2,
-			overrideRedirect:   true,
-			colormap:           8,
-			allEventMasks:      9,
-			yourEventMask:      10,
-			doNotPropagateMask: 11,
+			Sequence:           10,
+			BackingStore:       1,
+			VisualID:           2,
+			Class:              3,
+			BitGravity:         4,
+			WinGravity:         5,
+			BackingPlanes:      6,
+			BackingPixel:       7,
+			SaveUnder:          1,
+			MapIsInstalled:     1,
+			MapState:           2,
+			OverrideRedirect:   1,
+			Colormap:           8,
+			AllEventMasks:      9,
+			YourEventMask:      10,
+			DoNotPropagateMask: 11,
 		}
 		encoded := reply.encodeMessage(binary.LittleEndian)
 		expected := make([]byte, 44)
