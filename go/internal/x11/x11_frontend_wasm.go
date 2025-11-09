@@ -67,11 +67,11 @@ type wasmX11Frontend struct {
 	document         js.Value
 	body             js.Value
 	windows          map[xID]*windowInfo    // Map to store window elements (div)
-	pixmaps          map[xID]*pixmapInfo // Map to store pixmap elements (canvas)
-	gcs              map[xID]GC          // Map to store graphics contexts (Go representation)
-	fonts            map[xID]*fontInfo   // Map to store opened fonts
-	cursors          map[xID]*cursorInfo // Map to store cursor info
-	focusedWindowID  xID                 // Track the currently focused window
+	pixmaps          map[xID]*pixmapInfo    // Map to store pixmap elements (canvas)
+	gcs              map[xID]GC             // Map to store graphics contexts (Go representation)
+	fonts            map[xID]*fontInfo      // Map to store opened fonts
+	cursors          map[xID]*cursorInfo    // Map to store cursor info
+	focusedWindowID  xID                    // Track the currently focused window
 	server           *x11Server             // To call back into the server for pointer updates
 	canvasOperations []CanvasOperation      // Store canvas operations for testing
 	atoms            map[string]uint32      // Map atom names to IDs
@@ -157,17 +157,17 @@ func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
 	document := js.Global().Get("document")
 	body := document.Get("body")
 	frontend := &wasmX11Frontend{
-		document:      document,
-		body:          body,
-		windows:       make(map[xID]*windowInfo),
-		pixmaps:       make(map[xID]*pixmapInfo),
-		gcs:           make(map[xID]GC),
-		fonts:         make(map[xID]*fontInfo),
-		cursors:       make(map[xID]*cursorInfo),
-		server:        s,
-		atoms:         make(map[string]uint32),
-		nextAtomID:    1,
-		cursorStyles:  make(map[uint32]*cursorInfo),
+		document:     document,
+		body:         body,
+		windows:      make(map[xID]*windowInfo),
+		pixmaps:      make(map[xID]*pixmapInfo),
+		gcs:          make(map[xID]GC),
+		fonts:        make(map[xID]*fontInfo),
+		cursors:      make(map[xID]*cursorInfo),
+		server:       s,
+		atoms:        make(map[string]uint32),
+		nextAtomID:   1,
+		cursorStyles: make(map[uint32]*cursorInfo),
 	}
 	frontend.initDefaultCursors()
 	frontend.initCanvasOperations()
@@ -996,40 +996,39 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
 	// function (logic op)
 	// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
 	switch gc.Function {
-	case FunctionClear:
-		ctx.Set("globalCompositeOperation", "destination-out")
-	case FunctionAnd:
-		// Not directly supported
-	case FunctionAndReverse:
-		// Not directly supported
-	case FunctionCopy:
+	case FunctionClear: // 0
+		ctx.Set("globalCompositeOperation", "destination-out") // Essentially, clear the destination where the source is drawn
+	case FunctionAnd: // src AND dst
+		ctx.Set("globalCompositeOperation", "source-in")
+	case FunctionAndReverse: // src AND NOT dst
+		ctx.Set("globalCompositeOperation", "destination-in")
+	case FunctionCopy: // src
 		ctx.Set("globalCompositeOperation", "source-over")
-	case FunctionAndInverted:
-		// Not directly supported
-	case FunctionNoOp:
-		// No operation
-	case FunctionXor:
+	case FunctionAndInverted: // NOT src AND dst
+		ctx.Set("globalCompositeOperation", "source-out")
+	case FunctionNoOp: // dst
+		// No operation, so we do nothing to the context
+	case FunctionXor: // src XOR dst
 		ctx.Set("globalCompositeOperation", "xor")
-	case FunctionOr:
-		// Not directly supported
-	case FunctionNor:
-		// Not directly supported
-	case FunctionEquiv:
-		// Not directly supported
-	case FunctionInvert:
+	case FunctionOr: // src OR dst
+		ctx.Set("globalCompositeOperation", "lighter")
+	case FunctionNor: // NOT src AND NOT dst
+		// No direct equivalent, difference might be visually interesting but incorrect
+	case FunctionEquiv: // NOT src XOR dst
+		// No direct equivalent
+	case FunctionInvert: // NOT dst
 		ctx.Set("globalCompositeOperation", "difference")
-	case FunctionOrReverse:
-		// Not directly supported
-	case FunctionCopyInverted:
-		// Not directly supported
-	case FunctionOrInverted:
-		// Not directly supported
-	case FunctionNand:
-		// Not directly supported
-	case FunctionSet:
-		// Not directly supported
+	case FunctionOrReverse: // src OR NOT dst
+		ctx.Set("globalCompositeOperation", "destination-over")
+	case FunctionCopyInverted: // NOT src
+		// No direct equivalent
+	case FunctionOrInverted: // NOT src OR dst
+		ctx.Set("globalCompositeOperation", "destination-out")
+	case FunctionNand: // NOT src OR NOT dst
+		// No direct equivalent
+	case FunctionSet: // 1
+		// No direct equivalent to setting all bits to 1, but 'source-over' with a white fill would be close for a specific color
 	}
-
 	// foreground
 	color := w.getForegroundColor(colormap, gc)
 	ctx.Set("strokeStyle", color)
@@ -1700,46 +1699,57 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	})
 }
 
-func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyText8Item) {
+func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
 		return
 	}
 	debugf("X11: polyText8 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
 	color := "?????"
-	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
-
-			// Get font from GC
-			fontCSS := "12px monospace" // Default fallback
-			if gc.Font != 0 {
-				if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
-					fontCSS = font.cssFont
-				}
-			}
-			winInfo.ctx.Set("font", fontCSS)
-
-			currentX := x
-			var recordedItems []any // To store items for CanvasOperation
-			for _, item := range items {
-				currentX += int32(item.Delta)
-				decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(item.Str)).String()
-				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-				winInfo.ctx.Call("fillText", decodedText, currentX, y)
-				recordedItems = append(recordedItems, map[string]any{"delta": item.Delta, "text": decodedText})
-			}
-			w.recordOperation(CanvasOperation{
-				Type:      "polyText8",
-				Args:      []any{drawable.local, gc, x, y, recordedItems},
-				FillStyle: color,
-			})
+	winInfo, ok := w.windows[drawable]
+	if !ok {
+		return
+	}
+	if winInfo.canvas.IsNull() {
+		return
+	}
+	winInfo.ctx.Call("save")
+	defer winInfo.ctx.Call("restore")
+	w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
+	color = w.getForegroundColor(winInfo.colormap, gc)
+	winInfo.ctx.Set("fillStyle", color)
+	// Get font from GC
+	fontCSS := "12px monospace" // Default fallback
+	if gc.Font != 0 {
+		if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
+			fontCSS = font.cssFont
 		}
 	}
+	winInfo.ctx.Set("font", fontCSS)
+	currentX := x
+	var recordedItems []any
+	for _, item := range items {
+		switch it := item.(type) {
+		case PolyText8String:
+			currentX += int32(it.Delta)
+			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(it.Str)).String()
+			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+			winInfo.ctx.Call("fillText", decodedText, currentX, y)
+			recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
+			// The delta for the next item is relative to the start of the current item.
+			// The browser's measureText is not reliable enough to calculate the next position.
+		case PolyTextFont:
+			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+				winInfo.ctx.Set("font", font.cssFont)
+				recordedItems = append(recordedItems, map[string]any{"font": it.Font})
+			}
+		}
+	}
+	w.recordOperation(CanvasOperation{
+		Type:      "polyText8",
+		Args:      []any{drawable.local, gc, x, y, recordedItems},
+		FillStyle: color,
+	})
 }
 
 func (w *wasmX11Frontend) SetDashes(gcID xID, dashOffset uint16, dashes []byte) {
@@ -1928,50 +1938,61 @@ func (w *wasmX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCod
 	return 0, nil, nil
 }
 
-func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyText16Item) {
+func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
 		return
 	}
 	debugf("X11: polyText16 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
-	color := "??????"
-	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
-
-			// Get font from GC
-			fontCSS := "12px monospace" // Default fallback
-			if gc.Font != 0 {
-				if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
-					fontCSS = font.cssFont
-				}
-			}
-			winInfo.ctx.Set("font", fontCSS)
-
-			currentX := x
-			var recordedItems []any // To store items for CanvasOperation
-			for _, item := range items {
-				currentX += int32(item.Delta)
-				textBytes := make([]byte, len(item.Str)*2)
-				for i, r := range item.Str {
-					binary.LittleEndian.PutUint16(textBytes[i*2:], r)
-				}
-				decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
-				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-				winInfo.ctx.Call("fillText", decodedText, currentX, y)
-				recordedItems = append(recordedItems, map[string]any{"delta": item.Delta, "text": decodedText})
-			}
-			w.recordOperation(CanvasOperation{
-				Type:      "polyText16",
-				Args:      []any{drawable.local, gc, x, y, recordedItems},
-				FillStyle: color,
-			})
+	color := "?????"
+	winInfo, ok := w.windows[drawable]
+	if !ok {
+		return
+	}
+	if winInfo.canvas.IsNull() {
+		return
+	}
+	winInfo.ctx.Call("save")
+	defer winInfo.ctx.Call("restore")
+	w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
+	color = w.getForegroundColor(winInfo.colormap, gc)
+	winInfo.ctx.Set("fillStyle", color)
+	// Get font from GC
+	fontCSS := "12px monospace" // Default fallback
+	if gc.Font != 0 {
+		if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
+			fontCSS = font.cssFont
 		}
 	}
+	winInfo.ctx.Set("font", fontCSS)
+	currentX := x
+	var recordedItems []any
+	for _, item := range items {
+		switch it := item.(type) {
+		case PolyText16String:
+			currentX += int32(it.Delta)
+			textBytes := make([]byte, len(it.Str)*2)
+			for i, r := range it.Str {
+				binary.LittleEndian.PutUint16(textBytes[i*2:], r)
+			}
+			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
+			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+			winInfo.ctx.Call("fillText", decodedText, currentX, y)
+			recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
+			// The delta for the next item is relative to the start of the current item.
+			// The browser's measureText is not reliable enough to calculate the next position.
+		case PolyTextFont:
+			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+				winInfo.ctx.Set("font", font.cssFont)
+				recordedItems = append(recordedItems, map[string]any{"font": it.Font})
+			}
+		}
+	}
+	w.recordOperation(CanvasOperation{
+		Type:      "polyText16",
+		Args:      []any{drawable.local, gc, x, y, recordedItems},
+		FillStyle: color,
+	})
 }
 
 func (w *wasmX11Frontend) CreatePixmap(xid, drawable xID, width, height, depth uint32) {

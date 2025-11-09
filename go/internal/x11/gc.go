@@ -93,26 +93,26 @@ const (
 // GC represents a Graphics Context.
 // See: https://www.x.org/releases/X11R7.6/doc/xproto/x11protocol.html#requests:CreateGC
 type GC struct {
-	Function          uint32
-	PlaneMask         uint32
-	Foreground        uint32
-	Background        uint32
-	LineWidth         uint32
-	LineStyle         uint32
-	CapStyle          uint32
-	JoinStyle         uint32
-	FillStyle         uint32
-	FillRule          uint32
-	Tile              uint32
-	Stipple           uint32
-	TileStipXOrigin   uint32
-	TileStipYOrigin   uint32
-	Font              uint32
-	SubwindowMode     uint32
-	GraphicsExposures uint32
-	ClipXOrigin       int32
-	ClipYOrigin       int32
-	ClipMask          uint32
+	Function           uint32
+	PlaneMask          uint32
+	Foreground         uint32
+	Background         uint32
+	LineWidth          uint32
+	LineStyle          uint32
+	CapStyle           uint32
+	JoinStyle          uint32
+	FillStyle          uint32
+	FillRule           uint32
+	Tile               uint32
+	Stipple            uint32
+	TileStipXOrigin    uint32
+	TileStipYOrigin    uint32
+	Font               uint32
+	SubwindowMode      uint32
+	GraphicsExposures  uint32
+	ClipXOrigin        int32
+	ClipYOrigin        int32
+	ClipMask           uint32
 	DashOffset         uint32
 	Dashes             uint32
 	ArcMode            uint32

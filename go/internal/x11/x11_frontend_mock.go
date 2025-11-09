@@ -171,14 +171,14 @@ type polyText8Call struct {
 	drawable xID
 	gcID     xID
 	x, y     int32
-	items    []PolyText8Item
+	items    []PolyTextItem
 }
 
 type polyText16Call struct {
 	drawable xID
 	gcID     xID
 	x, y     int32
-	items    []PolyText16Item
+	items    []PolyTextItem
 }
 
 func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values WindowAttributes) {
@@ -275,11 +275,11 @@ func (m *MockX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	m.ImageText16Calls = append(m.ImageText16Calls, &imageText16Call{drawable, gcID, x, y, text})
 }
 
-func (m *MockX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyText8Item) {
+func (m *MockX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
 	m.PolyText8Calls = append(m.PolyText8Calls, &polyText8Call{drawable, gcID, x, y, items})
 }
 
-func (m *MockX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyText16Item) {
+func (m *MockX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
 	m.PolyText16Calls = append(m.PolyText16Calls, &polyText16Call{drawable, gcID, x, y, items})
 }
 

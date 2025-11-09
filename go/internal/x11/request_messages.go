@@ -415,15 +415,33 @@ type WindowAttributes struct {
 	Cursor             Cursor
 }
 
-type PolyText8Item struct {
+// PolyTextItem is an interface for items in a PolyText request.
+type PolyTextItem interface {
+	isPolyTextItem()
+}
+
+// PolyText8String represents a string in a PolyText8 request.
+type PolyText8String struct {
 	Delta int8
 	Str   []byte
 }
 
-type PolyText16Item struct {
+func (PolyText8String) isPolyTextItem() {}
+
+// PolyText16String represents a string in a PolyText16 request.
+type PolyText16String struct {
 	Delta int8
 	Str   []uint16
 }
+
+func (PolyText16String) isPolyTextItem() {}
+
+// PolyTextFont represents a font change in a PolyText request.
+type PolyTextFont struct {
+	Font Font
+}
+
+func (PolyTextFont) isPolyTextItem() {}
 
 // request messages
 
@@ -1891,91 +1909,106 @@ func parseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte)
 
 type PolyText8Request struct {
 	Drawable Drawable
-	Gc       GContext
-	X        int16
-	Y        int16
-	Items    []PolyText8Item
+	GC       GContext
+	X, Y     int16
+	Items    []PolyTextItem
 }
 
 func (PolyText8Request) OpCode() reqCode { return PolyText8 }
 
-func parsePolyText8Request(order binary.ByteOrder, requestBody []byte) (*PolyText8Request, error) {
-	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: poly text 8 request too short", errParseError)
+func parsePolyText8Request(order binary.ByteOrder, data []byte) (*PolyText8Request, error) {
+	var req PolyText8Request
+	if len(data) < 12 {
+		return nil, fmt.Errorf("poly text 8 request too short for header")
 	}
-	req := &PolyText8Request{}
-	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
-	req.Gc = GContext(order.Uint32(requestBody[4:8]))
-	req.X = int16(order.Uint16(requestBody[8:10]))
-	req.Y = int16(order.Uint16(requestBody[10:12]))
+	req.Drawable = Drawable(order.Uint32(data[0:4]))
+	req.GC = GContext(order.Uint32(data[4:8]))
+	req.X = int16(order.Uint16(data[8:10]))
+	req.Y = int16(order.Uint16(data[10:12]))
 
-	currentPos := 12
-	for currentPos < len(requestBody) {
-		n := int(requestBody[currentPos])
-		currentPos++
-
-		if n == 255 {
-			currentPos += 4
-		} else if n > 0 {
-			if currentPos+n > len(requestBody) {
-				return nil, fmt.Errorf("%w: poly text 8 request too short for text", errParseError)
-			}
-			delta := int8(requestBody[currentPos])
-			currentPos++
-			str := requestBody[currentPos : currentPos+n]
-			currentPos += n
-			req.Items = append(req.Items, PolyText8Item{Delta: delta, Str: str})
+	i := 12
+	for i < len(data) {
+		if i+1 > len(data) {
+			break
 		}
-		padding := (4 - (n+2)%4) % 4
-		currentPos += padding
+		length := int(data[i])
+		if length == 0 { // Invalid length, must be padding
+			break
+		}
+		if length == 255 {
+			itemSize := 5
+			if i+itemSize > len(data) {
+				break
+			}
+			font := Font(order.Uint32(data[i+1 : i+5]))
+			req.Items = append(req.Items, PolyTextFont{Font: font})
+			i += itemSize
+		} else {
+			itemSize := 2 + length
+			if i+itemSize > len(data) {
+				break
+			}
+			delta := int8(data[i+1])
+			str := data[i+2 : i+2+length]
+			req.Items = append(req.Items, PolyText8String{Delta: delta, Str: str})
+			i += itemSize
+		}
 	}
-	return req, nil
+	return &req, nil
 }
 
 type PolyText16Request struct {
 	Drawable Drawable
-	Gc       GContext
-	X        int16
-	Y        int16
-	Items    []PolyText16Item
+	GC       GContext
+	X, Y     int16
+	Items    []PolyTextItem
 }
 
 func (PolyText16Request) OpCode() reqCode { return PolyText16 }
 
-func parsePolyText16Request(order binary.ByteOrder, requestBody []byte) (*PolyText16Request, error) {
-	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: poly text 16 request too short", errParseError)
+func parsePolyText16Request(order binary.ByteOrder, data []byte) (*PolyText16Request, error) {
+	var req PolyText16Request
+	if len(data) < 12 {
+		return nil, fmt.Errorf("poly text 16 request too short for header")
 	}
-	req := &PolyText16Request{}
-	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
-	req.Gc = GContext(order.Uint32(requestBody[4:8]))
-	req.X = int16(order.Uint16(requestBody[8:10]))
-	req.Y = int16(order.Uint16(requestBody[10:12]))
+	req.Drawable = Drawable(order.Uint32(data[0:4]))
+	req.GC = GContext(order.Uint32(data[4:8]))
+	req.X = int16(order.Uint16(data[8:10]))
+	req.Y = int16(order.Uint16(data[10:12]))
 
-	currentPos := 12
-	for currentPos < len(requestBody) {
-		n := int(requestBody[currentPos])
-		currentPos++
-
-		if n == 255 {
-			currentPos += 4
-		} else if n > 0 {
-			if currentPos+n*2 > len(requestBody) {
-				return nil, fmt.Errorf("%w: poly text 16 request too short for text", errParseError)
-			}
-			delta := int8(requestBody[currentPos])
-			currentPos++
-			var str []uint16
-			for i := 0; i < n; i++ {
-				str = append(str, order.Uint16(requestBody[currentPos:currentPos+2]))
-				currentPos += 2
-			}
-			req.Items = append(req.Items, PolyText16Item{Delta: delta, Str: str})
+	i := 12
+	for i < len(data) {
+		if i+1 > len(data) {
+			break
 		}
-		padding := (4 - (n*2+2)%4) % 4
-		currentPos += padding
+		length := int(data[i])
+		if length == 0 { // Invalid length, must be padding
+			break
+		}
+		if length == 255 {
+			itemSize := 5
+			if i+itemSize > len(data) {
+				break
+			}
+			font := Font(order.Uint32(data[i+1 : i+5]))
+			req.Items = append(req.Items, PolyTextFont{Font: font})
+			i += itemSize
+		} else {
+			itemSize := 2 + length*2
+			if i+itemSize > len(data) {
+				break
+			}
+
+			delta := int8(data[i+1])
+			var str []uint16
+			for j := 0; j < length; j++ {
+				str = append(str, order.Uint16(data[i+2+j*2:i+2+(j+1)*2]))
+			}
+			req.Items = append(req.Items, PolyText16String{Delta: delta, Str: str})
+			i += itemSize
+		}
 	}
-	return req, nil
+	return &req, nil
 }
 
 type ImageText8Request struct {

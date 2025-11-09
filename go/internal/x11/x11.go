@@ -74,8 +74,8 @@ type X11FrontendAPI interface {
 	GetProperty(window xID, property uint32) ([]byte, uint32, uint32)
 	ImageText8(drawable xID, gcID xID, x, y int32, text []byte)
 	ImageText16(drawable xID, gcID xID, x, y int32, text []uint16)
-	PolyText8(drawable xID, gcID xID, x, y int32, items []PolyText8Item)
-	PolyText16(drawable xID, gcID xID, x, y int32, items []PolyText16Item)
+	PolyText8(drawable xID, gcID xID, x, y int32, items []PolyTextItem)
+	PolyText16(drawable xID, gcID xID, x, y int32, items []PolyTextItem)
 	CreatePixmap(xid, drawable xID, width, height, depth uint32)
 	FreePixmap(xid xID)
 	CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, height, dstX, dstY uint32)
@@ -1117,11 +1117,11 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *PolyText8Request:
-		gcID := client.xID(uint32(p.Gc))
+		gcID := client.xID(uint32(p.GC))
 		s.frontend.PolyText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
 
 	case *PolyText16Request:
-		gcID := client.xID(uint32(p.Gc))
+		gcID := client.xID(uint32(p.GC))
 		s.frontend.PolyText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
 
 	case *ImageText8Request:
