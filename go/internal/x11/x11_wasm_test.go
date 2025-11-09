@@ -23,7 +23,7 @@
 
 //go:build x11 && wasm
 
-package tests
+package x11
 
 import (
 	"testing"

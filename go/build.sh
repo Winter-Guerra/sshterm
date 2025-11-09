@@ -20,5 +20,5 @@ if [[ ${#build_tags[@]} -gt 0 ]]; then
 fi
 GOOS=js GOARCH=wasm go build $tags -ldflags="-extldflags=-s -w" -o ../docroot/ssh.wasm .
 GOOS=js GOARCH=wasm go test $tags -c -o ../docroot/tests.wasm ./internal/tests
-GOOS=js GOARCH=wasm go test $tags -c -o ../docroot/tests.x11.wasm ./internal/x11/wasm_tests
+GOOS=js GOARCH=wasm go test $tags -c -o ../docroot/tests.x11.wasm ./internal/x11
 cp -f $(go env GOROOT)/lib/wasm/wasm_exec.js ../docroot/
