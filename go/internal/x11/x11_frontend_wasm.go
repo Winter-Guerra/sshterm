@@ -2714,7 +2714,7 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, mi
 		if !metrics.Get("actualBoundingBoxDescent").IsUndefined() {
 			charDescent = int16(math.Round(math.Abs(metrics.Get("actualBoundingBoxDescent").Float())))
 		} else {
-			charDescent = fontAscent // Fallback to overall font ascent
+			charDescent = fontDescent // Fallback to overall font descent
 		}
 
 		// Ensure ascent and descent are at least 1
@@ -2786,6 +2786,68 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, mi
 	canvas.Call("remove")
 
 	debugf("X11: QueryFont fid=%s reply: minBounds=%+v, maxBounds=%+v, minCharOrByte2=%d, maxCharOrByte2=%d, defaultChar=%d, drawDirection=%d, minByte1=%d, maxByte1=%d, allCharsExist=%t, fontAscent=%d, fontDescent=%d, len(charInfos)=%d", fid, minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, len(charInfos))
+
+	return
+}
+
+func (w *wasmX11Frontend) QueryTextExtents(font xID, text []uint16) (drawDirection uint8, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight int16) {
+	w.recordOperation(CanvasOperation{
+		Type: "queryTextExtents",
+		Args: []any{font.local, text},
+	})
+	debugf("X11: QueryTextExtents font=%s", font)
+
+	// Try to get font info from the opened fonts map
+	var cssFont string = "12px monospace" // Default fallback
+	if f, ok := w.fonts[font]; ok {
+		cssFont = f.cssFont
+	}
+
+	// Create a temporary off-screen canvas for font measurement
+	canvas := w.document.Call("createElement", "canvas")
+	ctx := canvas.Call("getContext", "2d")
+	ctx.Set("font", cssFont)
+
+	// Convert text from []uint16 to a string
+	var b strings.Builder
+	for _, r := range text {
+		b.WriteRune(rune(r))
+	}
+	textStr := b.String()
+
+	metrics := ctx.Call("measureText", textStr)
+
+	// Use actualBoundingBox properties for more accurate metrics
+	if !metrics.Get("actualBoundingBoxLeft").IsUndefined() {
+		overallLeft = int16(math.Round(metrics.Get("actualBoundingBoxLeft").Float()))
+	}
+	if !metrics.Get("actualBoundingBoxRight").IsUndefined() {
+		overallRight = int16(math.Round(metrics.Get("actualBoundingBoxRight").Float()))
+	}
+	if !metrics.Get("width").IsUndefined() {
+		overallWidth = int16(math.Round(metrics.Get("width").Float()))
+	}
+	if !metrics.Get("actualBoundingBoxAscent").IsUndefined() {
+		overallAscent = int16(math.Round(metrics.Get("actualBoundingBoxAscent").Float()))
+	}
+	if !metrics.Get("actualBoundingBoxDescent").IsUndefined() {
+		overallDescent = int16(math.Round(metrics.Get("actualBoundingBoxDescent").Float()))
+	}
+
+	// Get overall font ascent/descent from the font info
+	if !metrics.Get("fontBoundingBoxAscent").IsUndefined() {
+		fontAscent = int16(math.Round(metrics.Get("fontBoundingBoxAscent").Float()))
+	}
+	if !metrics.Get("fontBoundingBoxDescent").IsUndefined() {
+		fontDescent = int16(math.Round(metrics.Get("fontBoundingBoxDescent").Float()))
+	}
+
+	drawDirection = 0 // LeftToRight
+
+	// Release the temporary canvas element
+	canvas.Call("remove")
+
+	debugf("X11: QueryTextExtents font=%s reply: fontAscent=%d, fontDescent=%d, overallAscent=%d, overallDescent=%d, overallWidth=%d, overallLeft=%d, overallRight=%d", font, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight)
 
 	return
 }

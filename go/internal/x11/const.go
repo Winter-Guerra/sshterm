@@ -234,9 +234,9 @@ const (
 )
 
 const (
-	GrabSuccess      byte = 0
-	AlreadyGrabbed   byte = 1
-	GrabInvalidTime  byte = 2
-	GrabNotViewable  byte = 3
-	GrabFrozen       byte = 4
+	GrabSuccess     byte = 0
+	AlreadyGrabbed  byte = 1
+	GrabInvalidTime byte = 2
+	GrabNotViewable byte = 3
+	GrabFrozen      byte = 4
 )

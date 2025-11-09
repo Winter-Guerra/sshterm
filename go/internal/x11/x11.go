@@ -96,6 +96,7 @@ type X11FrontendAPI interface {
 	GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8)
 	OpenFont(fid xID, name string)
 	QueryFont(fid xID) (minBounds, maxBounds xCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []xCharInfo)
+	QueryTextExtents(font xID, text []uint16) (drawDirection uint8, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight int16)
 	CloseFont(fid xID)
 	ListFonts(maxNames uint16, pattern string) []string
 	AllowEvents(clientID uint32, mode byte, time uint32)
@@ -1161,9 +1162,17 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *QueryTextExtentsRequest:
-		// TODO: implement
+		drawDirection, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight := s.frontend.QueryTextExtents(client.xID(uint32(p.Fid)), p.Text)
 		return &queryTextExtentsReply{
-			sequence: seq,
+			sequence:       seq,
+			drawDirection:  drawDirection,
+			fontAscent:     fontAscent,
+			fontDescent:    fontDescent,
+			overallAscent:  overallAscent,
+			overallDescent: overallDescent,
+			overallWidth:   int32(overallWidth),
+			overallLeft:    int32(overallLeft),
+			overallRight:   int32(overallRight),
 		}
 
 	case *ListFontsRequest:

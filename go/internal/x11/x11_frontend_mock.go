@@ -347,6 +347,11 @@ func (m *MockX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, mi
 	return
 }
 
+func (m *MockX11Frontend) QueryTextExtents(font xID, text []uint16) (drawDirection uint8, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight int16) {
+	// Dummy implementation for mock
+	return
+}
+
 func (m *MockX11Frontend) CloseFont(fid xID) {
 	// Dummy implementation for mock
 }

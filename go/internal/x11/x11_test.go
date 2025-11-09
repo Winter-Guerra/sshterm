@@ -22,11 +22,11 @@ func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
 	}
 
 	server := &x11Server{
-		logger:    &testLogger{t: t},
-		windows:   make(map[xID]*window),
-		clients:   map[uint32]*x11Client{1: client},
-		frontend:  &MockX11Frontend{},
-		byteOrder: binary.LittleEndian,
+		logger:       &testLogger{t: t},
+		windows:      make(map[xID]*window),
+		clients:      map[uint32]*x11Client{1: client},
+		frontend:     &MockX11Frontend{},
+		byteOrder:    binary.LittleEndian,
 		passiveGrabs: make(map[xID][]*passiveGrab),
 	}
 
