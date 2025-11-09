@@ -414,9 +414,10 @@ type WindowAttributes struct {
 	Cursor            Cursor
 
 	// Not part of value-mask, but part of window state
-	Class          uint32
-	MapIsInstalled bool
-	MapState       uint32
+	Class             uint32
+	MapIsInstalled    bool
+	MapState          uint32
+	BackgroundPixelSet bool
 }
 
 // PolyTextItem is an interface for items in a PolyText request.
@@ -2992,6 +2993,7 @@ func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData 
 			return wa, 0, fmt.Errorf("%w: window attributes too short for background pixel", errParseError)
 		}
 		wa.BackgroundPixel = order.Uint32(valuesData[offset : offset+4])
+		wa.BackgroundPixelSet = true
 		offset += 4
 	}
 	if valueMask&CWBorderPixmap != 0 {
