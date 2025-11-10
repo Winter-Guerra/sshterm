@@ -153,7 +153,7 @@ func (w *wasmX11Frontend) initPredefinedAtoms() {
 	w.nextAtomID = 69
 }
 
-func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
+func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 	document := js.Global().Get("document")
 	body := document.Get("body")
 	frontend := &wasmX11Frontend{

@@ -35,19 +35,14 @@ import (
 	"time"
 )
 
-func getCanvasData(t *testing.T, winID xID, x, y, w, h int) *image.RGBA {
+func getCanvasData(t *testing.T, s *x11Server, winID xID, x, y, w, h int) *image.RGBA {
 	t.Helper()
-	doc := js.Global().Get("document")
-	if !doc.Truthy() {
-		t.Fatal("document not found")
+	fe := s.frontend.(*wasmX11Frontend)
+	winInfo, ok := fe.windows[winID]
+	if !ok {
+		t.Fatalf("window %s not found in frontend", winID)
 	}
-	canvas := doc.Call("querySelector", fmt.Sprintf("#x11-canvas-%d-%d", winID.client, winID.local))
-	if !canvas.Truthy() {
-		t.Fatalf("canvas #x11-canvas-%d-%d not found", winID.client, winID.local)
-	}
-	ctxOptions := js.Global().Get("Object").New()
-	ctxOptions.Set("alpha", true)
-	ctx := canvas.Call("getContext", "2d", ctxOptions)
+	ctx := winInfo.ctx
 	if !ctx.Truthy() {
 		t.Fatal("canvas context not found")
 	}
@@ -126,8 +121,12 @@ func TestDrawRectangle(t *testing.T) {
 	t.Log("Running TestDrawRectangle")
 	setup := newDefaultSetup()
 	s := &x11Server{
-		logger:          &testLogger{t: t},
-		windows:         make(map[xID]*window),
+		logger: &testLogger{t: t},
+		windows: map[xID]*window{
+			{local: 0}: {
+				children: []uint32{},
+			},
+		},
 		gcs:             make(map[xID]GC),
 		pixmaps:         make(map[xID]bool),
 		cursors:         make(map[xID]bool),
@@ -154,9 +153,118 @@ func TestDrawRectangle(t *testing.T) {
 	fe.PolyFillRectangle(winID, gcID, []uint32{20, 20, 50, 40})
 
 	poll(t, func() bool {
-		img := getCanvasData(t, winID, 20, 20, 50, 40)
+		img := getCanvasData(t, s, winID, 20, 20, 50, 40)
 		assertRectangle(t, img, image.Rect(0, 0, 50, 40), 0, 0, 0)
 		return !t.Failed()
+	})
+}
+
+func TestColors(t *testing.T) {
+	t.Log("Running TestColors")
+	setup := newDefaultSetup()
+	s := &x11Server{
+		logger: &testLogger{t: t},
+		windows: map[xID]*window{
+			{local: 0}: {
+				children: []uint32{},
+			},
+		},
+		gcs:       make(map[xID]GC),
+		pixmaps:   make(map[xID]bool),
+		cursors:   make(map[xID]bool),
+		colormaps: make(map[xID]*colormap),
+		clients:   make(map[uint32]*x11Client),
+		byteOrder: binary.LittleEndian,
+		rootVisual: visualType{
+			class:           4, // TrueColor
+			redMask:         0x00ff0000,
+			greenMask:       0x0000ff00,
+			blueMask:        0x000000ff,
+			bitsPerRGBValue: 8,
+		},
+		blackPixel:      setup.screens[0].blackPixel,
+		whitePixel:      setup.screens[0].whitePixel,
+		defaultColormap: setup.screens[0].defaultColormap,
+	}
+	s.colormaps[xID{local: s.defaultColormap}] = &colormap{
+		pixels: map[uint32]xColorItem{
+			s.blackPixel: {Red: 0, Green: 0, Blue: 0},
+			s.whitePixel: {Red: 0xffff, Green: 0xffff, Blue: 0xffff},
+		},
+	}
+	fe := newX11Frontend(&testLogger{t: t}, s)
+	s.frontend = fe
+
+	winID := xID{client: 1, local: 1}
+	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 200, 200, 24, 0, WindowAttributes{})
+	fe.MapWindow(winID)
+
+	t.Run("DefaultColormap", func(t *testing.T) {
+		gcID := xID{client: 1, local: 10}
+		fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: s.blackPixel, Function: FunctionCopy})
+		fe.PolyFillRectangle(winID, gcID, []uint32{10, 10, 20, 20})
+
+		gcID2 := xID{client: 1, local: 11}
+		fe.CreateGC(gcID2, GCForeground|GCFunction, GC{Foreground: s.whitePixel, Function: FunctionCopy})
+		fe.PolyFillRectangle(winID, gcID2, []uint32{40, 10, 20, 20})
+
+		poll(t, func() bool {
+			img := getCanvasData(t, s, winID, 10, 10, 20, 20)
+			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 0, 0, 0)
+			return !t.Failed()
+		})
+		poll(t, func() bool {
+			img := getCanvasData(t, s, winID, 40, 10, 20, 20)
+			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 255, 255, 255)
+			return !t.Failed()
+		})
+	})
+
+	t.Run("CustomColormap", func(t *testing.T) {
+		cmapID := xID{client: 1, local: 2}
+		s.colormaps[cmapID] = &colormap{pixels: make(map[uint32]xColorItem)}
+		fe.ChangeWindowAttributes(winID, CWColormap, WindowAttributes{Colormap: Colormap(cmapID.local)})
+
+		pixel := uint32(0xff0000)
+		s.colormaps[cmapID].pixels[pixel] = xColorItem{Red: 0xff00, Green: 0, Blue: 0}
+
+		gcID := xID{client: 1, local: 12}
+		fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: pixel, Function: FunctionCopy})
+		fe.PolyFillRectangle(winID, gcID, []uint32{70, 10, 20, 20})
+
+		poll(t, func() bool {
+			img := getCanvasData(t, s, winID, 70, 10, 20, 20)
+			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 255, 0, 0)
+			return !t.Failed()
+		})
+	})
+
+	t.Run("TrueColorDirect", func(t *testing.T) {
+		pixel := uint32(0x0000ff) // Blue
+		gcID := xID{client: 1, local: 13}
+		fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: pixel, Function: FunctionCopy})
+		fe.PolyFillRectangle(winID, gcID, []uint32{100, 10, 20, 20})
+
+		poll(t, func() bool {
+			img := getCanvasData(t, s, winID, 100, 10, 20, 20)
+			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 0, 0, 255)
+			return !t.Failed()
+		})
+	})
+
+	t.Run("UnallocatedColor", func(t *testing.T) {
+		pixel := uint32(0x123456) // Some unallocated color
+		gcID := xID{client: 1, local: 14}
+		fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: pixel, Function: FunctionCopy})
+		fe.PolyFillRectangle(winID, gcID, []uint32{130, 10, 20, 20})
+
+		poll(t, func() bool {
+			// For a TrueColor visual, unallocated pixels are decoded directly
+			// from the pixel value itself.
+			img := getCanvasData(t, s, winID, 130, 10, 20, 20)
+			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 0x12, 0x34, 0x56)
+			return !t.Failed()
+		})
 	})
 }
 
@@ -194,7 +302,7 @@ func TestDrawText(t *testing.T) {
 	})
 
 	poll(t, func() bool {
-		img := getCanvasData(t, winID, 20, 30, 80, 20)
+		img := getCanvasData(t, s, winID, 20, 30, 80, 20)
 		bounds := img.Bounds()
 		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
@@ -250,7 +358,7 @@ func TestOverlappingWindows(t *testing.T) {
 		return !t.Failed()
 	})
 	poll(t, func() bool {
-		img1 := getCanvasData(t, winID1, 20, 20, 50, 40)
+		img1 := getCanvasData(t, s, winID1, 20, 20, 50, 40)
 		assertRectangle(t, img1, image.Rect(0, 0, 50, 40), 0, 0, 0)
 		return !t.Failed()
 	})
@@ -260,7 +368,7 @@ func TestOverlappingWindows(t *testing.T) {
 		return !t.Failed()
 	})
 	poll(t, func() bool {
-		img2 := getCanvasData(t, winID2, 20, 20, 50, 40)
+		img2 := getCanvasData(t, s, winID2, 20, 20, 50, 40)
 		assertRectangle(t, img2, image.Rect(0, 0, 50, 40), 0, 0, 0)
 		return !t.Failed()
 	})
