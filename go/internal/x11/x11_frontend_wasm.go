@@ -481,6 +481,9 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	}
 	style.Set("left", js.ValueOf(fmt.Sprintf("%dpx", finalX)))
 	style.Set("top", js.ValueOf(fmt.Sprintf("%dpx", finalY)))
+	if isTopLevel {
+		titleBarHeight = 20
+	}
 	style.Set("height", js.ValueOf(fmt.Sprintf("%dpx", height+uint32(titleBarHeight))))
 
 	// Create and store event listeners

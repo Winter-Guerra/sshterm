@@ -149,7 +149,7 @@ func TestDrawRectangle(t *testing.T) {
 	fe.MapWindow(winID)
 
 	gcID := xID{client: 1, local: 2}
-	fe.CreateGC(gcID, GCForeground, GC{Foreground: s.blackPixel})
+	fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: s.blackPixel, Function: FunctionCopy})
 
 	fe.PolyFillRectangle(winID, gcID, []uint32{20, 20, 50, 40})
 
@@ -187,7 +187,7 @@ func TestDrawText(t *testing.T) {
 	fe.MapWindow(winID)
 
 	gcID := xID{client: 1, local: 2}
-	fe.CreateGC(gcID, GCForeground, GC{Foreground: s.blackPixel})
+	fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: s.blackPixel, Function: FunctionCopy})
 
 	fe.PolyText8(winID, gcID, 20, 40, []PolyTextItem{
 		PolyText8String{Str: []byte("Hello, world!")},
@@ -198,8 +198,8 @@ func TestDrawText(t *testing.T) {
 		bounds := img.Bounds()
 		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				if r, g, b, _ := img.At(x, y).RGBA(); r != 0 || g != 0 || b != 0 {
-					return true // Found a non-black pixel, assuming text is drawn
+				if _, _, _, a := img.At(x, y).RGBA(); a != 0 {
+					return true // Found a non-transparent pixel, assuming text is drawn
 				}
 			}
 		}
@@ -234,7 +234,7 @@ func TestOverlappingWindows(t *testing.T) {
 	fe.MapWindow(winID1)
 
 	gcID1 := xID{client: 1, local: 2}
-	fe.CreateGC(gcID1, GCForeground, GC{Foreground: s.blackPixel})
+	fe.CreateGC(gcID1, GCForeground|GCFunction, GC{Foreground: s.blackPixel, Function: FunctionCopy})
 	fe.PolyFillRectangle(winID1, gcID1, []uint32{20, 20, 50, 40})
 
 	winID2 := xID{client: 1, local: 3}
@@ -242,11 +242,11 @@ func TestOverlappingWindows(t *testing.T) {
 	fe.MapWindow(winID2)
 
 	gcID2 := xID{client: 1, local: 4}
-	fe.CreateGC(gcID2, GCForeground, GC{Foreground: s.blackPixel})
+	fe.CreateGC(gcID2, GCForeground|GCFunction, GC{Foreground: s.blackPixel, Function: FunctionCopy})
 	fe.PolyFillRectangle(winID2, gcID2, []uint32{20, 20, 50, 40})
 
 	poll(t, func() bool {
-		assertWindow(t, getWindowBounds(t, winID1), image.Rect(10, 10, 110, 90))
+		assertWindow(t, getWindowBounds(t, winID1), image.Rect(10, 10, 110, 110))
 		return !t.Failed()
 	})
 	poll(t, func() bool {
@@ -256,7 +256,7 @@ func TestOverlappingWindows(t *testing.T) {
 	})
 
 	poll(t, func() bool {
-		assertWindow(t, getWindowBounds(t, winID2), image.Rect(30, 30, 130, 110))
+		assertWindow(t, getWindowBounds(t, winID2), image.Rect(30, 30, 130, 130))
 		return !t.Failed()
 	})
 	poll(t, func() bool {
