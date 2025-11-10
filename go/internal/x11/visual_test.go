@@ -30,7 +30,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
-	"image/color"
 	"syscall/js"
 	"testing"
 	"time"
@@ -38,9 +37,6 @@ import (
 
 func getCanvasData(t *testing.T, winID xID, x, y, w, h int) *image.RGBA {
 	t.Helper()
-	// A small delay to ensure the canvas has been painted.
-	time.Sleep(100 * time.Millisecond)
-
 	doc := js.Global().Get("document")
 	if !doc.Truthy() {
 		t.Fatal("document not found")
@@ -49,7 +45,9 @@ func getCanvasData(t *testing.T, winID xID, x, y, w, h int) *image.RGBA {
 	if !canvas.Truthy() {
 		t.Fatalf("canvas #x11-canvas-%d-%d not found", winID.client, winID.local)
 	}
-	ctx := canvas.Call("getContext", "2d")
+	ctxOptions := js.Global().Get("Object").New()
+	ctxOptions.Set("alpha", true)
+	ctx := canvas.Call("getContext", "2d", ctxOptions)
 	if !ctx.Truthy() {
 		t.Fatal("canvas context not found")
 	}
@@ -93,12 +91,13 @@ func canvasExists(t *testing.T, winID xID) bool {
 	return doc.Call("querySelector", fmt.Sprintf("#x11-canvas-%d-%d", winID.client, winID.local)).Truthy()
 }
 
-func assertRectangle(t *testing.T, img *image.RGBA, rect image.Rectangle, c color.Color) {
+func assertRectangle(t *testing.T, img *image.RGBA, rect image.Rectangle, r, g, b uint8) {
 	t.Helper()
 	for y := rect.Min.Y; y < rect.Max.Y; y++ {
 		for x := rect.Min.X; x < rect.Max.X; x++ {
-			if got := img.At(x, y); got != c {
-				t.Errorf("at (%d, %d): got %v, want %v", x, y, got, c)
+			got := img.RGBAAt(x, y)
+			if got.R != r || got.G != g || got.B != b {
+				t.Errorf("at (%d, %d): got RGB %v,%v,%v want %v,%v,%v", x, y, got.R, got.G, got.B, r, g, b)
 			}
 		}
 	}
@@ -109,6 +108,18 @@ func assertWindow(t *testing.T, got, want image.Rectangle) {
 	if got != want {
 		t.Errorf("got %v, want %v", got, want)
 	}
+}
+
+func poll(t *testing.T, f func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if f() {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("polling deadline exceeded")
 }
 
 func TestDrawRectangle(t *testing.T) {
@@ -142,8 +153,11 @@ func TestDrawRectangle(t *testing.T) {
 
 	fe.PolyFillRectangle(winID, gcID, []uint32{20, 20, 50, 40})
 
-	img := getCanvasData(t, winID, 20, 20, 50, 40)
-	assertRectangle(t, img, image.Rect(0, 0, 50, 40), color.Black)
+	poll(t, func() bool {
+		img := getCanvasData(t, winID, 20, 20, 50, 40)
+		assertRectangle(t, img, image.Rect(0, 0, 50, 40), 0, 0, 0)
+		return !t.Failed()
+	})
 }
 
 func TestDrawText(t *testing.T) {
@@ -179,23 +193,18 @@ func TestDrawText(t *testing.T) {
 		PolyText8String{Str: []byte("Hello, world!")},
 	})
 
-	img := getCanvasData(t, winID, 20, 30, 80, 20)
-	var foundPixel bool
-	bounds := img.Bounds()
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			if _, _, _, a := img.At(x, y).RGBA(); a != 0 {
-				foundPixel = true
-				break
+	poll(t, func() bool {
+		img := getCanvasData(t, winID, 20, 30, 80, 20)
+		bounds := img.Bounds()
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				if r, g, b, _ := img.At(x, y).RGBA(); r != 0 || g != 0 || b != 0 {
+					return true // Found a non-black pixel, assuming text is drawn
+				}
 			}
 		}
-		if foundPixel {
-			break
-		}
-	}
-	if !foundPixel {
-		t.Error("did not find any drawn text")
-	}
+		return false
+	})
 }
 
 func TestOverlappingWindows(t *testing.T) {
@@ -236,11 +245,23 @@ func TestOverlappingWindows(t *testing.T) {
 	fe.CreateGC(gcID2, GCForeground, GC{Foreground: s.blackPixel})
 	fe.PolyFillRectangle(winID2, gcID2, []uint32{20, 20, 50, 40})
 
-	assertWindow(t, getWindowBounds(t, winID1), image.Rect(10, 10, 110, 90))
-	img1 := getCanvasData(t, winID1, 20, 20, 50, 40)
-	assertRectangle(t, img1, image.Rect(0, 0, 50, 40), color.Black)
+	poll(t, func() bool {
+		assertWindow(t, getWindowBounds(t, winID1), image.Rect(10, 10, 110, 90))
+		return !t.Failed()
+	})
+	poll(t, func() bool {
+		img1 := getCanvasData(t, winID1, 20, 20, 50, 40)
+		assertRectangle(t, img1, image.Rect(0, 0, 50, 40), 0, 0, 0)
+		return !t.Failed()
+	})
 
-	assertWindow(t, getWindowBounds(t, winID2), image.Rect(30, 30, 130, 110))
-	img2 := getCanvasData(t, winID2, 20, 20, 50, 40)
-	assertRectangle(t, img2, image.Rect(0, 0, 50, 40), color.Black)
+	poll(t, func() bool {
+		assertWindow(t, getWindowBounds(t, winID2), image.Rect(30, 30, 130, 110))
+		return !t.Failed()
+	})
+	poll(t, func() bool {
+		img2 := getCanvasData(t, winID2, 20, 20, 50, 40)
+		assertRectangle(t, img2, image.Rect(0, 0, 50, 40), 0, 0, 0)
+		return !t.Failed()
+	})
 }

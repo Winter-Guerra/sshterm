@@ -195,7 +195,7 @@ func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc GC) (out string) {
 		debugf("getForegroundColor: cmap:%s gc=%+v %s", cmap, gc, out)
 	}()
 	r, g, b := w.GetRGBColor(cmap, gc.Foreground)
-	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+	return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
 }
 
 func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values WindowAttributes) {
@@ -463,7 +463,10 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 	windowDiv.Call("appendChild", canvas)
 
-	ctx := canvas.Call("getContext", "2d")
+	// Enable alpha channel for transparency
+	ctxOptions := js.Global().Get("Object").New()
+	ctxOptions.Set("alpha", true)
+	ctx := canvas.Call("getContext", "2d", ctxOptions)
 
 	var finalX, finalY uint32 = x, y
 	var parentDiv js.Value = w.body
