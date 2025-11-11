@@ -1077,63 +1077,130 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	})
 }
 
-func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
+func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID, draw func(js.Value)) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
 		return
 	}
-	// function (logic op)
-	// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
-	switch gc.Function {
-	case FunctionClear: // 0
-		ctx.Set("globalCompositeOperation", "destination-out") // Essentially, clear the destination where the source is drawn
-	case FunctionAnd: // src AND dst
-		ctx.Set("globalCompositeOperation", "source-in")
-	case FunctionAndReverse: // src AND NOT dst
-		ctx.Set("globalCompositeOperation", "destination-in")
-	case FunctionCopy: // src
-		ctx.Set("globalCompositeOperation", "source-over")
-	case FunctionAndInverted: // NOT src AND dst
-		ctx.Set("globalCompositeOperation", "source-out")
-	case FunctionNoOp: // dst
-		// No operation, so we do nothing to the context
-	case FunctionXor: // src XOR dst
-		ctx.Set("globalCompositeOperation", "xor")
-	case FunctionOr: // src OR dst
-		ctx.Set("globalCompositeOperation", "lighter")
-	case FunctionNor: // NOT src AND NOT dst
-		// No direct equivalent, difference might be visually interesting but incorrect
-	case FunctionEquiv: // NOT src XOR dst
-		// No direct equivalent
-	case FunctionInvert: // NOT dst
-		ctx.Set("globalCompositeOperation", "difference")
-	case FunctionOrReverse: // src OR NOT dst
-		ctx.Set("globalCompositeOperation", "destination-over")
-	case FunctionCopyInverted: // NOT src
-		// No direct equivalent
-	case FunctionOrInverted: // NOT src OR dst
-		ctx.Set("globalCompositeOperation", "destination-out")
-	case FunctionNand: // NOT src OR NOT dst
-		// No direct equivalent
-	case FunctionSet: // 1
-		// No direct equivalent to setting all bits to 1, but 'source-over' with a white fill would be close for a specific color
+
+	needsSoftwareEmulation := func(gc GC) bool {
+		return true
 	}
-	// foreground
+
+	if needsSoftwareEmulation(gc) {
+		// Software emulation path
+		canvas := ctx.Get("canvas")
+		width := canvas.Get("width").Int()
+		height := canvas.Get("height").Int()
+
+		dstImageData := ctx.Call("getImageData", 0, 0, width, height)
+		dstData := dstImageData.Get("data")
+		dstSlice := make([]byte, dstData.Length())
+		js.CopyBytesToGo(dstSlice, dstData)
+
+		tempCanvas := w.document.Call("createElement", "canvas")
+		tempCanvas.Set("width", width)
+		tempCanvas.Set("height", height)
+		tempCtx := tempCanvas.Call("getContext", "2d")
+
+		r, g, b := w.GetRGBColor(colormap, gc.Foreground)
+		srcColorStr := fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+		tempCtx.Set("fillStyle", srcColorStr)
+		tempCtx.Set("strokeStyle", srcColorStr)
+		tempCtx.Set("lineWidth", gc.LineWidth)
+		if gc.Font != 0 {
+			if font, ok := w.fonts[xID{local: gc.Font}]; ok {
+				tempCtx.Set("font", font.cssFont)
+			}
+		}
+		draw(tempCtx)
+
+		srcImageData := tempCtx.Call("getImageData", 0, 0, width, height)
+		srcData := srcImageData.Get("data")
+		srcSlice := make([]byte, srcData.Length())
+		js.CopyBytesToGo(srcSlice, srcData)
+
+		sr, sg, sb := r, g, b
+		for i := 0; i < len(dstSlice); i += 4 {
+			if srcSlice[i+3] > 0 {
+				dr, dg, db := dstSlice[i], dstSlice[i+1], dstSlice[i+2]
+				var fr, fg, fb byte
+				switch gc.Function {
+				case FunctionClear:
+					fr, fg, fb = 0, 0, 0
+				case FunctionAnd:
+					fr, fg, fb = sr&dr, sg&dg, sb&db
+				case FunctionAndReverse:
+					fr, fg, fb = sr&^dr, sg&^dg, sb&^db
+				case FunctionCopy:
+					fr, fg, fb = sr, sg, sb
+				case FunctionCopyInverted:
+					fr, fg, fb = ^sr&0xff, ^sg&0xff, ^sb&0xff
+				case FunctionAndInverted:
+					fr, fg, fb = ^sr&dr, ^sg&dg, ^sb&db
+				case FunctionNoOp:
+					fr, fg, fb = dr, dg, db
+				case FunctionXor:
+					fr, fg, fb = sr^dr, sg^dg, sb^db
+				case FunctionOr:
+					fr, fg, fb = sr|dr, sg|dg, sb|db
+				case FunctionNor:
+					fr, fg, fb = ^sr&^dr, ^sg&^dg, ^sb&^db
+				case FunctionEquiv:
+					fr, fg, fb = ^sr^dr, ^sg^dg, ^sb^db
+				case FunctionInvert:
+					fr, fg, fb = ^dr, ^dg, ^db
+				case FunctionOrReverse:
+					fr, fg, fb = sr|^dr, sg|^dg, sb|^db
+				case FunctionOrInverted:
+					fr, fg, fb = ^sr|dr, ^sg|dg, ^sb|db
+				case FunctionNand:
+					fr, fg, fb = ^(sr & dr), ^(sg & dg), ^(sb & db)
+				case FunctionSet:
+					fr, fg, fb = 0xff, 0xff, 0xff
+				default:
+					fr, fg, fb = dr, dg, db
+				}
+				dstSlice[i] = fr
+				dstSlice[i+1] = fg
+				dstSlice[i+2] = fb
+				dstSlice[i+3] = 255
+			}
+		}
+		jsImgData := js.Global().Get("Uint8ClampedArray").New(jsutil.Uint8ArrayFromBytes(dstSlice))
+		newImageData := js.Global().Get("ImageData").New(jsImgData, width, height)
+		ctx.Call("putImageData", newImageData, 0, 0)
+		return
+	}
+
+	// Native canvas operations path
+	ctx.Call("save")
+	defer ctx.Call("restore")
+
+	ctx.Set("imageSmoothingEnabled", false)
+
+	// Only handle functions that are natively supported.
+	// Others are routed to the software emulation path.
+	switch gc.Function {
+	case FunctionClear:
+		ctx.Set("globalCompositeOperation", "destination-out")
+	case FunctionCopy:
+		ctx.Set("globalCompositeOperation", "source-over")
+	case FunctionNoOp:
+		// Do nothing
+	default:
+		ctx.Set("globalCompositeOperation", "source-over")
+	}
 	color := w.getForegroundColor(colormap, gc)
 	ctx.Set("strokeStyle", color)
 	ctx.Set("fillStyle", color)
-
-	// line-width
 	ctx.Set("lineWidth", gc.LineWidth)
 
-	// line-style, cap-style, join-style
 	switch gc.LineStyle {
 	case LineStyleOnOffDash, LineStyleDoubleDash:
-		// Dashes are handled in applyDashes
 	case LineStyleSolid:
 		ctx.Call("setLineDash", js.Global().Get("Array").New())
 	}
-
 	switch gc.CapStyle {
 	case CapStyleNotLast, CapStyleButt:
 		ctx.Set("lineCap", "butt")
@@ -1142,7 +1209,6 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
 	case CapStyleProjecting:
 		ctx.Set("lineCap", "square")
 	}
-
 	switch gc.JoinStyle {
 	case JoinStyleMiter:
 		ctx.Set("lineJoin", "miter")
@@ -1152,7 +1218,6 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
 		ctx.Set("lineJoin", "bevel")
 	}
 
-	// fill-style
 	switch gc.FillStyle {
 	case FillStyleSolid:
 		ctx.Set("fillStyle", color)
@@ -1198,13 +1263,11 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
 		}
 	}
 
-	// font
 	if gc.Font != 0 {
 		if font, ok := w.fonts[xID{local: gc.Font}]; ok {
 			ctx.Set("font", font.cssFont)
 		}
 	}
-	// clipping
 	if gc.ClippingRectangles != nil && len(gc.ClippingRectangles) > 0 {
 		ctx.Call("beginPath")
 		for _, rect := range gc.ClippingRectangles {
@@ -1212,8 +1275,6 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
 		}
 		ctx.Call("clip")
 	}
-
-	// dashes
 	if gc.DashPattern != nil && len(gc.DashPattern) > 0 {
 		jsDashes := js.Global().Get("Array").New(len(gc.DashPattern))
 		for i, v := range gc.DashPattern {
@@ -1222,6 +1283,7 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID) {
 		ctx.Call("setLineDash", jsDashes)
 		ctx.Set("lineDashOffset", gc.DashOffset)
 	}
+	draw(ctx)
 }
 
 func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
@@ -1230,7 +1292,6 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 		return
 	}
 	debugf("X11: polyLine drawable=%s gc=%v points=%v", drawable, gc, points)
-	color := "??????"
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
@@ -1239,128 +1300,32 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
 		colormap = xID{0, w.server.defaultColormap}
+	} else {
+		return
 	}
 
-	if !ctx.IsUndefined() {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
-		color = w.getForegroundColor(colormap, gc)
-		ctx.Call("beginPath")
+	if ctx.IsUndefined() {
+		return
+	}
+
+	color := w.getForegroundColor(colormap, gc)
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		targetCtx.Call("beginPath")
 		if len(points) >= 2 {
-			ctx.Call("moveTo", points[0], points[1])
+			targetCtx.Call("moveTo", points[0], points[1])
 			for i := 2; i < len(points); i += 2 {
-				ctx.Call("lineTo", points[i], points[i+1])
+				targetCtx.Call("lineTo", points[i], points[i+1])
 			}
 		}
-		ctx.Call("stroke")
-	}
+		targetCtx.Call("stroke")
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:        "polyLine",
 		Args:        []any{drawable.local, gc, points},
 		StrokeStyle: color,
 	})
-}
-
-// Helper function to apply bitwise logical operations
-func (w *wasmX11Frontend) applyBitwiseOperation(ctx js.Value, gc GC, colormap xID, draw func(js.Value)) {
-	// 1. Get the bounding box of the area to be drawn.
-	// This is a simplification; a more robust solution would calculate this based on the `draw` function.
-	canvas := ctx.Get("canvas")
-	width := canvas.Get("width").Int()
-	height := canvas.Get("height").Int()
-
-	// 2. Get the current image data from the destination canvas.
-	dstImageData := ctx.Call("getImageData", 0, 0, width, height)
-	dstData := dstImageData.Get("data")
-	dstSlice := make([]byte, dstData.Length())
-	js.CopyBytesToGo(dstSlice, dstData)
-
-	// 3. Create a temporary canvas to draw the source shape.
-	tempCanvas := w.document.Call("createElement", "canvas")
-	tempCanvas.Set("width", width)
-	tempCanvas.Set("height", height)
-	tempCtx := tempCanvas.Call("getContext", "2d")
-
-	// 4. Draw the source shape onto the temporary canvas.
-	r, g, b := w.GetRGBColor(colormap, gc.Foreground)
-	srcColorStr := fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
-	tempCtx.Set("fillStyle", srcColorStr)
-	draw(tempCtx)
-
-	// 5. Get the image data from the temporary canvas.
-	srcImageData := tempCtx.Call("getImageData", 0, 0, width, height)
-	srcData := srcImageData.Get("data")
-	srcSlice := make([]byte, srcData.Length())
-	js.CopyBytesToGo(srcSlice, srcData)
-
-	// 6. Perform the logical operation pixel by pixel using uint8.
-	sr, sg, sb := r, g, b
-	for i := 0; i < len(dstSlice); i += 4 {
-		// Only apply the operation where the source has been drawn
-		if srcSlice[i+3] > 0 {
-			dr, dg, db := dstSlice[i], dstSlice[i+1], dstSlice[i+2]
-			var fr, fg, fb byte
-
-			switch gc.Function {
-			case FunctionAnd: // src AND dst
-				fr, fg, fb = sr&dr, sg&dg, sb&db
-			case FunctionAndReverse: // src AND NOT dst
-				fr, fg, fb = sr&^dr, sg&^dg, sb&^db
-			case FunctionCopyInverted: // NOT src
-				fr, fg, fb = ^sr&0xff, ^sg&0xff, ^sb&0xff
-			case FunctionAndInverted: // NOT src AND dst
-				fr, fg, fb = ^sr&dr, ^sg&dg, ^sb&db
-			case FunctionNoOp: // dst
-				fr, fg, fb = dr, dg, db
-			case FunctionXor: // src XOR dst
-				fr, fg, fb = sr^dr, sg^dg, sb^db
-			case FunctionOr: // src OR dst
-				fr, fg, fb = sr|dr, sg|dg, sb|db
-			case FunctionNor: // NOT src AND NOT dst
-				fr, fg, fb = ^sr&^dr, ^sg&^dg, ^sb&^db
-			case FunctionEquiv: // NOT src XOR dst
-				fr, fg, fb = ^sr^dr, ^sg^dg, ^sb^db
-			case FunctionInvert: // NOT dst
-				fr, fg, fb = ^dr, ^dg, ^db
-			case FunctionOrReverse: // src OR NOT dst
-				fr, fg, fb = sr|^dr, sg|^dg, sb|^db
-			case FunctionOrInverted: // NOT src OR dst
-				fr, fg, fb = ^sr|dr, ^sg|dg, ^sb|db
-			case FunctionNand: // NOT (src AND dst)
-				fr, fg, fb = ^(sr & dr), ^(sg & dg), ^(sb & db)
-			case FunctionSet: // 1
-				fr, fg, fb = 0xff, 0xff, 0xff
-			default:
-				fr, fg, fb = dr, dg, db // Should not happen
-			}
-
-			dstSlice[i] = fr
-			dstSlice[i+1] = fg
-			dstSlice[i+2] = fb
-			dstSlice[i+3] = 255 // Alpha
-		}
-	}
-
-	// 7. Put the modified image data back onto the destination canvas.
-	jsImgData := js.Global().Get("Uint8ClampedArray").New(jsutil.Uint8ArrayFromBytes(dstSlice))
-	newImageData := js.Global().Get("ImageData").New(jsImgData, width, height)
-	ctx.Call("putImageData", newImageData, 0, 0)
-}
-
-func needsSoftwareEmulation(gc GC) bool {
-	switch gc.Function {
-	case FunctionClear, FunctionCopy, FunctionNoOp:
-		return false
-	// These have some mapping, but might be incorrect. Emulate for correctness.
-	case FunctionAnd, FunctionAndReverse, FunctionXor, FunctionOr, FunctionInvert, FunctionOrReverse, FunctionOrInverted:
-		return true
-	// These have no direct mapping and must be emulated.
-	case FunctionAndInverted, FunctionCopyInverted, FunctionNor, FunctionEquiv, FunctionNand, FunctionSet:
-		return true
-	default:
-		return false
-	}
 }
 
 func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint32) {
@@ -1387,20 +1352,11 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 
 	color := w.getForegroundColor(colormap, gc)
 
-	if needsSoftwareEmulation(gc) {
-		w.applyBitwiseOperation(ctx, gc, colormap, func(tempCtx js.Value) {
-			for i := 0; i < len(rects); i += 4 {
-				tempCtx.Call("fillRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
-			}
-		})
-	} else {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(rects); i += 4 {
-			ctx.Call("fillRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
+			targetCtx.Call("fillRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
 		}
-	}
+	})
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyFillRectangle",
@@ -1437,7 +1393,7 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 		fillRule = "evenodd"
 	}
 
-	drawPolygon := func(targetCtx js.Value) {
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
 		targetCtx.Call("beginPath")
 		if len(points) >= 2 {
 			targetCtx.Call("moveTo", points[0], points[1])
@@ -1447,16 +1403,7 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 		}
 		targetCtx.Call("closePath")
 		targetCtx.Call("fill", fillRule)
-	}
-
-	if needsSoftwareEmulation(gc) {
-		w.applyBitwiseOperation(ctx, gc, colormap, drawPolygon)
-	} else {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
-		drawPolygon(ctx)
-	}
+	})
 
 	w.recordOperation(CanvasOperation{
 		Type:      "fillPoly",
@@ -1471,7 +1418,6 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 		return
 	}
 	debugf("X11: polySegment drawable=%s gc=%v segments=%v", drawable, gc, segments)
-	color := "??????"
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
@@ -1480,20 +1426,25 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
 		colormap = xID{0, w.server.defaultColormap}
+	} else {
+		return
 	}
 
-	if !ctx.IsUndefined() {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
-		color = w.getForegroundColor(colormap, gc)
-		for i := 0; i < len(segments); i += 4 {
-			ctx.Call("beginPath")
-			ctx.Call("moveTo", segments[i], segments[i+1])
-			ctx.Call("lineTo", segments[i+2], segments[i+3])
-			ctx.Call("stroke")
-		}
+	if ctx.IsUndefined() {
+		return
 	}
+
+	color := w.getForegroundColor(colormap, gc)
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		for i := 0; i < len(segments); i += 4 {
+			targetCtx.Call("beginPath")
+			targetCtx.Call("moveTo", segments[i], segments[i+1])
+			targetCtx.Call("lineTo", segments[i+2], segments[i+3])
+			targetCtx.Call("stroke")
+		}
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:        "polySegment",
 		Args:        []any{drawable.local, gc, segments},
@@ -1525,20 +1476,11 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 
 	color := w.getForegroundColor(colormap, gc)
 
-	if needsSoftwareEmulation(gc) {
-		w.applyBitwiseOperation(ctx, gc, colormap, func(tempCtx js.Value) {
-			for i := 0; i < len(points); i += 2 {
-				tempCtx.Call("fillRect", points[i], points[i+1], 1, 1)
-			}
-		})
-	} else {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(points); i += 2 {
-			ctx.Call("fillRect", points[i], points[i+1], 1, 1)
+			targetCtx.Call("fillRect", points[i], points[i+1], 1, 1)
 		}
-	}
+	})
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyPoint",
@@ -1553,7 +1495,6 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 		return
 	}
 	debugf("X11: polyRectangle drawable=%s gc=%v rects=%v", drawable, gc, rects)
-	color := "??????"
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
@@ -1562,17 +1503,22 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
 		colormap = xID{0, w.server.defaultColormap}
+	} else {
+		return
 	}
 
-	if !ctx.IsUndefined() {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
-		color = w.getForegroundColor(colormap, gc)
-		for i := 0; i < len(rects); i += 4 {
-			ctx.Call("strokeRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
-		}
+	if ctx.IsUndefined() {
+		return
 	}
+
+	color := w.getForegroundColor(colormap, gc)
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		for i := 0; i < len(rects); i += 4 {
+			targetCtx.Call("strokeRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
+		}
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:        "polyRectangle",
 		Args:        []any{drawable.local, gc, rects},
@@ -1586,7 +1532,6 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 		return
 	}
 	debugf("X11: polyArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
-	color := "??????"
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
@@ -1595,15 +1540,19 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
 		colormap = xID{0, w.server.defaultColormap}
+	} else {
+		return
 	}
 
-	if !ctx.IsUndefined() {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
-		color = w.getForegroundColor(colormap, gc)
+	if ctx.IsUndefined() {
+		return
+	}
+
+	color := w.getForegroundColor(colormap, gc)
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(arcs); i += 6 {
-			ctx.Call("beginPath")
+			targetCtx.Call("beginPath")
 			// X11 angles are in 1/64th degrees, clockwise. Canvas angles are in radians, clockwise.
 			// Start angle: arcs[i+4] / 64 * (Math.PI / 180)
 			// End angle: (arcs[i+4] + arcs[i+5]) / 64 * (Math.PI / 180)
@@ -1613,10 +1562,11 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 			ry := uint32(arcs[i+3] / 2)
 			x := uint32(arcs[i] + rx)
 			y := uint32(arcs[i+1] + ry)
-			ctx.Call("ellipse", x, y, rx, ry, 0, startAngle, endAngle)
-			ctx.Call("stroke")
+			targetCtx.Call("ellipse", x, y, rx, ry, 0, startAngle, endAngle)
+			targetCtx.Call("stroke")
 		}
-	}
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:        "polyArc",
 		Args:        []any{drawable.local, gc, arcs},
@@ -1652,7 +1602,7 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 		fillRule = "evenodd"
 	}
 
-	drawArcs := func(targetCtx js.Value) {
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(arcs); i += 6 {
 			targetCtx.Call("beginPath")
 			startAngle := float64(arcs[i+4]) / 64 * (math.Pi / 180)
@@ -1668,16 +1618,7 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 			}
 			targetCtx.Call("fill", fillRule)
 		}
-	}
-
-	if needsSoftwareEmulation(gc) {
-		w.applyBitwiseOperation(ctx, gc, colormap, drawArcs)
-	} else {
-		ctx.Call("save")
-		defer ctx.Call("restore")
-		w.applyGC(ctx, colormap, gcID)
-		drawArcs(ctx)
-	}
+	})
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyFillArc",
@@ -1825,13 +1766,10 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 		newImageData := js.Global().Get("ImageData").New(jsImgData, width, height)
 		tempCtx.Call("putImageData", newImageData, 0, 0)
 
-		// 5. Apply the GC to the destination context.
-		dstCtx.Call("save")
-		defer dstCtx.Call("restore")
-		w.applyGC(dstCtx, currentColormap, gcID)
-
-		// 6. Draw the temporary canvas image to the destination drawable.
-		dstCtx.Call("drawImage", tempCanvas, dstX, dstY)
+		// 5. Apply the GC to the destination context and draw the image.
+		w.applyGC(dstCtx, currentColormap, gcID, func(targetCtx js.Value) {
+			targetCtx.Call("drawImage", tempCanvas, dstX, dstY)
+		})
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyPlane",
@@ -1859,29 +1797,29 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 	decodedTextForLog := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(text)).String()
 	decodedTextForLog = strings.ReplaceAll(decodedTextForLog, "\x00", "") // Trim null terminators
 	debugf("X11: imageText8 drawable=%s gc=%v x=%d y=%d text=%s", drawable, gc, x, y, decodedTextForLog)
-	color := "??????"
-	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
 
-			// Get font from GC
-			fontCSS := "12px monospace" // Default fallback
-			if gc.Font != 0 {
-				if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
-					fontCSS = font.cssFont
-				}
-			}
-			winInfo.ctx.Set("font", fontCSS)
-
-			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(text)).String()
-			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-			winInfo.ctx.Call("fillText", decodedText, x, y)
-		}
+	var ctx js.Value
+	var colormap xID
+	winInfo, ok := w.windows[drawable]
+	if ok {
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else {
+		return
 	}
+
+	if ctx.IsUndefined() {
+		return
+	}
+
+	color := w.getForegroundColor(colormap, gc)
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(text)).String()
+		decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+		targetCtx.Call("fillText", decodedText, x, y)
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:      "imageText8",
 		Args:      []any{drawable.local, gc, x, y, decodedTextForLog},
@@ -1902,29 +1840,29 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	decodedTextForLog := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
 	decodedTextForLog = strings.ReplaceAll(decodedTextForLog, "\x00", "") // Trim null terminators
 	debugf("X11: imageText16 drawable=%s gc=%v x=%d y=%d text=%s", drawable, gc, x, y, decodedTextForLog)
-	color := "??????"
-	if winInfo, ok := w.windows[drawable]; ok {
-		if !winInfo.canvas.IsNull() {
-			winInfo.ctx.Call("save")
-			defer winInfo.ctx.Call("restore")
-			w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
-			color = w.getForegroundColor(winInfo.colormap, gc)
-			winInfo.ctx.Set("fillStyle", color)
 
-			// Get font from GC
-			fontCSS := "12px monospace" // Default fallback
-			if gc.Font != 0 {
-				if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
-					fontCSS = font.cssFont
-				}
-			}
-			winInfo.ctx.Set("font", fontCSS)
-
-			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
-			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-			winInfo.ctx.Call("fillText", decodedText, x, y)
-		}
+	var ctx js.Value
+	var colormap xID
+	winInfo, ok := w.windows[drawable]
+	if ok {
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else {
+		return
 	}
+
+	if ctx.IsUndefined() {
+		return
+	}
+
+	color := w.getForegroundColor(colormap, gc)
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
+		decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+		targetCtx.Call("fillText", decodedText, x, y)
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:      "imageText16",
 		Args:      []any{drawable.local, gc, x, y, decodedTextForLog},
@@ -1938,46 +1876,44 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 		return
 	}
 	debugf("X11: polyText8 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
-	color := "?????"
+
+	var ctx js.Value
+	var colormap xID
 	winInfo, ok := w.windows[drawable]
-	if !ok {
+	if ok {
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else {
 		return
 	}
-	if winInfo.canvas.IsNull() {
+
+	if ctx.IsUndefined() {
 		return
 	}
-	winInfo.ctx.Call("save")
-	defer winInfo.ctx.Call("restore")
-	w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
-	color = w.getForegroundColor(winInfo.colormap, gc)
-	winInfo.ctx.Set("fillStyle", color)
-	// Get font from GC
-	fontCSS := "12px monospace" // Default fallback
-	if gc.Font != 0 {
-		if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
-			fontCSS = font.cssFont
-		}
-	}
-	winInfo.ctx.Set("font", fontCSS)
-	currentX := x
+
+	color := w.getForegroundColor(colormap, gc)
 	var recordedItems []any
-	for _, item := range items {
-		switch it := item.(type) {
-		case PolyText8String:
-			currentX += int32(it.Delta)
-			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(it.Str)).String()
-			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-			winInfo.ctx.Call("fillText", decodedText, currentX, y)
-			recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
-			// The delta for the next item is relative to the start of the current item.
-			// The browser's measureText is not reliable enough to calculate the next position.
-		case PolyTextFont:
-			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
-				winInfo.ctx.Set("font", font.cssFont)
-				recordedItems = append(recordedItems, map[string]any{"font": it.Font})
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		currentX := x
+		recordedItems = nil // Reset for re-recording
+		for _, item := range items {
+			switch it := item.(type) {
+			case PolyText8String:
+				currentX += int32(it.Delta)
+				decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(it.Str)).String()
+				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+				targetCtx.Call("fillText", decodedText, currentX, y)
+				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
+			case PolyTextFont:
+				if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+					targetCtx.Set("font", font.cssFont)
+					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
+				}
 			}
 		}
-	}
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:      "polyText8",
 		Args:      []any{drawable.local, gc, x, y, recordedItems},
@@ -2177,50 +2113,48 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 		return
 	}
 	debugf("X11: polyText16 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
-	color := "?????"
+
+	var ctx js.Value
+	var colormap xID
 	winInfo, ok := w.windows[drawable]
-	if !ok {
+	if ok {
+		ctx = winInfo.ctx
+		colormap = winInfo.colormap
+	} else {
 		return
 	}
-	if winInfo.canvas.IsNull() {
+
+	if ctx.IsUndefined() {
 		return
 	}
-	winInfo.ctx.Call("save")
-	defer winInfo.ctx.Call("restore")
-	w.applyGC(winInfo.ctx, winInfo.colormap, gcID)
-	color = w.getForegroundColor(winInfo.colormap, gc)
-	winInfo.ctx.Set("fillStyle", color)
-	// Get font from GC
-	fontCSS := "12px monospace" // Default fallback
-	if gc.Font != 0 {
-		if font, ok := w.fonts[xID{drawable.client, gc.Font}]; ok {
-			fontCSS = font.cssFont
-		}
-	}
-	winInfo.ctx.Set("font", fontCSS)
-	currentX := x
+
+	color := w.getForegroundColor(colormap, gc)
 	var recordedItems []any
-	for _, item := range items {
-		switch it := item.(type) {
-		case PolyText16String:
-			currentX += int32(it.Delta)
-			textBytes := make([]byte, len(it.Str)*2)
-			for i, r := range it.Str {
-				binary.LittleEndian.PutUint16(textBytes[i*2:], r)
-			}
-			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
-			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-			winInfo.ctx.Call("fillText", decodedText, currentX, y)
-			recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
-			// The delta for the next item is relative to the start of the current item.
-			// The browser's measureText is not reliable enough to calculate the next position.
-		case PolyTextFont:
-			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
-				winInfo.ctx.Set("font", font.cssFont)
-				recordedItems = append(recordedItems, map[string]any{"font": it.Font})
+
+	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		currentX := x
+		recordedItems = nil // Reset for re-recording
+		for _, item := range items {
+			switch it := item.(type) {
+			case PolyText16String:
+				currentX += int32(it.Delta)
+				textBytes := make([]byte, len(it.Str)*2)
+				for i, r := range it.Str {
+					binary.LittleEndian.PutUint16(textBytes[i*2:], r)
+				}
+				decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
+				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+				targetCtx.Call("fillText", decodedText, currentX, y)
+				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
+			case PolyTextFont:
+				if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+					targetCtx.Set("font", font.cssFont)
+					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
+				}
 			}
 		}
-	}
+	})
+
 	w.recordOperation(CanvasOperation{
 		Type:      "polyText16",
 		Args:      []any{drawable.local, gc, x, y, recordedItems},

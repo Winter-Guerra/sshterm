@@ -28,6 +28,7 @@ package x11
 import (
 	_ "embed"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	"syscall/js"
@@ -93,42 +94,39 @@ func getWindowBounds(t *testing.T, winID xID) image.Rectangle {
 	return image.Rect(x, y, x+w, y+h)
 }
 
-func canvasExists(t *testing.T, winID xID) bool {
-	t.Helper()
-	doc := js.Global().Get("document")
-	if !doc.Truthy() {
-		t.Fatal("document not found")
-	}
-	return doc.Call("querySelector", fmt.Sprintf("#x11-canvas-%d-%d", winID.client, winID.local)).Truthy()
-}
-
-func assertRectangle(t *testing.T, img *image.RGBA, rect image.Rectangle, r, g, b uint8) {
-	t.Helper()
+func checkRectangle(img *image.RGBA, rect image.Rectangle, r, g, b uint8) error {
 	for y := rect.Min.Y; y < rect.Max.Y; y++ {
 		for x := rect.Min.X; x < rect.Max.X; x++ {
 			got := img.RGBAAt(x, y)
 			if got.R != r || got.G != g || got.B != b {
-				t.Errorf("at (%d, %d): got RGB %v,%v,%v want %v,%v,%v", x, y, got.R, got.G, got.B, r, g, b)
+				return fmt.Errorf("at (%d, %d): got RGB %v,%v,%v want %v,%v,%v", x, y, got.R, got.G, got.B, r, g, b)
 			}
 		}
 	}
+	return nil
 }
 
-func assertWindow(t *testing.T, got, want image.Rectangle) {
-	t.Helper()
+func checkWindow(got, want image.Rectangle) error {
 	if got != want {
-		t.Errorf("got %v, want %v", got, want)
+		return fmt.Errorf("got %v, want %v", got, want)
 	}
+	return nil
 }
 
-func poll(t *testing.T, f func() bool) {
+func poll(t *testing.T, f func() error) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
 	for time.Now().Before(deadline) {
-		if f() {
+		if err := f(); err == nil {
 			return
+		} else {
+			lastErr = err
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatal(lastErr)
 	}
 	t.Fatal("polling deadline exceeded")
 }
@@ -169,10 +167,9 @@ func TestDrawRectangle(t *testing.T) {
 
 	fe.PolyFillRectangle(winID, gcID, []uint32{20, 20, 50, 40})
 
-	poll(t, func() bool {
+	poll(t, func() error {
 		img := getCanvasData(t, s, winID, 20, 20, 50, 40)
-		assertRectangle(t, img, image.Rect(0, 0, 50, 40), 0, 0, 0)
-		return !t.Failed()
+		return checkRectangle(img, image.Rect(0, 0, 50, 40), 0, 0, 0)
 	})
 }
 
@@ -220,16 +217,30 @@ func TestGCLogicalOperations(t *testing.T) {
 	fe.CreateGC(bg2ID, GCForeground|GCFunction, GC{Foreground: 0x00ff00, Function: FunctionCopy}) // Green
 	fe.PolyFillRectangle(winID, bg2ID, []uint32{50, 50, 100, 100})
 
-	poll(t, func() bool {
+	poll(t, func() error {
 		img := getCanvasData(t, s, winID, 0, 0, 150, 150)
-		assertRectangle(t, img, image.Rect(0, 0, 50, 50), 0, 0, 255)         // Top-left should be blue
-		assertRectangle(t, img, image.Rect(50, 0, 100, 50), 0, 0, 255)        // Top-right should be blue
-		assertRectangle(t, img, image.Rect(0, 50, 50, 100), 0, 0, 255)        // Mid-left should be blue
-		assertRectangle(t, img, image.Rect(50, 50, 100, 100), 0, 255, 0)      // Center should be green
-		assertRectangle(t, img, image.Rect(100, 50, 150, 100), 0, 255, 0)     // Mid-right should be green
-		assertRectangle(t, img, image.Rect(50, 100, 100, 150), 0, 255, 0)     // Bottom-center should be green
-		assertRectangle(t, img, image.Rect(100, 100, 150, 150), 0, 255, 0)    // Bottom-right should be green
-		return !t.Failed()
+		if err := checkRectangle(img, image.Rect(0, 0, 50, 50), 0, 0, 255); err != nil {
+			return err
+		}
+		if err := checkRectangle(img, image.Rect(50, 0, 100, 50), 0, 0, 255); err != nil {
+			return err
+		}
+		if err := checkRectangle(img, image.Rect(0, 50, 50, 100), 0, 0, 255); err != nil {
+			return err
+		}
+		if err := checkRectangle(img, image.Rect(50, 50, 100, 100), 0, 255, 0); err != nil {
+			return err
+		}
+		if err := checkRectangle(img, image.Rect(100, 50, 150, 100), 0, 255, 0); err != nil {
+			return err
+		}
+		if err := checkRectangle(img, image.Rect(50, 100, 100, 150), 0, 255, 0); err != nil {
+			return err
+		}
+		if err := checkRectangle(img, image.Rect(100, 100, 150, 150), 0, 255, 0); err != nil {
+			return err
+		}
+		return nil
 	})
 
 	// Test logical operations
@@ -254,13 +265,38 @@ func TestGCLogicalOperations(t *testing.T) {
 			fe.PolyFillRectangle(winID, bg2ID, []uint32{75, 75, 20, 20})
 
 			gcID := xID{client: 1, local: uint32(20 + i)}
-			fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: srcColor, Function: tc.function})
+			fe.CreateGC(gcID, GCForeground|GCFunction|GCLineWidth, GC{Foreground: srcColor, Function: tc.function, LineWidth: 4})
 			fe.PolyFillRectangle(winID, gcID, []uint32{75, 75, 20, 20})
 
-			poll(t, func() bool {
+			poll(t, func() error {
 				img := getCanvasData(t, s, winID, 75, 75, 20, 20)
-				assertRectangle(t, img, image.Rect(0, 0, 20, 20), tc.wantR, tc.wantG, tc.wantB)
-				return !t.Failed()
+				return checkRectangle(img, image.Rect(0, 0, 20, 20), tc.wantR, tc.wantG, tc.wantB)
+			})
+
+			// Test PolyLine
+			fe.PolyFillRectangle(winID, bg2ID, []uint32{75, 100, 20, 20})
+			fe.PolyLine(winID, gcID, []uint32{75, 100, 95, 120})
+			poll(t, func() error {
+				img := getCanvasData(t, s, winID, 85, 110, 1, 1)
+				return checkRectangle(img, image.Rect(0, 0, 1, 1), tc.wantR, tc.wantG, tc.wantB)
+			})
+
+			// Test ImageText8
+			fe.PolyFillRectangle(winID, bg2ID, []uint32{75, 125, 50, 20})
+			fe.ImageText8(winID, gcID, 75, 140, []byte("test"))
+			poll(t, func() error {
+				img := getCanvasData(t, s, winID, 76, 135, 1, 1)
+				return checkRectangle(img, image.Rect(0, 0, 1, 1), tc.wantR, tc.wantG, tc.wantB)
+			})
+
+			// Test PolyText16
+			fe.PolyFillRectangle(winID, bg2ID, []uint32{75, 150, 50, 20})
+			fe.PolyText16(winID, gcID, 75, 165, []PolyTextItem{
+				PolyText16String{Str: []uint16{'t', 'e', 's', 't'}},
+			})
+			poll(t, func() error {
+				img := getCanvasData(t, s, winID, 76, 160, 1, 1)
+				return checkRectangle(img, image.Rect(0, 0, 1, 1), tc.wantR, tc.wantG, tc.wantB)
 			})
 		})
 	}
@@ -316,15 +352,13 @@ func TestColors(t *testing.T) {
 		fe.CreateGC(gcID2, GCForeground|GCFunction, GC{Foreground: s.whitePixel, Function: FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID2, []uint32{40, 10, 20, 20})
 
-		poll(t, func() bool {
+		poll(t, func() error {
 			img := getCanvasData(t, s, winID, 10, 10, 20, 20)
-			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 0, 0, 0)
-			return !t.Failed()
+			return checkRectangle(img, image.Rect(0, 0, 20, 20), 0, 0, 0)
 		})
-		poll(t, func() bool {
+		poll(t, func() error {
 			img := getCanvasData(t, s, winID, 40, 10, 20, 20)
-			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 255, 255, 255)
-			return !t.Failed()
+			return checkRectangle(img, image.Rect(0, 0, 20, 20), 255, 255, 255)
 		})
 	})
 
@@ -340,10 +374,9 @@ func TestColors(t *testing.T) {
 		fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: pixel, Function: FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{70, 10, 20, 20})
 
-		poll(t, func() bool {
+		poll(t, func() error {
 			img := getCanvasData(t, s, winID, 70, 10, 20, 20)
-			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 255, 0, 0)
-			return !t.Failed()
+			return checkRectangle(img, image.Rect(0, 0, 20, 20), 255, 0, 0)
 		})
 	})
 
@@ -353,10 +386,9 @@ func TestColors(t *testing.T) {
 		fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: pixel, Function: FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{100, 10, 20, 20})
 
-		poll(t, func() bool {
+		poll(t, func() error {
 			img := getCanvasData(t, s, winID, 100, 10, 20, 20)
-			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 0, 0, 255)
-			return !t.Failed()
+			return checkRectangle(img, image.Rect(0, 0, 20, 20), 0, 0, 255)
 		})
 	})
 
@@ -366,14 +398,25 @@ func TestColors(t *testing.T) {
 		fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: pixel, Function: FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{130, 10, 20, 20})
 
-		poll(t, func() bool {
+		poll(t, func() error {
 			// For a TrueColor visual, unallocated pixels are decoded directly
 			// from the pixel value itself.
 			img := getCanvasData(t, s, winID, 130, 10, 20, 20)
-			assertRectangle(t, img, image.Rect(0, 0, 20, 20), 0x12, 0x34, 0x56)
-			return !t.Failed()
+			return checkRectangle(img, image.Rect(0, 0, 20, 20), 0x12, 0x34, 0x56)
 		})
 	})
+}
+
+func checkTextDrawn(img *image.RGBA) error {
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a != 0 {
+				return nil // Found a non-transparent pixel, assuming text is drawn
+			}
+		}
+	}
+	return errors.New("text not drawn")
 }
 
 func TestDrawText(t *testing.T) {
@@ -410,17 +453,9 @@ func TestDrawText(t *testing.T) {
 		PolyText8String{Str: []byte("Hello, world!")},
 	})
 
-	poll(t, func() bool {
+	poll(t, func() error {
 		img := getCanvasData(t, s, winID, 20, 30, 80, 20)
-		bounds := img.Bounds()
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				if _, _, _, a := img.At(x, y).RGBA(); a != 0 {
-					return true // Found a non-transparent pixel, assuming text is drawn
-				}
-			}
-		}
-		return false
+		return checkTextDrawn(img)
 	})
 }
 
@@ -463,23 +498,19 @@ func TestOverlappingWindows(t *testing.T) {
 	fe.CreateGC(gcID2, GCForeground|GCFunction, GC{Foreground: s.blackPixel, Function: FunctionCopy})
 	fe.PolyFillRectangle(winID2, gcID2, []uint32{20, 20, 50, 40})
 
-	poll(t, func() bool {
-		assertWindow(t, getWindowBounds(t, winID1), image.Rect(10, 10, 110, 110))
-		return !t.Failed()
+	poll(t, func() error {
+		return checkWindow(getWindowBounds(t, winID1), image.Rect(10, 10, 110, 110))
 	})
-	poll(t, func() bool {
+	poll(t, func() error {
 		img1 := getCanvasData(t, s, winID1, 20, 20, 50, 40)
-		assertRectangle(t, img1, image.Rect(0, 0, 50, 40), 0, 0, 0)
-		return !t.Failed()
+		return checkRectangle(img1, image.Rect(0, 0, 50, 40), 0, 0, 0)
 	})
 
-	poll(t, func() bool {
-		assertWindow(t, getWindowBounds(t, winID2), image.Rect(30, 30, 130, 130))
-		return !t.Failed()
+	poll(t, func() error {
+		return checkWindow(getWindowBounds(t, winID2), image.Rect(30, 30, 130, 130))
 	})
-	poll(t, func() bool {
+	poll(t, func() error {
 		img2 := getCanvasData(t, s, winID2, 20, 20, 50, 40)
-		assertRectangle(t, img2, image.Rect(0, 0, 50, 40), 0, 0, 0)
-		return !t.Failed()
+		return checkRectangle(img2, image.Rect(0, 0, 50, 40), 0, 0, 0)
 	})
 }
