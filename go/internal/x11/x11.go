@@ -193,6 +193,8 @@ type x11Server struct {
 	keyboardGrabOwner    bool
 	pointerGrabEventMask uint16
 	passiveGrabs         map[xID][]*passiveGrab
+	authProtocol         string
+	authCookie           []byte
 }
 
 type passiveGrab struct {
@@ -1983,13 +1985,40 @@ func (s *x11Server) handshake(client *x11Client) {
 	client.byteOrder = order
 	authProtoNameLen := order.Uint16(handshake[6:8])
 	authProtoDataLen := order.Uint16(handshake[8:10])
-	authLen := authProtoNameLen + authProtoDataLen
-	if pad := authLen % 4; pad != 0 {
-		authLen += 4 - pad
-	}
-	if _, err := io.CopyN(io.Discard, client.conn, int64(authLen)); err != nil {
-		s.logger.Errorf("Failed to discard auth details: %v", err)
+
+	authProtoName := make([]byte, authProtoNameLen)
+	if _, err := io.ReadFull(client.conn, authProtoName); err != nil {
+		s.logger.Errorf("Failed to read auth protocol name: %v", err)
 		return
+	}
+	if pad := authProtoNameLen % 4; pad != 0 {
+		if _, err := io.CopyN(io.Discard, client.conn, int64(4-pad)); err != nil {
+			s.logger.Errorf("Failed to discard auth protocol name padding: %v", err)
+			return
+		}
+	}
+	authProtoData := make([]byte, authProtoDataLen)
+	if _, err := io.ReadFull(client.conn, authProtoData); err != nil {
+		s.logger.Errorf("Failed to read auth protocol data: %v", err)
+		return
+	}
+	if pad := authProtoDataLen % 4; pad != 0 {
+		if _, err := io.CopyN(io.Discard, client.conn, int64(4-pad)); err != nil {
+			s.logger.Errorf("Failed to discard auth protocol data padding: %v", err)
+			return
+		}
+	}
+
+	if s.authProtocol != "" || s.authCookie != nil {
+		if s.authProtocol != string(authProtoName) || string(s.authCookie) != string(authProtoData) {
+			s.logger.Errorf("X11 auth failed: protocol=%q cookie=%q, expected protocol=%q cookie=%q",
+				authProtoName, authProtoData, s.authProtocol, s.authCookie)
+			client.send(&setupResponse{
+				success: 0, // Failed
+				reason:  "Invalid authorization",
+			})
+			return
+		}
 	}
 
 	setup := newDefaultSetup()
@@ -2036,6 +2065,20 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client) {
 				logger.Errorf("x11 channel accept: %v", err)
 				continue
 			}
+
+			// https://datatracker.ietf.org/doc/html/rfc4254#section-6.3.2
+			var x11req struct {
+				SingleConnection       bool
+				AuthenticationProtocol string
+				AuthenticationCookie   string
+				ScreenNumber           uint32
+			}
+			if err := ssh.Unmarshal(ch.ExtraData(), &x11req); err != nil {
+				logger.Errorf("ssh.Unmarshal x11-req: %v", err)
+				continue
+			}
+			logger.Infof("ssh x11-req: %+v", x11req)
+
 			go ssh.DiscardRequests(requests)
 
 			once.Do(func() {
@@ -2059,6 +2102,8 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client) {
 					clients:         make(map[uint32]*x11Client),
 					nextClientID:    1,
 					passiveGrabs:    make(map[xID][]*passiveGrab),
+					authProtocol:    x11req.AuthenticationProtocol,
+					authCookie:      []byte(x11req.AuthenticationCookie),
 				}
 				x11ServerInstance.frontend = newX11Frontend(logger, x11ServerInstance)
 			})

@@ -24,7 +24,7 @@ func clearX11Operations() {
 	x11Operations = nil
 }
 
-func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn) {
+func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProtocol string, authCookie []byte) {
 	s.t.Log("Simulating X11 application (client-side)")
 
 	windowWidth, windowHeight := 600, 400
@@ -41,13 +41,30 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn) {
 	// 1. Send SetupRequest
 	s.t.Log("Sending X11 SetupRequest")
 	setupRequest := make([]byte, 12)
-	setupRequest[0] = 'l'                                // LittleEndian
-	binary.LittleEndian.PutUint16(setupRequest[2:4], 11) // Protocol Major Version
-	binary.LittleEndian.PutUint16(setupRequest[4:6], 0)  // Protocol Minor Version
+	setupRequest[0] = 'l' // LittleEndian
+	binary.LittleEndian.PutUint16(setupRequest[2:4], 11)
+	binary.LittleEndian.PutUint16(setupRequest[4:6], 0)
+	binary.LittleEndian.PutUint16(setupRequest[6:8], uint16(len(authProtocol)))
+	binary.LittleEndian.PutUint16(setupRequest[8:10], uint16(len(authCookie)))
 
-	_, err = x11Channel.Write(setupRequest)
-	if err != nil {
+	if _, err = x11Channel.Write(setupRequest); err != nil {
 		s.t.Logf("Failed to send X11 SetupRequest: %v", err)
+		return
+	}
+	authProtoBytes := []byte(authProtocol)
+	if pad := len(authProtoBytes) % 4; pad != 0 {
+		authProtoBytes = append(authProtoBytes, make([]byte, 4-pad)...)
+	}
+	if _, err = x11Channel.Write(authProtoBytes); err != nil {
+		s.t.Logf("Failed to send X11 auth protocol: %v", err)
+		return
+	}
+	authCookieBytes := authCookie
+	if pad := len(authCookieBytes) % 4; pad != 0 {
+		authCookieBytes = append(authCookieBytes, make([]byte, 4-pad)...)
+	}
+	if _, err = x11Channel.Write(authCookieBytes); err != nil {
+		s.t.Logf("Failed to send X11 auth cookie: %v", err)
 		return
 	}
 	s.t.Log("X11 SetupRequest sent successfully")

@@ -175,12 +175,23 @@ func (s *sshServer) handleSession(wg *sync.WaitGroup, newChannel ssh.NewChannel,
 			switch req.Type {
 			case "x11-req":
 				s.t.Logf("X11 request received: %q", req.Payload)
+				var x11req struct {
+					SingleConnection       bool
+					AuthenticationProtocol string
+					AuthenticationCookie   string
+					ScreenNumber           uint32
+				}
+				if err := ssh.Unmarshal(req.Payload, &x11req); err != nil {
+					s.t.Errorf("ssh.Unmarshal x11-req: %v", err)
+					req.Reply(false, nil)
+					continue
+				}
 				req.Reply(true, nil)
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 					s.t.Log("Starting X11 simulation")
-					s.simulateX11Application(serverConn)
+					s.simulateX11Application(serverConn, x11req.AuthenticationProtocol, []byte(x11req.AuthenticationCookie))
 					s.t.Log("X11 simulation finished")
 				}()
 
