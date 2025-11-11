@@ -35,6 +35,22 @@ import (
 	"time"
 )
 
+func cleanupDOMElements(t *testing.T) {
+	t.Helper()
+	doc := js.Global().Get("document")
+	if !doc.Truthy() {
+		t.Fatal("document not found")
+	}
+	// Remove all elements with IDs starting with "x11-window-" or "x11-canvas-"
+	selectors := []string{"#x11-window-", "#x11-canvas-"}
+	for _, selector := range selectors {
+		elements := doc.Call("querySelectorAll", fmt.Sprintf("[id^='%s']", selector))
+		for i := 0; i < elements.Length(); i++ {
+			elements.Index(i).Call("remove")
+		}
+	}
+}
+
 func getCanvasData(t *testing.T, s *x11Server, winID xID, x, y, w, h int) *image.RGBA {
 	t.Helper()
 	fe := s.frontend.(*wasmX11Frontend)
@@ -119,6 +135,7 @@ func poll(t *testing.T, f func() bool) {
 
 func TestDrawRectangle(t *testing.T) {
 	t.Log("Running TestDrawRectangle")
+	t.Cleanup(func() { cleanupDOMElements(t) })
 	setup := newDefaultSetup()
 	s := &x11Server{
 		logger: &testLogger{t: t},
@@ -159,8 +176,99 @@ func TestDrawRectangle(t *testing.T) {
 	})
 }
 
+func TestGCLogicalOperations(t *testing.T) {
+	t.Log("Running TestGCLogicalOperations")
+	t.Cleanup(func() { cleanupDOMElements(t) })
+	setup := newDefaultSetup()
+	s := &x11Server{
+		logger:    &testLogger{t: t},
+		windows:   make(map[xID]*window),
+		gcs:       make(map[xID]GC),
+		colormaps: make(map[xID]*colormap),
+		clients:   make(map[uint32]*x11Client),
+		byteOrder: binary.LittleEndian,
+		rootVisual: visualType{
+			class:           4, // TrueColor
+			redMask:         0x00ff0000,
+			greenMask:       0x0000ff00,
+			blueMask:        0x000000ff,
+			bitsPerRGBValue: 8,
+		},
+		blackPixel:      setup.screens[0].blackPixel,
+		whitePixel:      setup.screens[0].whitePixel,
+		defaultColormap: setup.screens[0].defaultColormap,
+	}
+	s.colormaps[xID{local: s.defaultColormap}] = &colormap{
+		pixels: map[uint32]xColorItem{
+			s.blackPixel: {Red: 0, Green: 0, Blue: 0},
+			s.whitePixel: {Red: 0xffff, Green: 0xffff, Blue: 0xffff},
+		},
+	}
+	fe := newX11Frontend(&testLogger{t: t}, s)
+	s.frontend = fe
+
+	winID := xID{client: 1, local: 1}
+	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 200, 200, 24, 0, WindowAttributes{})
+	fe.MapWindow(winID)
+
+	// Initial background colors
+	bg1ID := xID{client: 1, local: 10}
+	fe.CreateGC(bg1ID, GCForeground|GCFunction, GC{Foreground: 0x0000ff, Function: FunctionCopy}) // Blue
+	fe.PolyFillRectangle(winID, bg1ID, []uint32{0, 0, 100, 100})
+
+	bg2ID := xID{client: 1, local: 11}
+	fe.CreateGC(bg2ID, GCForeground|GCFunction, GC{Foreground: 0x00ff00, Function: FunctionCopy}) // Green
+	fe.PolyFillRectangle(winID, bg2ID, []uint32{50, 50, 100, 100})
+
+	poll(t, func() bool {
+		img := getCanvasData(t, s, winID, 0, 0, 150, 150)
+		assertRectangle(t, img, image.Rect(0, 0, 50, 50), 0, 0, 255)         // Top-left should be blue
+		assertRectangle(t, img, image.Rect(50, 0, 100, 50), 0, 0, 255)        // Top-right should be blue
+		assertRectangle(t, img, image.Rect(0, 50, 50, 100), 0, 0, 255)        // Mid-left should be blue
+		assertRectangle(t, img, image.Rect(50, 50, 100, 100), 0, 255, 0)      // Center should be green
+		assertRectangle(t, img, image.Rect(100, 50, 150, 100), 0, 255, 0)     // Mid-right should be green
+		assertRectangle(t, img, image.Rect(50, 100, 100, 150), 0, 255, 0)     // Bottom-center should be green
+		assertRectangle(t, img, image.Rect(100, 100, 150, 150), 0, 255, 0)    // Bottom-right should be green
+		return !t.Failed()
+	})
+
+	// Test logical operations
+	srcColor := uint32(0xff0000) // Red
+	tests := []struct {
+		name     string
+		function uint32
+		wantR    uint8
+		wantG    uint8
+		wantB    uint8
+	}{
+		{"GXcopy", FunctionCopy, 255, 0, 0},
+		{"GXxor", FunctionXor, 255, 255, 0},
+		{"GXand", FunctionAnd, 0, 0, 0},
+		{"GXor", FunctionOr, 255, 255, 0},
+		{"GXcopyInverted", FunctionCopyInverted, 0, 255, 255},
+	}
+
+	for i, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Restore the green background before each logical operation test
+			fe.PolyFillRectangle(winID, bg2ID, []uint32{75, 75, 20, 20})
+
+			gcID := xID{client: 1, local: uint32(20 + i)}
+			fe.CreateGC(gcID, GCForeground|GCFunction, GC{Foreground: srcColor, Function: tc.function})
+			fe.PolyFillRectangle(winID, gcID, []uint32{75, 75, 20, 20})
+
+			poll(t, func() bool {
+				img := getCanvasData(t, s, winID, 75, 75, 20, 20)
+				assertRectangle(t, img, image.Rect(0, 0, 20, 20), tc.wantR, tc.wantG, tc.wantB)
+				return !t.Failed()
+			})
+		})
+	}
+}
+
 func TestColors(t *testing.T) {
 	t.Log("Running TestColors")
+	t.Cleanup(func() { cleanupDOMElements(t) })
 	setup := newDefaultSetup()
 	s := &x11Server{
 		logger: &testLogger{t: t},
@@ -270,6 +378,7 @@ func TestColors(t *testing.T) {
 
 func TestDrawText(t *testing.T) {
 	t.Log("Running TestDrawText")
+	t.Cleanup(func() { cleanupDOMElements(t) })
 	setup := newDefaultSetup()
 	s := &x11Server{
 		logger:          &testLogger{t: t},
@@ -317,6 +426,7 @@ func TestDrawText(t *testing.T) {
 
 func TestOverlappingWindows(t *testing.T) {
 	t.Log("Running TestOverlappingWindows")
+	t.Cleanup(func() { cleanupDOMElements(t) })
 	setup := newDefaultSetup()
 	s := &x11Server{
 		logger:          &testLogger{t: t},
