@@ -715,7 +715,6 @@ func (s *x11Server) serve(client *x11Client) {
 		}
 		reply := s.handleRequest(client, req, seq)
 		if reply != nil {
-			debugf("X11DEBUG: Reply(%d): %#v", seq, reply)
 			if err := client.send(reply); err != nil {
 				s.logger.Errorf("Failed to write reply: %v", err)
 			}

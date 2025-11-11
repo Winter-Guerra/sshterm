@@ -55,6 +55,7 @@ func (c *x11Client) send(m messageEncoder) error {
 		return nil
 	}
 	encodedMsg := m.encodeMessage(c.byteOrder)
+	debugf("X11DEBUG: client.send(%#v) encoded: %x", m, encodedMsg)
 	if _, err := c.conn.Write(encodedMsg); err != nil {
 		return fmt.Errorf("failed to write message to client: %w", err)
 	}
