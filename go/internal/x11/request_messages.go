@@ -312,6 +312,9 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 		return parseQueryExtensionRequest(order, body)
 
 	case Bell:
+		if len(body) != 0 {
+			return nil, errParseError
+		}
 		return parseBellRequest(data)
 
 	case SetPointerMapping:
@@ -2155,7 +2158,7 @@ type AllocColorRequest struct {
 func (AllocColorRequest) OpCode() reqCode { return AllocColor }
 
 func parseAllocColorRequest(order binary.ByteOrder, payload []byte) (*AllocColorRequest, error) {
-	if len(payload) < 10 {
+	if len(payload) < 12 {
 		return nil, fmt.Errorf("%w: alloc color request too short", errParseError)
 	}
 	req := &AllocColorRequest{}
