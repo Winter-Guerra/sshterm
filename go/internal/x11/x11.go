@@ -74,7 +74,7 @@ type X11FrontendAPI interface {
 	GetAtom(clientID uint32, name string) uint32
 	GetAtomName(atom uint32) string
 	ListProperties(window xID) []uint32
-	GetProperty(window xID, property uint32) ([]byte, uint32, uint32)
+	GetProperty(window xID, property uint32, longOffset, longLength uint32) (data []byte, typ, format, bytesAfter uint32)
 	ImageText8(drawable xID, gcID xID, x, y int32, text []byte)
 	ImageText16(drawable xID, gcID xID, x, y int32, text []uint16)
 	PolyText8(drawable xID, gcID xID, x, y int32, items []PolyTextItem)
@@ -1035,40 +1035,40 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		// TODO: implement
 
 	case *GetPropertyRequest:
-		data, typ, format := s.frontend.GetProperty(client.xID(uint32(p.Window)), uint32(p.Property))
+		data, typ, format, bytesAfter := s.frontend.GetProperty(client.xID(uint32(p.Window)), uint32(p.Property), p.Offset, p.Length)
 
-		// Handle offset and length
-		var propData []byte
-		bytesAfter := 0
-		if p.Offset*4 < uint32(len(data)) {
-			start := p.Offset * 4
-			end := start + p.Length*4
-			if end > uint32(len(data)) {
-				end = uint32(len(data))
+		if data == nil {
+			return &getPropertyReply{
+				sequence: seq,
+				format:   0,
 			}
-			propData = data[start:end]
-			bytesAfter = len(data) - int(end)
-		} else {
-			bytesAfter = len(data)
 		}
 
-		n := len(propData)
 		var valueLenInFormatUnits uint32
 		if format == 8 {
-			valueLenInFormatUnits = uint32(n)
+			valueLenInFormatUnits = uint32(len(data))
 		} else if format == 16 {
-			valueLenInFormatUnits = uint32(n / 2)
+			valueLenInFormatUnits = uint32(len(data) / 2)
 		} else if format == 32 {
-			valueLenInFormatUnits = uint32(n / 4)
+			valueLenInFormatUnits = uint32(len(data) / 4)
+		}
+
+		if p.Delete && len(data) > 0 {
+			// TODO: delete property
+		}
+
+		if p.Type != 0 && typ != uint32(p.Type) {
+			// TODO: return empty property with the correct type
+			// and format 0
 		}
 
 		return &getPropertyReply{
 			sequence:              seq,
 			format:                byte(format),
 			propertyType:          typ,
-			bytesAfter:            uint32(bytesAfter),
+			bytesAfter:            bytesAfter,
 			valueLenInFormatUnits: valueLenInFormatUnits,
-			value:                 propData,
+			value:                 data,
 		}
 
 	case *ListPropertiesRequest:

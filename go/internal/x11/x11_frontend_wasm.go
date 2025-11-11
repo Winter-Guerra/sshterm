@@ -2412,13 +2412,61 @@ func (w *wasmX11Frontend) GetFocusWindow(clientID uint32) xID {
 	return xID{}
 }
 
-func (w *wasmX11Frontend) GetProperty(window xID, property uint32) ([]byte, uint32, uint32) {
-	if winInfo, ok := w.windows[window]; ok {
+func (w *wasmX11Frontend) GetProperty(window xID, property uint32, longOffset, longLength uint32) ([]byte, uint32, uint32, uint32) {
+	var fullData []byte
+	var typ, format uint32
+
+	winInfo, winOk := w.windows[window]
+
+	// First, check for properties stored on the window
+	if winOk {
 		if prop, ok := winInfo.properties[property]; ok {
-			return prop.data, prop.typeAtom, prop.format
+			fullData = prop.data
+			typ = prop.typeAtom
+			format = prop.format
 		}
 	}
-	return nil, 0, 0
+
+	// Fallback for special properties if not found on the window
+	if fullData == nil {
+		switch property {
+		case w.GetAtom(0, "WM_NAME"), w.GetAtom(0, "_NET_WM_NAME"), w.GetAtom(0, "WM_ICON_NAME"):
+			var title string
+			if winOk && !winInfo.windowTitle.IsUndefined() {
+				title = winInfo.windowTitle.Get("textContent").String()
+			}
+			fullData = []byte(title)
+			typ = w.GetAtom(0, "STRING")
+			format = 8
+		case w.GetAtom(0, "CLIPBOARD"):
+			clipboardContent, err := w.ReadClipboard()
+			if err == nil {
+				fullData = []byte(clipboardContent)
+				typ = w.GetAtom(0, "STRING")
+				format = 8
+			}
+		}
+	}
+
+	if fullData == nil {
+		return nil, 0, 0, 0
+	}
+
+	byteOffset := longOffset * 4
+	byteLength := longLength * 4
+
+	if byteOffset >= uint32(len(fullData)) {
+		return []byte{}, typ, format, uint32(len(fullData))
+	}
+
+	end := byteOffset + byteLength
+	if end > uint32(len(fullData)) {
+		end = uint32(len(fullData))
+	}
+	dataToReturn := fullData[byteOffset:end]
+	bytesAfter := uint32(len(fullData)) - end
+
+	return dataToReturn, typ, format, bytesAfter
 }
 
 func (w *wasmX11Frontend) ConvertSelection(selection, target, property uint32, requestor xID) {

@@ -106,8 +106,10 @@ type circulateWindowCall struct {
 }
 
 type getPropertyCall struct {
-	window   xID
-	property uint32
+	window     xID
+	property   uint32
+	longOffset uint32
+	longLength uint32
 }
 
 type reparentWindowCall struct {
@@ -164,6 +166,7 @@ type MockX11Frontend struct {
 	GetPropertyReturn               []byte
 	GetPropertyTypeReturn           uint32
 	GetPropertyFormatReturn         uint32
+	GetPropertyBytesAfterReturn     uint32
 	CanvasOperations                []CanvasOperation
 }
 
@@ -364,9 +367,9 @@ func (m *MockX11Frontend) ListProperties(window xID) []uint32 {
 	return m.ListPropertiesReturn
 }
 
-func (m *MockX11Frontend) GetProperty(window xID, property uint32) ([]byte, uint32, uint32) {
-	m.GetPropertyCalls = append(m.GetPropertyCalls, &getPropertyCall{window, property})
-	return m.GetPropertyReturn, m.GetPropertyTypeReturn, m.GetPropertyFormatReturn
+func (m *MockX11Frontend) GetProperty(window xID, property uint32, longOffset, longLength uint32) ([]byte, uint32, uint32, uint32) {
+	m.GetPropertyCalls = append(m.GetPropertyCalls, &getPropertyCall{window, property, longOffset, longLength})
+	return m.GetPropertyReturn, m.GetPropertyTypeReturn, m.GetPropertyFormatReturn, m.GetPropertyBytesAfterReturn
 }
 
 func (m *MockX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []xCharInfo) {
