@@ -91,7 +91,7 @@ func TestRequestParsingErrors(t *testing.T) {
 		{SendEvent, make([]byte, 43)},
 		{GrabPointer, make([]byte, 19)},
 		{UngrabPointer, make([]byte, 3)},
-		{GrabButton, make([]byte, 23)},
+		{GrabButton, make([]byte, 19)},
 		{UngrabButton, make([]byte, 7)},
 		{ChangeActivePointerGrab, make([]byte, 11)},
 		{GrabKeyboard, make([]byte, 11)},
@@ -754,18 +754,18 @@ func TestParseUngrabPointerRequest(t *testing.T) {
 
 func TestParseGrabButtonRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 24)
-	reqBody[0] = 1
-	order.PutUint32(reqBody[4:8], 123)
-	order.PutUint16(reqBody[8:10], 456)
-	reqBody[10] = 1
-	reqBody[11] = 2
-	order.PutUint32(reqBody[12:16], 789)
-	order.PutUint32(reqBody[16:20], 101)
-	reqBody[20] = 3
-	order.PutUint16(reqBody[22:24], 112)
+	data := byte(1) // OwnerEvents
+	reqBody := make([]byte, 20)
+	order.PutUint32(reqBody[0:4], 123)
+	order.PutUint16(reqBody[4:6], 456)
+	reqBody[6] = 1
+	reqBody[7] = 2
+	order.PutUint32(reqBody[8:12], 789)
+	order.PutUint32(reqBody[12:16], 101)
+	reqBody[16] = 3
+	order.PutUint16(reqBody[18:20], 112)
 
-	p, err := parseGrabButtonRequest(order, reqBody)
+	p, err := parseGrabButtonRequest(order, data, reqBody)
 	assert.NoError(t, err, "parseGrabButtonRequest should not return an error")
 	assert.True(t, p.OwnerEvents, "OwnerEvents should be true")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
@@ -780,12 +780,12 @@ func TestParseGrabButtonRequest(t *testing.T) {
 
 func TestParseUngrabButtonRequest(t *testing.T) {
 	order := binary.LittleEndian
+	data := byte(3)
 	reqBody := make([]byte, 8)
 	order.PutUint32(reqBody[0:4], 123)
-	reqBody[4] = 3
 	order.PutUint16(reqBody[6:8], 112)
 
-	p, err := parseUngrabButtonRequest(order, reqBody)
+	p, err := parseUngrabButtonRequest(order, data, reqBody)
 	assert.NoError(t, err, "parseUngrabButtonRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, byte(3), p.Button, "Button should be parsed correctly")

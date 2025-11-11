@@ -22,17 +22,16 @@ func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
 	}
 
 	server := &x11Server{
-		logger:       &testLogger{t: t},
-		windows:      make(map[xID]*window),
-		clients:      map[uint32]*x11Client{1: client},
-		frontend:     &MockX11Frontend{},
-		byteOrder:    binary.LittleEndian,
-		passiveGrabs: make(map[xID][]*passiveGrab),
-		colormaps:    make(map[xID]*colormap), // Initialize colormaps
-		defaultColormap: 1, // Set a default colormap ID
+		logger:          &testLogger{t: t},
+		windows:         make(map[xID]*window),
+		clients:         map[uint32]*x11Client{1: client},
+		frontend:        &MockX11Frontend{},
+		byteOrder:       binary.LittleEndian,
+		passiveGrabs:    make(map[xID][]*passiveGrab),
+		colormaps:       make(map[xID]*colormap), // Initialize colormaps
+		defaultColormap: 1,                       // Set a default colormap ID
 	}
 	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]xColorItem)}
-
 
 	return server, clientBuffer
 }

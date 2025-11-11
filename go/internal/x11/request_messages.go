@@ -114,10 +114,10 @@ func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
 		return parseUngrabPointerRequest(order, body)
 
 	case GrabButton:
-		return parseGrabButtonRequest(order, body)
+		return parseGrabButtonRequest(order, data, body)
 
 	case UngrabButton:
-		return parseUngrabButtonRequest(order, body)
+		return parseUngrabButtonRequest(order, data, body)
 
 	case ChangeActivePointerGrab:
 		return parseChangeActivePointerGrabRequest(order, body)
@@ -977,20 +977,20 @@ type GrabButtonRequest struct {
 
 func (GrabButtonRequest) OpCode() reqCode { return GrabButton }
 
-func parseGrabButtonRequest(order binary.ByteOrder, requestBody []byte) (*GrabButtonRequest, error) {
-	if len(requestBody) < 24 {
+func parseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte) (*GrabButtonRequest, error) {
+	if len(requestBody) < 20 {
 		return nil, fmt.Errorf("%w: grab button request too short", errParseError)
 	}
 	req := &GrabButtonRequest{}
-	req.OwnerEvents = requestBody[0] != 0
-	req.GrabWindow = Window(order.Uint32(requestBody[4:8]))
-	req.EventMask = order.Uint16(requestBody[8:10])
-	req.PointerMode = requestBody[10]
-	req.KeyboardMode = requestBody[11]
-	req.ConfineTo = Window(order.Uint32(requestBody[12:16]))
-	req.Cursor = Cursor(order.Uint32(requestBody[16:20]))
-	req.Button = requestBody[20]
-	req.Modifiers = order.Uint16(requestBody[22:24])
+	req.OwnerEvents = data != 0
+	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
+	req.EventMask = order.Uint16(requestBody[4:6])
+	req.PointerMode = requestBody[6]
+	req.KeyboardMode = requestBody[7]
+	req.ConfineTo = Window(order.Uint32(requestBody[8:12]))
+	req.Cursor = Cursor(order.Uint32(requestBody[12:16]))
+	req.Button = requestBody[16]
+	req.Modifiers = order.Uint16(requestBody[18:20])
 	return req, nil
 }
 
@@ -1002,13 +1002,13 @@ type UngrabButtonRequest struct {
 
 func (UngrabButtonRequest) OpCode() reqCode { return UngrabButton }
 
-func parseUngrabButtonRequest(order binary.ByteOrder, requestBody []byte) (*UngrabButtonRequest, error) {
+func parseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte) (*UngrabButtonRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, fmt.Errorf("%w: ungrab button request too short", errParseError)
 	}
 	req := &UngrabButtonRequest{}
+	req.Button = data
 	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
-	req.Button = requestBody[4]
 	req.Modifiers = order.Uint16(requestBody[6:8])
 	return req, nil
 }
