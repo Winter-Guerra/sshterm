@@ -1622,6 +1622,9 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *AllocColorRequest:
 		xid := client.xID(uint32(p.Cmap))
+		if xid.local == s.defaultColormap {
+			xid.client = 0
+		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
 			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: AllocColor, code: ColormapErrorCode})
@@ -1644,15 +1647,19 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *AllocNamedColorRequest:
-		cm, ok := s.colormaps[client.xID(p.Cmap.local)]
+		cmap := client.xID(uint32(p.Cmap))
+		if cmap.local == s.defaultColormap {
+			cmap.client = 0
+		}
+		cm, ok := s.colormaps[cmap]
 		if !ok {
-			return client.sendError(NewError(ColormapErrorCode, seq, p.Cmap.local, 0, p.OpCode()))
+			return NewError(ColormapErrorCode, seq, uint32(p.Cmap), 0, p.OpCode())
 		}
 
 		name := string(p.Name)
 		rgb, ok := lookupColor(name)
 		if !ok {
-			return client.sendError(NewError(NameErrorCode, seq, 0, 0, p.OpCode()))
+			return NewError(NameErrorCode, seq, 0, 0, p.OpCode())
 		}
 
 		exactRed := scale8to16(rgb.Red)
@@ -1682,6 +1689,9 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *FreeColorsRequest:
 		xid := client.xID(uint32(p.Cmap))
+		if xid.local == s.defaultColormap {
+			xid.client = 0
+		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
 			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: FreeColors, code: ColormapErrorCode})
@@ -1693,6 +1703,9 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *StoreColorsRequest:
 		xid := client.xID(uint32(p.Cmap))
+		if xid.local == s.defaultColormap {
+			xid.client = 0
+		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
 			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreColors, code: ColormapErrorCode})
@@ -1718,6 +1731,9 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *StoreNamedColorRequest:
 		xid := client.xID(uint32(p.Cmap))
+		if xid.local == s.defaultColormap {
+			xid.client = 0
+		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
 			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Cmap), majorOp: StoreNamedColor, code: ColormapErrorCode})

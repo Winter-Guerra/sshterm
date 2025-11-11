@@ -1207,7 +1207,7 @@ func TestParseAllocNamedColorRequest(t *testing.T) {
 
 	p, err := parseAllocNamedColorRequest(order, reqBody)
 	assert.NoError(t, err, "parseAllocNamedColorRequest should not return an error")
-	assert.Equal(t, xID{local: 123}, p.Cmap, "Cmap should be parsed correctly")
+	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 	assert.Equal(t, []byte("blue"), p.Name, "Name should be parsed correctly")
 }
 

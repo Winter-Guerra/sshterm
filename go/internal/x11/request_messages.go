@@ -2167,7 +2167,7 @@ func parseAllocColorRequest(order binary.ByteOrder, payload []byte) (*AllocColor
 }
 
 type AllocNamedColorRequest struct {
-	Cmap xID
+	Cmap Colormap
 	Name []byte
 }
 
@@ -2178,7 +2178,7 @@ func parseAllocNamedColorRequest(order binary.ByteOrder, payload []byte) (*Alloc
 		return nil, fmt.Errorf("%w: alloc named color request too short", errParseError)
 	}
 	req := &AllocNamedColorRequest{}
-	req.Cmap = xID{local: order.Uint32(payload[0:4])}
+	req.Cmap = Colormap(order.Uint32(payload[0:4]))
 	nameLen := order.Uint16(payload[4:6])
 	if len(payload) < 8+int(nameLen) {
 		return nil, fmt.Errorf("%w: alloc named color request too short for name", errParseError)

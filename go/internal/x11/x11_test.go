@@ -28,7 +28,11 @@ func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
 		frontend:     &MockX11Frontend{},
 		byteOrder:    binary.LittleEndian,
 		passiveGrabs: make(map[xID][]*passiveGrab),
+		colormaps:    make(map[xID]*colormap), // Initialize colormaps
+		defaultColormap: 1, // Set a default colormap ID
 	}
+	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]xColorItem)}
+
 
 	return server, clientBuffer
 }
@@ -571,4 +575,219 @@ func TestSendKeyboardEvent_EventMask_Blocked(t *testing.T) {
 	if len(client.sentMessages) != 0 {
 		t.Fatalf("Expected event to be blocked by event mask, but %d messages were sent", len(client.sentMessages))
 	}
+}
+
+func TestColormapRequests(t *testing.T) {
+	server, _ := setupTestServer(t)
+	client := server.clients[1]
+
+	// Test CreateColormapRequest
+	t.Run("CreateColormapRequest", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		req := &CreateColormapRequest{Mid: Colormap(cmapID.local), Alloc: 0, Visual: 0}
+		reply := server.handleRequest(client, req, 2)
+		if reply != nil {
+			t.Fatalf("CreateColormapRequest: expected nil reply for success, got %v", reply)
+		}
+		if _, ok := server.colormaps[cmapID]; !ok {
+			t.Errorf("CreateColormapRequest: colormap %s not created", cmapID)
+		}
+	})
+
+	// Test AllocColorRequest
+	t.Run("AllocColorRequest", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		req := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		reply := server.handleRequest(client, req, 3)
+		if reply == nil {
+			t.Fatal("AllocColorRequest: expected reply, got nil")
+		}
+		allocReply, ok := reply.(*allocColorReply)
+		if !ok {
+			t.Fatalf("AllocColorRequest: expected *allocColorReply, got %T", reply)
+		}
+		expectedPixel := (uint32(0x10) << 16) | (uint32(0x20) << 8) | uint32(0x30)
+		if allocReply.pixel != expectedPixel {
+			t.Errorf("AllocColorRequest: expected pixel %x, got %x", expectedPixel, allocReply.pixel)
+		}
+		if _, ok := server.colormaps[cmapID].pixels[expectedPixel]; !ok {
+			t.Errorf("AllocColorRequest: pixel %x not allocated in colormap %s", expectedPixel, cmapID)
+		}
+
+		// Test with default colormap
+		reqDefault := &AllocColorRequest{Cmap: Colormap(server.defaultColormap), Red: 0x4000, Green: 0x5000, Blue: 0x6000}
+		replyDefault := server.handleRequest(client, reqDefault, 4)
+		allocReplyDefault, ok := replyDefault.(*allocColorReply)
+		if !ok {
+			t.Fatalf("AllocColorRequest (default): expected *allocColorReply, got %T", replyDefault)
+		}
+		expectedPixelDefault := (uint32(0x40) << 16) | (uint32(0x50) << 8) | uint32(0x60)
+		if allocReplyDefault.pixel != expectedPixelDefault {
+			t.Errorf("AllocColorRequest (default): expected pixel %x, got %x", expectedPixelDefault, allocReplyDefault.pixel)
+		}
+		if _, ok := server.colormaps[xID{local: server.defaultColormap}].pixels[expectedPixelDefault]; !ok {
+			t.Errorf("AllocColorRequest (default): pixel %x not allocated in default colormap", expectedPixelDefault)
+		}
+	})
+
+	// Test AllocNamedColorRequest
+	t.Run("AllocNamedColorRequest", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		req := &AllocNamedColorRequest{Cmap: Colormap(cmapID.local), Name: []byte("red")}
+		reply := server.handleRequest(client, req, 5)
+		if reply == nil {
+			t.Fatal("AllocNamedColorRequest: expected reply, got nil")
+		}
+		allocReply, ok := reply.(*allocNamedColorReply)
+		if !ok {
+			t.Fatalf("AllocNamedColorRequest: expected *allocNamedColorReply, got %T", reply)
+		}
+		// "red" is 0xFF0000, scaled to 16-bit is 0xFFFF00000000
+		if allocReply.red != 0xFFFF || allocReply.green != 0 || allocReply.blue != 0 {
+			t.Errorf("AllocNamedColorRequest: expected red, got R:%x G:%x B:%x", allocReply.red, allocReply.green, allocReply.blue)
+		}
+		expectedPixel := (uint32(0xFF) << 16) | (uint32(0x00) << 8) | uint32(0x00)
+		if _, ok := server.colormaps[cmapID].pixels[expectedPixel]; !ok {
+			t.Errorf("AllocNamedColorRequest: pixel %x not allocated in colormap %s", expectedPixel, cmapID)
+		}
+
+		// Test with default colormap
+		reqDefault := &AllocNamedColorRequest{Cmap: Colormap(server.defaultColormap), Name: []byte("blue")}
+		replyDefault := server.handleRequest(client, reqDefault, 6)
+		allocReplyDefault, ok := replyDefault.(*allocNamedColorReply)
+		if !ok {
+			t.Fatalf("AllocNamedColorRequest (default): expected *allocNamedColorReply, got %T", replyDefault)
+		}
+		// "blue" is 0x0000FF, scaled to 16-bit is 0x00000000FFFF
+		if allocReplyDefault.red != 0 || allocReplyDefault.green != 0 || allocReplyDefault.blue != 0xFFFF {
+			t.Errorf("AllocNamedColorRequest (default): expected blue, got R:%x G:%x B:%x", allocReplyDefault.red, allocReplyDefault.green, allocReplyDefault.blue)
+		}
+		expectedPixelDefault := (uint32(0x00) << 16) | (uint32(0x00) << 8) | uint32(0xFF)
+		if _, ok := server.colormaps[xID{local: server.defaultColormap}].pixels[expectedPixelDefault]; !ok {
+			t.Errorf("AllocNamedColorRequest (default): pixel %x not allocated in default colormap", expectedPixelDefault)
+		}
+	})
+
+	// Test FreeColorsRequest
+	t.Run("FreeColorsRequest", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		// Allocate a color first
+		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		allocReply := server.handleRequest(client, allocReq, 7).(*allocColorReply)
+		pixelToFree := allocReply.pixel
+
+		req := &FreeColorsRequest{Cmap: Colormap(cmapID.local), Pixels: []uint32{pixelToFree}}
+		reply := server.handleRequest(client, req, 8)
+		if reply != nil {
+			t.Fatalf("FreeColorsRequest: expected nil reply for success, got %v", reply)
+		}
+		if _, ok := server.colormaps[cmapID].pixels[pixelToFree]; ok {
+			t.Errorf("FreeColorsRequest: pixel %x not freed from colormap %s", pixelToFree, cmapID)
+		}
+	})
+
+	// Test StoreColorsRequest
+	t.Run("StoreColorsRequest", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		// Allocate a color first
+		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		allocReply := server.handleRequest(client, allocReq, 9).(*allocColorReply)
+		pixelToStore := allocReply.pixel
+
+		// Store new values for the pixel
+		req := &StoreColorsRequest{
+			Cmap: Colormap(cmapID.local),
+			Items: []struct {
+				Pixel uint32
+				Red   uint16
+				Green uint16
+				Blue  uint16
+				Flags byte
+			}{
+				{Pixel: pixelToStore, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, Flags: DoRed | DoGreen | DoBlue},
+			},
+		}
+		reply := server.handleRequest(client, req, 10)
+		if reply != nil {
+			t.Fatalf("StoreColorsRequest: expected nil reply for success, got %v", reply)
+		}
+		storedColor := server.colormaps[cmapID].pixels[pixelToStore]
+		if storedColor.Red != 0xAAAA || storedColor.Green != 0xBBBB || storedColor.Blue != 0xCCCC {
+			t.Errorf("StoreColorsRequest: expected stored color R:AAAA G:BBBB B:CCCC, got R:%x G:%x B:%x", storedColor.Red, storedColor.Green, storedColor.Blue)
+		}
+	})
+
+	// Test StoreNamedColorRequest
+	t.Run("StoreNamedColorRequest", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		// Allocate a color first
+		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		allocReply := server.handleRequest(client, allocReq, 11).(*allocColorReply)
+		pixelToStore := allocReply.pixel
+
+		// Store a named color for the pixel
+		req := &StoreNamedColorRequest{
+			Cmap:  Colormap(cmapID.local),
+			Pixel: pixelToStore,
+			Name:  "green",
+			Flags: DoRed | DoGreen | DoBlue,
+		}
+		reply := server.handleRequest(client, req, 12)
+		if reply != nil {
+			t.Fatalf("StoreNamedColorRequest: expected nil reply for success, got %v", reply)
+		}
+		storedColor := server.colormaps[cmapID].pixels[pixelToStore]
+		// "green" is 0x008000, scaled to 16-bit is 0x000080800000
+		if storedColor.Red != 0 || storedColor.Green != 0x8080 || storedColor.Blue != 0 {
+			t.Errorf("StoreNamedColorRequest: expected stored color R:0 G:8080 B:0, got R:%x G:%x B:%x", storedColor.Red, storedColor.Green, storedColor.Blue)
+		}
+	})
+
+	// Test LookupColorRequest
+	t.Run("LookupColorRequest", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		req := &LookupColorRequest{Cmap: Colormap(cmapID.local), Name: "white"}
+		reply := server.handleRequest(client, req, 13)
+		if reply == nil {
+			t.Fatal("LookupColorRequest: expected reply, got nil")
+		}
+		lookupReply, ok := reply.(*lookupColorReply)
+		if !ok {
+			t.Fatalf("LookupColorRequest: expected *lookupColorReply, got %T", reply)
+		}
+		// "white" is 0xFFFFFF, scaled to 16-bit is 0xFFFFFFFF
+		if lookupReply.red != 0xFFFF || lookupReply.green != 0xFFFF || lookupReply.blue != 0xFFFF {
+			t.Errorf("LookupColorRequest: expected white, got R:%x G:%x B:%x", lookupReply.red, lookupReply.green, lookupReply.blue)
+		}
+	})
+
+	// Test GetRGBColor
+	t.Run("GetRGBColor", func(t *testing.T) {
+		cmapID := xID{client: client.id, local: 100}
+		// Allocate a color first
+		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1234, Green: 0x5678, Blue: 0x9ABC}
+		allocReply := server.handleRequest(client, allocReq, 14).(*allocColorReply)
+		pixel := allocReply.pixel
+
+		r, g, b := server.GetRGBColor(cmapID, pixel)
+		if r != 0x12 || g != 0x56 || b != 0x9A {
+			t.Errorf("GetRGBColor: expected R:0x12 G:0x56 B:0x9A, got R:0x%x G:0x%x B:0x%x", r, g, b)
+		}
+
+		// Test with default colormap
+		allocReqDefault := &AllocColorRequest{Cmap: Colormap(server.defaultColormap), Red: 0xDEFF, Green: 0xADBE, Blue: 0xEF00}
+		allocReplyDefault := server.handleRequest(client, allocReqDefault, 15).(*allocColorReply)
+		pixelDefault := allocReplyDefault.pixel
+
+		r, g, b = server.GetRGBColor(xID{local: server.defaultColormap}, pixelDefault)
+		if r != 0xDE || g != 0xAD || b != 0xEF {
+			t.Errorf("GetRGBColor (default): expected R:0xDE G:0xAD B:0xEF, got R:0x%x G:0x%x B:0x%x", r, g, b)
+		}
+
+		// Test non-existent pixel, should return RGB from pixel value
+		r, g, b = server.GetRGBColor(cmapID, 0x112233)
+		if r != 0x11 || g != 0x22 || b != 0x33 {
+			t.Errorf("GetRGBColor (non-existent): expected R:0x11 G:0x22 B:0x33, got R:0x%x G:0x%x B:0x%x", r, g, b)
+		}
+	})
 }
