@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -191,7 +192,12 @@ func (s *sshServer) handleSession(wg *sync.WaitGroup, newChannel ssh.NewChannel,
 				go func() {
 					defer wg.Done()
 					s.t.Log("Starting X11 simulation")
-					s.simulateX11Application(serverConn, x11req.AuthenticationProtocol, []byte(x11req.AuthenticationCookie))
+					authCookie, err := hex.DecodeString(x11req.AuthenticationCookie)
+					if err != nil {
+						s.t.Errorf("x11req.AuthenticationCookie: %v", err)
+						return
+					}
+					s.simulateX11Application(serverConn, x11req.AuthenticationProtocol, authCookie)
 					s.t.Log("X11 simulation finished")
 				}()
 

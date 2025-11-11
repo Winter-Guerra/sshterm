@@ -690,106 +690,26 @@ type setupResponse struct {
 	screens                  []screen
 }
 
-func (s *setupResponse) encodeMessage(byteOrder binary.ByteOrder) []byte {
-	// Calculate total length
-	vendorLen := len(s.vendorString)
-	pixmapFormatsLen := len(s.pixmapFormats) * 8
-	screensLen := 0
-	for _, screen := range s.screens {
-		screensLen += 40 // Fixed size of screen struct
-		for _, depth := range screen.depths {
-			screensLen += 8 // Fixed size of depth struct
-			screensLen += len(depth.visuals) * 24
-		}
+func (r *setupResponse) encodeMessage(order binary.ByteOrder) []byte {
+	if r.success == 0 {
+		response := make([]byte, 8+len(r.reason))
+		order.PutUint16(response[2:4], r.protocolVersion)
+		order.PutUint16(response[4:6], 0) // length of additional data in 4-byte units
+		order.PutUint16(response[6:8], uint16(len(r.reason)/4))
+		copy(response[8:], []byte(r.reason))
+		return response
 	}
-	reasonLen := 0
-	if s.success == 0 {
-		reasonLen = len(s.reason)
-	}
+	setup := newDefaultSetup() // This should probably be passed in or generated once
+	setupData := setup.marshal(order)
 
-	length := 8 + vendorLen + pixmapFormatsLen + screensLen + reasonLen
-	// Round up to nearest multiple of 4
-	if length%4 != 0 {
-		length += 4 - (length % 4)
-	}
-
-	buf := make([]byte, length)
-	buf[0] = s.success
-	if s.success == 0 {
-		buf[1] = byte(reasonLen)
-	}
-	// For successful connection, next byte is unused
-	byteOrder.PutUint16(buf[2:4], s.protocolVersion)
-	byteOrder.PutUint16(buf[4:6], uint16((length-8)/4)) // Length in 4-byte units
-	if s.success == 0 {
-		copy(buf[8:], s.reason)
-		return buf
-	}
-
-	byteOrder.PutUint32(buf[8:12], s.releaseNumber)
-	byteOrder.PutUint32(buf[12:16], s.resourceIDBase)
-	byteOrder.PutUint32(buf[16:20], s.resourceIDMask)
-	byteOrder.PutUint32(buf[20:24], s.motionBufferSize)
-	byteOrder.PutUint16(buf[24:26], s.vendorLength)
-	byteOrder.PutUint16(buf[26:28], s.maxRequestLength)
-	buf[28] = s.numScreens
-	buf[29] = s.numPixmapFormats
-	buf[30] = s.imageByteOrder
-	buf[31] = s.bitmapFormatBitOrder
-	buf[32] = s.bitmapFormatScanlineUnit
-	buf[33] = s.bitmapFormatScanlinePad
-	buf[34] = byte(s.minKeycode)
-	buf[35] = byte(s.maxKeycode)
-	// 4 bytes unused
-	copy(buf[40:], s.vendorString)
-	offset := 40 + vendorLen
-	// Pixmap formats
-	for _, format := range s.pixmapFormats {
-		buf[offset] = format.depth
-		buf[offset+1] = format.bitsPerPixel
-		buf[offset+2] = format.scanlinePad
-		// 5 bytes unused
-		offset += 8
-	}
-	// Screens
-	for _, screen := range s.screens {
-		byteOrder.PutUint32(buf[offset:], screen.root)
-		byteOrder.PutUint32(buf[offset+4:], uint32(screen.defaultColormap))
-		byteOrder.PutUint32(buf[offset+8:], screen.whitePixel)
-		byteOrder.PutUint32(buf[offset+12:], screen.blackPixel)
-		byteOrder.PutUint32(buf[offset+16:], screen.currentInputMasks)
-		byteOrder.PutUint16(buf[offset+20:], screen.widthInPixels)
-		byteOrder.PutUint16(buf[offset+22:], screen.heightInPixels)
-		byteOrder.PutUint16(buf[offset+24:], screen.widthInMillimeters)
-		byteOrder.PutUint16(buf[offset+26:], screen.heightInMillimeters)
-		byteOrder.PutUint16(buf[offset+28:], screen.minInstalledMaps)
-		byteOrder.PutUint16(buf[offset+30:], screen.maxInstalledMaps)
-		byteOrder.PutUint32(buf[offset+32:], screen.rootVisual)
-		buf[offset+36] = screen.backingStores
-		buf[offset+37] = boolToByte(screen.saveUnders)
-		buf[offset+38] = screen.rootDepth
-		buf[offset+39] = byte(len(screen.depths))
-		offset += 40
-		for _, depth := range screen.depths {
-			buf[offset] = depth.depth
-			// 1 byte unused
-			byteOrder.PutUint16(buf[offset+2:], uint16(len(depth.visuals)))
-			// 4 bytes unused
-			offset += 8
-			for _, visual := range depth.visuals {
-				byteOrder.PutUint32(buf[offset:], visual.visualID)
-				buf[offset+4] = visual.class
-				buf[offset+5] = visual.bitsPerRGBValue
-				byteOrder.PutUint16(buf[offset+6:], visual.colormapEntries)
-				byteOrder.PutUint32(buf[offset+8:], visual.redMask)
-				byteOrder.PutUint32(buf[offset+12:], visual.greenMask)
-				byteOrder.PutUint32(buf[offset+16:], visual.blueMask)
-				// 4 bytes unused
-				offset += 24
-			}
-		}
-	}
-	return buf
+	response := make([]byte, 8+len(setupData))
+	response[0] = r.success
+	// byte 1 is unused
+	order.PutUint16(response[2:4], r.protocolVersion)
+	order.PutUint16(response[4:6], 0) // length of additional data in 4-byte units
+	order.PutUint16(response[6:8], uint16(len(setupData)/4))
+	copy(response[8:], setupData)
+	return response
 }
 
 // Start of setup struct

@@ -136,9 +136,6 @@ func (a *App) runSSH(ctx context.Context, target, keyName, command string, forwa
 		log.Printf("ForwardX11 requested, but X11 is not enabled")
 	}
 	if forwardX11 && x11.Enabled() {
-		logger := &termLogger{t}
-		x11.HandleX11Forwarding(logger, client)
-
 		// Request X11 forwarding.
 		// https://datatracker.ietf.org/doc/html/rfc4254#section-6.3.1
 		cookie := make([]byte, 16)
@@ -156,6 +153,9 @@ func (a *App) runSSH(ctx context.Context, target, keyName, command string, forwa
 			AuthenticationCookie:   hex.EncodeToString(cookie),
 			ScreenNumber:           0,
 		}
+		logger := &termLogger{t}
+		x11.HandleX11Forwarding(logger, client, payload.AuthenticationProtocol, cookie)
+
 		log.Printf("Sending x11-req with payload: %+v\n", payload)
 		ok, err := session.SendRequest("x11-req", true, ssh.Marshal(payload))
 		if err != nil {
