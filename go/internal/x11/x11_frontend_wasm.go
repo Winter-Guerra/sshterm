@@ -2466,6 +2466,12 @@ func (w *wasmX11Frontend) GetProperty(window xID, property uint32, longOffset, l
 	dataToReturn := fullData[byteOffset:end]
 	bytesAfter := uint32(len(fullData)) - end
 
+	// Adjust dataToReturn length to be a multiple of item size
+	itemSize := format / 8
+	if itemSize > 0 && len(dataToReturn)%int(itemSize) != 0 {
+		dataToReturn = dataToReturn[:len(dataToReturn)-(len(dataToReturn)%int(itemSize))]
+	}
+
 	return dataToReturn, typ, format, bytesAfter
 }
 
