@@ -385,3 +385,112 @@ func TestOverlappingWindows(t *testing.T) {
 		return checkRectangle(img2, image.Rect(0, 0, 50, 40), 0, 0, 0)
 	})
 }
+
+func TestGCLogicalOperations(t *testing.T) {
+	t.Log("Running TestGCLogicalOperations")
+
+	setup := newDefaultSetup()
+	s := &x11Server{
+		logger:    &testLogger{t: t},
+		windows:   make(map[xID]*window),
+		gcs:       make(map[xID]GC),
+		pixmaps:   make(map[xID]bool),
+		cursors:   make(map[xID]bool),
+		colormaps: make(map[xID]*colormap),
+		clients:   make(map[uint32]*x11Client),
+		byteOrder: binary.LittleEndian,
+		rootVisual: visualType{
+			class:           4, // TrueColor
+			redMask:         0x00ff0000,
+			greenMask:       0x0000ff00,
+			blueMask:        0x000000ff,
+			bitsPerRGBValue: 8,
+		},
+		blackPixel:      setup.screens[0].blackPixel,
+		whitePixel:      setup.screens[0].whitePixel,
+		defaultColormap: setup.screens[0].defaultColormap,
+	}
+	s.colormaps[xID{local: s.defaultColormap}] = &colormap{
+		pixels: make(map[uint32]xColorItem),
+	}
+	fe := newX11Frontend(&testLogger{t: t}, s)
+	s.frontend = fe
+
+	winID := xID{client: 1, local: 1}
+	const (
+		winWidth  = 100
+		winHeight = 100
+	)
+
+	// Define colors
+	red := uint32(0xff0000)
+	green := uint32(0x00ff00)
+	blue := uint32(0x0000ff)
+	yellow := uint32(0xffff00)
+	cyan := uint32(0x00ffff)
+	magenta := uint32(0xff00ff)
+	white := uint32(0xffffff)
+	black := uint32(0x000000)
+
+	tests := []struct {
+		name       string
+		function   uint32
+		wantColor  uint32
+		wantPixels [3]uint8
+	}{
+		{"Clear", FunctionClear, black, [3]uint8{0, 0, 0}},
+		{"And", FunctionAnd, black, [3]uint8{0, 0, 0}},
+		{"AndReverse", FunctionAndReverse, red, [3]uint8{255, 0, 0}},
+		{"Copy", FunctionCopy, red, [3]uint8{255, 0, 0}},
+		{"AndInverted", FunctionAndInverted, blue, [3]uint8{0, 0, 255}},
+		{"NoOp", FunctionNoOp, blue, [3]uint8{0, 0, 255}},
+		{"Xor", FunctionXor, magenta, [3]uint8{255, 0, 255}},
+		{"Or", FunctionOr, magenta, [3]uint8{255, 0, 255}},
+		{"Nor", FunctionNor, green, [3]uint8{0, 255, 0}},
+		{"Equiv", FunctionEquiv, green, [3]uint8{0, 255, 0}},
+		{"Invert", FunctionInvert, yellow, [3]uint8{255, 255, 0}},
+		{"OrReverse", FunctionOrReverse, white, [3]uint8{255, 255, 255}},
+		{"CopyInverted", FunctionCopyInverted, cyan, [3]uint8{0, 255, 255}},
+		{"OrInverted", FunctionOrInverted, cyan, [3]uint8{0, 255, 255}},
+		{"Nand", FunctionNand, white, [3]uint8{255, 255, 255}},
+		{"Set", FunctionSet, white, [3]uint8{255, 255, 255}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Cleanup(func() { cleanupDOMElements(t) })
+			fe.CreateWindow(winID, s.rootWindowID(), 10, 10, winWidth, winHeight, 24, 0, WindowAttributes{})
+			fe.MapWindow(winID)
+
+			// 1. Fill window with blue background
+			bgGCID := xID{client: 1, local: 100}
+			fe.CreateGC(bgGCID, GCForeground|GCFunction, GC{Foreground: blue, Function: FunctionCopy, PlaneMask: 0xffffff})
+			fe.PolyFillRectangle(winID, bgGCID, []uint32{0, 0, winWidth, winHeight})
+			poll(t, func() error {
+				img := getCanvasData(t, s, winID, 0, 0, winWidth, winHeight)
+				return checkRectangle(img, image.Rect(0, 0, winWidth, winHeight), 0, 0, 255)
+			})
+
+			// 2. Create GC with logical operation and draw red rectangle
+			fgGCID := xID{client: 1, local: 200}
+			fe.CreateGC(fgGCID, GCForeground|GCFunction|GCPlaneMask, GC{Foreground: red, Function: tc.function, PlaneMask: 0xffffff})
+			fe.PolyFillRectangle(winID, fgGCID, []uint32{10, 10, 50, 50})
+
+			// 3. Verify the result
+			poll(t, func() error {
+				img := getCanvasData(t, s, winID, 0, 0, winWidth, winHeight)
+				// Check the area where the rectangle was drawn
+				err := checkRectangle(img, image.Rect(10, 10, 60, 60), tc.wantPixels[0], tc.wantPixels[1], tc.wantPixels[2])
+				if err != nil {
+					return fmt.Errorf("drawn rectangle: %w", err)
+				}
+				// Check that the background outside the rectangle is unchanged
+				err = checkRectangle(img, image.Rect(70, 70, 90, 90), 0, 0, 255)
+				if err != nil {
+					return fmt.Errorf("background: %w", err)
+				}
+				return nil
+			})
+		})
+	}
+}

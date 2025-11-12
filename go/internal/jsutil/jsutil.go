@@ -141,6 +141,13 @@ func Uint8ClampedArrayFromBytes(in []byte) js.Value {
 	return Uint8ClampedArray.New(Uint8ArrayFromBytes(in))
 }
 
+func GetImageDataBytes(imageData js.Value) []byte {
+	data := imageData.Get("data")
+	buf := make([]byte, data.Length())
+	js.CopyBytesToGo(buf, data)
+	return buf
+}
+
 type ImportedFile struct {
 	Name    string
 	Type    string

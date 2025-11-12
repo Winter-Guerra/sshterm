@@ -1095,30 +1095,9 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	})
 }
 
-func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID, draw func(js.Value)) {
-	gc, ok := w.gcs[gcID]
-	if !ok {
-		return
-	}
-
-	// Native canvas operations path
-	ctx.Call("save")
-	defer ctx.Call("restore")
-
+func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc GC) {
 	ctx.Set("imageSmoothingEnabled", false)
 
-	// Only handle functions that are natively supported.
-	// Others are routed to the software emulation path.
-	switch gc.Function {
-	case FunctionClear:
-		ctx.Set("globalCompositeOperation", "destination-out")
-	case FunctionCopy:
-		ctx.Set("globalCompositeOperation", "source-over")
-	case FunctionNoOp:
-		// Do nothing
-	default:
-		ctx.Set("globalCompositeOperation", "source-over")
-	}
 	color := w.getForegroundColor(colormap, gc)
 	ctx.Set("strokeStyle", color)
 	ctx.Set("fillStyle", color)
@@ -1211,7 +1190,109 @@ func (w *wasmX11Frontend) applyGC(ctx js.Value, colormap xID, gcID xID, draw fun
 		ctx.Call("setLineDash", jsDashes)
 		ctx.Set("lineDashOffset", gc.DashOffset)
 	}
-	draw(ctx)
+}
+
+func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw func(js.Value)) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
+
+	var nativeOp string
+	useSoftwareEmulation := false
+
+	switch gc.Function {
+	case FunctionClear:
+		nativeOp = "destination-out"
+	case FunctionCopy:
+		nativeOp = "source-over"
+	case FunctionNoOp:
+		return
+	case FunctionXor:
+		nativeOp = "xor"
+	default:
+		useSoftwareEmulation = true
+	}
+
+	if !useSoftwareEmulation {
+		destCtx.Call("save")
+		w.applyGCState(destCtx, colormap, gc)
+		destCtx.Set("globalCompositeOperation", nativeOp)
+		draw(destCtx)
+		destCtx.Call("restore")
+		return
+	}
+
+	// Software Emulation Path
+	width := destCtx.Get("canvas").Get("width").Int()
+	height := destCtx.Get("canvas").Get("height").Int()
+	if width == 0 || height == 0 {
+		return
+	}
+
+	destImageData := destCtx.Call("getImageData", 0, 0, width, height)
+	destPixels := jsutil.GetImageDataBytes(destImageData)
+
+	tempCanvas := w.document.Call("createElement", "canvas")
+	tempCanvas.Set("width", width)
+	tempCanvas.Set("height", height)
+	tempCtx := tempCanvas.Call("getContext", "2d")
+
+	tempCtx.Call("save")
+	w.applyGCState(tempCtx, colormap, gc)
+	draw(tempCtx)
+	tempCtx.Call("restore")
+
+	srcImageData := tempCtx.Call("getImageData", 0, 0, width, height)
+	srcPixels := jsutil.GetImageDataBytes(srcImageData)
+
+	r, g, b := w.GetRGBColor(colormap, gc.Foreground)
+	srcColor := (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
+
+	for i := 0; i < len(destPixels); i += 4 {
+		if srcPixels[i+3] == 0 {
+			continue
+		}
+
+		dest := (uint32(destPixels[i]) << 16) | (uint32(destPixels[i+1]) << 8) | uint32(destPixels[i+2])
+		src := srcColor & gc.PlaneMask
+
+		var result uint32
+		switch gc.Function {
+		case FunctionAnd:
+			result = src & dest
+		case FunctionAndReverse:
+			result = src & (^dest)
+		case FunctionAndInverted:
+			result = (^src) & dest
+		case FunctionOr:
+			result = src | dest
+		case FunctionNor:
+			result = ^(src | dest)
+		case FunctionEquiv:
+			result = ^(src ^ dest)
+		case FunctionInvert:
+			result = ^dest
+		case FunctionOrReverse:
+			result = src | (^dest)
+		case FunctionCopyInverted:
+			result = ^src
+		case FunctionOrInverted:
+			result = (^src) | dest
+		case FunctionNand:
+			result = ^(src & dest)
+		case FunctionSet:
+			result = 0xffffff & gc.PlaneMask
+		}
+
+		destPixels[i] = byte((result >> 16) & 0xff)
+		destPixels[i+1] = byte((result >> 8) & 0xff)
+		destPixels[i+2] = byte(result & 0xff)
+		destPixels[i+3] = 255
+	}
+
+	newImageData := js.Global().Get("ImageData").New(jsutil.Uint8ClampedArrayFromBytes(destPixels), width, height)
+	destCtx.Call("putImageData", newImageData, 0, 0)
 }
 
 func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
