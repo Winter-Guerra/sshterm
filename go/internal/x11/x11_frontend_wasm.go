@@ -79,6 +79,23 @@ type wasmX11Frontend struct {
 	cursorStyles     map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
 }
 
+func (w *wasmX11Frontend) showMessage(message string) {
+	debugf("Show Message: %q", message)
+	document := js.Global().Get("document")
+	msg := document.Call("createElement", "div")
+	msg.Set("style", "position: absolute; bottom: 0; right: 0; padding: 0.5rem; background-color: white; color: black; font-family: monospace; border: solid 1px black; z-Index: 1000;")
+	msg.Set("textContent", message)
+
+	document.Get("body").Call("appendChild", msg)
+	var remove js.Func
+	remove = js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		msg.Call("remove")
+		remove.Release()
+		return nil
+	})
+	js.Global().Get("setTimeout").Invoke(remove, 3000)
+}
+
 func (w *wasmX11Frontend) initPredefinedAtoms() {
 	w.atoms = map[string]uint32{
 		"PRIMARY":             1,
@@ -187,6 +204,7 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 	})
 	win.Call("addEventListener", "resize", resizeHandler)
 
+	frontend.showMessage("X11 Frontend Started")
 	return frontend
 }
 
@@ -2588,6 +2606,7 @@ func (w *wasmX11Frontend) UpdatePointerPosition(x, y int16) {
 
 func (w *wasmX11Frontend) Bell(percent int8) {
 	debugf("X11: bell percent=%d", percent)
+	w.showMessage("*** X11 Bell ***")
 	w.recordOperation(CanvasOperation{
 		Type: "bell",
 		Args: []any{percent},
