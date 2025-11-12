@@ -6,9 +6,8 @@ import (
 	"encoding/binary"
 )
 
-// KeyPress: 2
-// KeyRelease: 3
 type keyEvent struct {
+	opcode         byte // KeyPress: 2, KeyRelease: 3
 	sequence       uint16
 	detail         byte // keycode
 	time           uint32
@@ -23,7 +22,7 @@ type keyEvent struct {
 
 func (e *keyEvent) encodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
-	// event[0] will be set to KeyPress (2) or KeyRelease (3) by the caller
+	event[0] = e.opcode
 	event[1] = e.detail
 	order.PutUint16(event[2:4], e.sequence)
 	order.PutUint32(event[4:8], e.time)

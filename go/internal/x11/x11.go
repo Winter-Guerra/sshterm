@@ -451,9 +451,9 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	if eventType == "keydown" {
-		event.encodeMessage(client.byteOrder)[0] = 2 // KeyPress
+		event.opcode = 2 // KeyPress
 	} else if eventType == "keyup" {
-		event.encodeMessage(client.byteOrder)[0] = 3 // KeyRelease
+		event.opcode = 3 // KeyRelease
 	} else {
 		debugf("X11: Unknown keyboard event type: %s", eventType)
 		return
