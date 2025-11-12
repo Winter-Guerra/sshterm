@@ -664,15 +664,12 @@ func (s *x11Server) rootWindowID() uint32 {
 func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
 	client.sequence++
 	var header [4]byte
-	lengthError := func() {
-		client.send(NewError(LengthErrorCode, client.sequence, 0, 0, reqCode(header[0])))
-	}
 	if _, err := io.ReadFull(client.conn, header[:]); err != nil {
 		return nil, 0, err
 	}
 	length := client.byteOrder.Uint16(header[2:4])
 	if length == 0 {
-		lengthError()
+		client.send(NewError(LengthErrorCode, client.sequence, 0, 0, reqCode(header[0])))
 		return nil, 0, errParseError
 	}
 	raw := make([]byte, 4*length)
@@ -683,9 +680,13 @@ func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
 		}
 	}
 	debugf("X11DEBUG: RAW Request: %x", raw)
-	req, err := parseRequest(client.byteOrder, raw)
+	req, err := parseRequest(client.byteOrder, raw, client.sequence)
 	if err != nil {
-		lengthError()
+		if x11Err, ok := err.(Error); ok {
+			client.send(x11Err)
+		} else {
+			client.send(NewError(LengthErrorCode, client.sequence, 0, 0, reqCode(header[0])))
+		}
 		return nil, 0, err
 	}
 	return req, client.sequence, nil

@@ -16,381 +16,381 @@ type request interface {
 	OpCode() reqCode
 }
 
-func parseRequest(order binary.ByteOrder, raw []byte) (request, error) {
+func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, error) {
 	var reqHeader [4]byte
 	if n := copy(reqHeader[:], raw); n != 4 {
-		return nil, fmt.Errorf("%w: header too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, 0)
 	}
 	length := order.Uint16(reqHeader[2:4])
+	opcode := reqCode(reqHeader[0])
 	if int(4*length) != len(raw) {
 		debugf("X11: Raw request header: %x", reqHeader)
-		return nil, fmt.Errorf("%w: mismatch length %d != %d", errParseError, 4*length, len(raw))
+		return nil, NewError(LengthErrorCode, seq, 0, 0, opcode)
 	}
 
-	opcode := reqCode(reqHeader[0])
 	data := reqHeader[1]
 	body := raw[4:]
 
 	switch opcode {
 	case CreateWindow:
-		return parseCreateWindowRequest(order, data, body)
+		return parseCreateWindowRequest(order, data, body, seq)
 
 	case ChangeWindowAttributes:
-		return parseChangeWindowAttributesRequest(order, body)
+		return parseChangeWindowAttributesRequest(order, body, seq)
 
 	case GetWindowAttributes:
-		return parseGetWindowAttributesRequest(order, body)
+		return parseGetWindowAttributesRequest(order, body, seq)
 
 	case DestroyWindow:
-		return parseDestroyWindowRequest(order, body)
+		return parseDestroyWindowRequest(order, body, seq)
 
 	case DestroySubwindows:
-		return parseDestroySubwindowsRequest(order, body)
+		return parseDestroySubwindowsRequest(order, body, seq)
 
 	case ChangeSaveSet:
-		return parseChangeSaveSetRequest(order, body)
+		return parseChangeSaveSetRequest(order, body, seq)
 
 	case ReparentWindow:
-		return parseReparentWindowRequest(order, body)
+		return parseReparentWindowRequest(order, body, seq)
 
 	case MapWindow:
-		return parseMapWindowRequest(order, body)
+		return parseMapWindowRequest(order, body, seq)
 
 	case MapSubwindows:
-		return parseMapSubwindowsRequest(order, body)
+		return parseMapSubwindowsRequest(order, body, seq)
 
 	case UnmapWindow:
-		return parseUnmapWindowRequest(order, body)
+		return parseUnmapWindowRequest(order, body, seq)
 
 	case UnmapSubwindows:
-		return parseUnmapSubwindowsRequest(order, body)
+		return parseUnmapSubwindowsRequest(order, body, seq)
 
 	case ConfigureWindow:
-		return parseConfigureWindowRequest(order, body)
+		return parseConfigureWindowRequest(order, body, seq)
 
 	case CirculateWindow:
-		return parseCirculateWindowRequest(order, data, body)
+		return parseCirculateWindowRequest(order, data, body, seq)
 
 	case GetGeometry:
-		return parseGetGeometryRequest(order, body)
+		return parseGetGeometryRequest(order, body, seq)
 
 	case QueryTree:
-		return parseQueryTreeRequest(order, body)
+		return parseQueryTreeRequest(order, body, seq)
 
 	case InternAtom:
-		return parseInternAtomRequest(order, body)
+		return parseInternAtomRequest(order, body, seq)
 
 	case GetAtomName:
-		return parseGetAtomNameRequest(order, body)
+		return parseGetAtomNameRequest(order, body, seq)
 
 	case ChangeProperty:
-		return parseChangePropertyRequest(order, body)
+		return parseChangePropertyRequest(order, body, seq)
 
 	case DeleteProperty:
-		return parseDeletePropertyRequest(order, body)
+		return parseDeletePropertyRequest(order, body, seq)
 
 	case GetProperty:
-		return parseGetPropertyRequest(order, body)
+		return parseGetPropertyRequest(order, body, seq)
 
 	case ListProperties:
-		return parseListPropertiesRequest(order, body)
+		return parseListPropertiesRequest(order, body, seq)
 
 	case SetSelectionOwner:
-		return parseSetSelectionOwnerRequest(order, body)
+		return parseSetSelectionOwnerRequest(order, body, seq)
 
 	case GetSelectionOwner:
-		return parseGetSelectionOwnerRequest(order, body)
+		return parseGetSelectionOwnerRequest(order, body, seq)
 
 	case ConvertSelection:
-		return parseConvertSelectionRequest(order, body)
+		return parseConvertSelectionRequest(order, body, seq)
 
 	case SendEvent:
-		return parseSendEventRequest(order, body)
+		return parseSendEventRequest(order, body, seq)
 
 	case GrabPointer:
-		return parseGrabPointerRequest(order, body)
+		return parseGrabPointerRequest(order, body, seq)
 
 	case UngrabPointer:
-		return parseUngrabPointerRequest(order, body)
+		return parseUngrabPointerRequest(order, body, seq)
 
 	case GrabButton:
-		return parseGrabButtonRequest(order, data, body)
+		return parseGrabButtonRequest(order, data, body, seq)
 
 	case UngrabButton:
-		return parseUngrabButtonRequest(order, data, body)
+		return parseUngrabButtonRequest(order, data, body, seq)
 
 	case ChangeActivePointerGrab:
-		return parseChangeActivePointerGrabRequest(order, body)
+		return parseChangeActivePointerGrabRequest(order, body, seq)
 
 	case GrabKeyboard:
-		return parseGrabKeyboardRequest(order, body)
+		return parseGrabKeyboardRequest(order, body, seq)
 
 	case UngrabKeyboard:
-		return parseUngrabKeyboardRequest(order, body)
+		return parseUngrabKeyboardRequest(order, body, seq)
 
 	case GrabKey:
-		return parseGrabKeyRequest(order, body)
+		return parseGrabKeyRequest(order, body, seq)
 
 	case UngrabKey:
-		return parseUngrabKeyRequest(order, body)
+		return parseUngrabKeyRequest(order, body, seq)
 
 	case AllowEvents:
-		return parseAllowEventsRequest(order, data, body)
+		return parseAllowEventsRequest(order, data, body, seq)
 
 	case GrabServer:
-		return parseGrabServerRequest(order, body)
+		return parseGrabServerRequest(order, body, seq)
 
 	case UngrabServer:
-		return parseUngrabServerRequest(order, body)
+		return parseUngrabServerRequest(order, body, seq)
 
 	case QueryPointer:
-		return parseQueryPointerRequest(order, body)
+		return parseQueryPointerRequest(order, body, seq)
 
 	case GetMotionEvents:
-		return parseGetMotionEventsRequest(order, body)
+		return parseGetMotionEventsRequest(order, body, seq)
 
 	case TranslateCoords:
-		return parseTranslateCoordsRequest(order, body)
+		return parseTranslateCoordsRequest(order, body, seq)
 
 	case WarpPointer:
-		return parseWarpPointerRequest(order, body)
+		return parseWarpPointerRequest(order, body, seq)
 
 	case SetInputFocus:
-		return parseSetInputFocusRequest(order, body)
+		return parseSetInputFocusRequest(order, body, seq)
 
 	case GetInputFocus:
-		return parseGetInputFocusRequest(order, body)
+		return parseGetInputFocusRequest(order, body, seq)
 
 	case QueryKeymap:
-		return parseQueryKeymapRequest(order, body)
+		return parseQueryKeymapRequest(order, body, seq)
 
 	case OpenFont:
-		return parseOpenFontRequest(order, body)
+		return parseOpenFontRequest(order, body, seq)
 
 	case CloseFont:
-		return parseCloseFontRequest(order, body)
+		return parseCloseFontRequest(order, body, seq)
 
 	case QueryFont:
-		return parseQueryFontRequest(order, body)
+		return parseQueryFontRequest(order, body, seq)
 
 	case QueryTextExtents:
-		return parseQueryTextExtentsRequest(order, body)
+		return parseQueryTextExtentsRequest(order, body, seq)
 
 	case ListFonts:
-		return parseListFontsRequest(order, body)
+		return parseListFontsRequest(order, body, seq)
 
 	case ListFontsWithInfo:
-		return parseListFontsWithInfoRequest(order, body)
+		return parseListFontsWithInfoRequest(order, body, seq)
 
 	case SetFontPath:
-		return parseSetFontPathRequest(order, body)
+		return parseSetFontPathRequest(order, body, seq)
 
 	case GetFontPath:
-		return parseGetFontPathRequest(order, body)
+		return parseGetFontPathRequest(order, body, seq)
 
 	case CreatePixmap:
-		return parseCreatePixmapRequest(order, data, body)
+		return parseCreatePixmapRequest(order, data, body, seq)
 
 	case FreePixmap:
-		return parseFreePixmapRequest(order, body)
+		return parseFreePixmapRequest(order, body, seq)
 
 	case CreateGC:
-		return parseCreateGCRequest(order, body)
+		return parseCreateGCRequest(order, body, seq)
 
 	case ChangeGC:
-		return parseChangeGCRequest(order, body)
+		return parseChangeGCRequest(order, body, seq)
 
 	case CopyGC:
-		return parseCopyGCRequest(order, body)
+		return parseCopyGCRequest(order, body, seq)
 
 	case SetDashes:
-		return parseSetDashesRequest(order, body)
+		return parseSetDashesRequest(order, body, seq)
 
 	case SetClipRectangles:
-		return parseSetClipRectanglesRequest(order, data, body)
+		return parseSetClipRectanglesRequest(order, data, body, seq)
 
 	case FreeGC:
-		return parseFreeGCRequest(order, body)
+		return parseFreeGCRequest(order, body, seq)
 
 	case ClearArea:
-		return parseClearAreaRequest(order, body)
+		return parseClearAreaRequest(order, body, seq)
 
 	case CopyArea:
-		return parseCopyAreaRequest(order, body)
+		return parseCopyAreaRequest(order, body, seq)
 
 	case PolyPoint:
-		return parsePolyPointRequest(order, body)
+		return parsePolyPointRequest(order, body, seq)
 
 	case PolyLine:
-		return parsePolyLineRequest(order, body)
+		return parsePolyLineRequest(order, body, seq)
 
 	case PolySegment:
-		return parsePolySegmentRequest(order, body)
+		return parsePolySegmentRequest(order, body, seq)
 
 	case PolyRectangle:
-		return parsePolyRectangleRequest(order, body)
+		return parsePolyRectangleRequest(order, body, seq)
 
 	case PolyArc:
-		return parsePolyArcRequest(order, body)
+		return parsePolyArcRequest(order, body, seq)
 
 	case FillPoly:
-		return parseFillPolyRequest(order, body)
+		return parseFillPolyRequest(order, body, seq)
 
 	case PolyFillRectangle:
-		return parsePolyFillRectangleRequest(order, body)
+		return parsePolyFillRectangleRequest(order, body, seq)
 
 	case PolyFillArc:
-		return parsePolyFillArcRequest(order, body)
+		return parsePolyFillArcRequest(order, body, seq)
 
 	case PutImage:
-		return parsePutImageRequest(order, data, body)
+		return parsePutImageRequest(order, data, body, seq)
 
 	case GetImage:
-		return parseGetImageRequest(order, data, body)
+		return parseGetImageRequest(order, data, body, seq)
 
 	case PolyText8:
-		return parsePolyText8Request(order, body)
+		return parsePolyText8Request(order, body, seq)
 
 	case PolyText16:
-		return parsePolyText16Request(order, body)
+		return parsePolyText16Request(order, body, seq)
 
 	case ImageText8:
-		return parseImageText8Request(order, body)
+		return parseImageText8Request(order, body, seq)
 
 	case ImageText16:
-		return parseImageText16Request(order, body)
+		return parseImageText16Request(order, body, seq)
 
 	case CreateColormap:
-		return parseCreateColormapRequest(order, data, body)
+		return parseCreateColormapRequest(order, data, body, seq)
 
 	case FreeColormap:
-		return parseFreeColormapRequest(order, body)
+		return parseFreeColormapRequest(order, body, seq)
 
 	case InstallColormap:
-		return parseInstallColormapRequest(order, body)
+		return parseInstallColormapRequest(order, body, seq)
 
 	case UninstallColormap:
-		return parseUninstallColormapRequest(order, body)
+		return parseUninstallColormapRequest(order, body, seq)
 
 	case ListInstalledColormaps:
-		return parseListInstalledColormapsRequest(order, body)
+		return parseListInstalledColormapsRequest(order, body, seq)
 
 	case AllocColor:
-		return parseAllocColorRequest(order, body)
+		return parseAllocColorRequest(order, body, seq)
 
 	case AllocNamedColor:
-		return parseAllocNamedColorRequest(order, body)
+		return parseAllocNamedColorRequest(order, body, seq)
 
 	case FreeColors:
-		return parseFreeColorsRequest(order, body)
+		return parseFreeColorsRequest(order, body, seq)
 
 	case StoreColors:
-		return parseStoreColorsRequest(order, body)
+		return parseStoreColorsRequest(order, body, seq)
 
 	case StoreNamedColor:
-		return parseStoreNamedColorRequest(order, data, body)
+		return parseStoreNamedColorRequest(order, data, body, seq)
 
 	case QueryColors:
-		return parseQueryColorsRequest(order, body)
+		return parseQueryColorsRequest(order, body, seq)
 
 	case LookupColor:
-		return parseLookupColorRequest(order, body)
+		return parseLookupColorRequest(order, body, seq)
 
 	case CreateGlyphCursor:
-		return parseCreateGlyphCursorRequest(order, body)
+		return parseCreateGlyphCursorRequest(order, body, seq)
 
 	case FreeCursor:
-		return parseFreeCursorRequest(order, body)
+		return parseFreeCursorRequest(order, body, seq)
 
 	case RecolorCursor:
-		return parseRecolorCursorRequest(order, body)
+		return parseRecolorCursorRequest(order, body, seq)
 
 	case QueryBestSize:
-		return parseQueryBestSizeRequest(order, body)
+		return parseQueryBestSizeRequest(order, body, seq)
 
 	case QueryExtension:
-		return parseQueryExtensionRequest(order, body)
+		return parseQueryExtensionRequest(order, body, seq)
 
 	case Bell:
 		if len(body) != 0 {
-			return nil, errParseError
+			return nil, NewError(LengthErrorCode, seq, 0, 0, Bell)
 		}
-		return parseBellRequest(data)
+		return parseBellRequest(data, seq)
 
 	case SetPointerMapping:
-		return parseSetPointerMappingRequest(order, body)
+		return parseSetPointerMappingRequest(order, body, seq)
 
 	case GetPointerMapping:
-		return parseGetPointerMappingRequest(order, body)
+		return parseGetPointerMappingRequest(order, body, seq)
 
 	case GetKeyboardMapping:
-		return parseGetKeyboardMappingRequest(order, body)
+		return parseGetKeyboardMappingRequest(order, body, seq)
 
 	case ChangeKeyboardMapping:
-		return parseChangeKeyboardMappingRequest(order, data, body)
+		return parseChangeKeyboardMappingRequest(order, data, body, seq)
 
 	case ChangeKeyboardControl:
-		return parseChangeKeyboardControlRequest(order, body)
+		return parseChangeKeyboardControlRequest(order, body, seq)
 
 	case GetKeyboardControl:
-		return parseGetKeyboardControlRequest(order, body)
+		return parseGetKeyboardControlRequest(order, body, seq)
 
 	case SetScreenSaver:
-		return parseSetScreenSaverRequest(order, body)
+		return parseSetScreenSaverRequest(order, body, seq)
 
 	case GetScreenSaver:
-		return parseGetScreenSaverRequest(order, body)
+		return parseGetScreenSaverRequest(order, body, seq)
 
 	case ChangeHosts:
-		return parseChangeHostsRequest(order, data, body)
+		return parseChangeHostsRequest(order, data, body, seq)
 
 	case ListHosts:
-		return parseListHostsRequest(order, body)
+		return parseListHostsRequest(order, body, seq)
 
 	case SetAccessControl:
-		return parseSetAccessControlRequest(order, data, body)
+		return parseSetAccessControlRequest(order, data, body, seq)
 
 	case SetCloseDownMode:
-		return parseSetCloseDownModeRequest(order, data, body)
+		return parseSetCloseDownModeRequest(order, data, body, seq)
 
 	case KillClient:
-		return parseKillClientRequest(order, body)
+		return parseKillClientRequest(order, body, seq)
 
 	case RotateProperties:
-		return parseRotatePropertiesRequest(order, body)
+		return parseRotatePropertiesRequest(order, body, seq)
 
 	case ForceScreenSaver:
-		return parseForceScreenSaverRequest(order, data, body)
+		return parseForceScreenSaverRequest(order, data, body, seq)
 
 	case SetModifierMapping:
-		return parseSetModifierMappingRequest(order, body)
+		return parseSetModifierMappingRequest(order, body, seq)
 
 	case GetModifierMapping:
-		return parseGetModifierMappingRequest(order, body)
+		return parseGetModifierMappingRequest(order, body, seq)
 
 	case NoOperation:
-		return parseNoOperationRequest(order, body)
+		return parseNoOperationRequest(order, body, seq)
 
 	case AllocColorCells:
-		return parseAllocColorCellsRequest(order, data, body)
+		return parseAllocColorCellsRequest(order, data, body, seq)
 
 	case AllocColorPlanes:
-		return parseAllocColorPlanesRequest(order, data, body)
+		return parseAllocColorPlanesRequest(order, data, body, seq)
 
 	case CreateCursor:
-		return parseCreateCursorRequest(order, body)
+		return parseCreateCursorRequest(order, body, seq)
 
 	case CopyPlane:
-		return parseCopyPlaneRequest(order, body)
+		return parseCopyPlaneRequest(order, body, seq)
 
 	case ListExtensions:
-		return parseListExtensionsRequest(order, raw)
+		return parseListExtensionsRequest(order, raw, seq)
 
 	case ChangePointerControl:
-		return parseChangePointerControlRequest(order, body)
+		return parseChangePointerControlRequest(order, body, seq)
 
 	case GetPointerControl:
-		return parseGetPointerControlRequest(order, raw)
+		return parseGetPointerControlRequest(order, raw, seq)
 
 	default:
 		return nil, fmt.Errorf("x11: unhandled opcode %d", opcode)
@@ -470,9 +470,9 @@ type CreateWindowRequest struct {
 
 func (CreateWindowRequest) OpCode() reqCode { return CreateWindow }
 
-func parseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte) (*CreateWindowRequest, error) {
+func parseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CreateWindowRequest, error) {
 	if len(requestBody) < 28 {
-		return nil, fmt.Errorf("%w: create window request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 	}
 	req := &CreateWindowRequest{}
 	req.Depth = data
@@ -486,7 +486,7 @@ func parseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []b
 	req.Class = order.Uint16(requestBody[18:20])
 	req.Visual = VisualID(order.Uint32(requestBody[20:24]))
 	req.ValueMask = order.Uint32(requestBody[24:28])
-	values, _, err := parseWindowAttributes(order, req.ValueMask, requestBody[28:])
+	values, _, err := parseWindowAttributes(order, req.ValueMask, requestBody[28:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -502,14 +502,14 @@ type ChangeWindowAttributesRequest struct {
 
 func (ChangeWindowAttributesRequest) OpCode() reqCode { return ChangeWindowAttributes }
 
-func parseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []byte) (*ChangeWindowAttributesRequest, error) {
+func parseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeWindowAttributesRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: change window attributes request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeWindowAttributes)
 	}
 	req := &ChangeWindowAttributesRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
 	req.ValueMask = order.Uint32(requestBody[4:8])
-	values, _, err := parseWindowAttributes(order, req.ValueMask, requestBody[8:])
+	values, _, err := parseWindowAttributes(order, req.ValueMask, requestBody[8:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -523,9 +523,9 @@ type GetWindowAttributesRequest struct {
 
 func (GetWindowAttributesRequest) OpCode() reqCode { return GetWindowAttributes }
 
-func parseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte) (*GetWindowAttributesRequest, error) {
+func parseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetWindowAttributesRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: get window attributes request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetWindowAttributes)
 	}
 	req := &GetWindowAttributesRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -538,9 +538,9 @@ type DestroyWindowRequest struct {
 
 func (DestroyWindowRequest) OpCode() reqCode { return DestroyWindow }
 
-func parseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte) (*DestroyWindowRequest, error) {
+func parseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroyWindowRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: destroy window request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, DestroyWindow)
 	}
 	req := &DestroyWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -553,9 +553,9 @@ type DestroySubwindowsRequest struct {
 
 func (DestroySubwindowsRequest) OpCode() reqCode { return DestroySubwindows }
 
-func parseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte) (*DestroySubwindowsRequest, error) {
+func parseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroySubwindowsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: destroy subwindows request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, DestroySubwindows)
 	}
 	req := &DestroySubwindowsRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -569,9 +569,9 @@ type ChangeSaveSetRequest struct {
 
 func (ChangeSaveSetRequest) OpCode() reqCode { return ChangeSaveSet }
 
-func parseChangeSaveSetRequest(order binary.ByteOrder, requestBody []byte) (*ChangeSaveSetRequest, error) {
+func parseChangeSaveSetRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeSaveSetRequest, error) {
 	if len(requestBody) < 5 {
-		return nil, fmt.Errorf("%w: change save set request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeSaveSet)
 	}
 	req := &ChangeSaveSetRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -588,9 +588,9 @@ type ReparentWindowRequest struct {
 
 func (ReparentWindowRequest) OpCode() reqCode { return ReparentWindow }
 
-func parseReparentWindowRequest(order binary.ByteOrder, requestBody []byte) (*ReparentWindowRequest, error) {
+func parseReparentWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ReparentWindowRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: reparent window request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ReparentWindow)
 	}
 	req := &ReparentWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -606,9 +606,9 @@ type MapWindowRequest struct {
 
 func (MapWindowRequest) OpCode() reqCode { return MapWindow }
 
-func parseMapWindowRequest(order binary.ByteOrder, requestBody []byte) (*MapWindowRequest, error) {
+func parseMapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapWindowRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: map window request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, MapWindow)
 	}
 	req := &MapWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -621,9 +621,9 @@ type MapSubwindowsRequest struct {
 
 func (MapSubwindowsRequest) OpCode() reqCode { return MapSubwindows }
 
-func parseMapSubwindowsRequest(order binary.ByteOrder, requestBody []byte) (*MapSubwindowsRequest, error) {
+func parseMapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapSubwindowsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: map subwindows request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, MapSubwindows)
 	}
 	req := &MapSubwindowsRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -636,9 +636,9 @@ type UnmapWindowRequest struct {
 
 func (UnmapWindowRequest) OpCode() reqCode { return UnmapWindow }
 
-func parseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte) (*UnmapWindowRequest, error) {
+func parseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapWindowRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: unmap window request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, UnmapWindow)
 	}
 	req := &UnmapWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -651,9 +651,9 @@ type UnmapSubwindowsRequest struct {
 
 func (UnmapSubwindowsRequest) OpCode() reqCode { return UnmapSubwindows }
 
-func parseUnmapSubwindowsRequest(order binary.ByteOrder, requestBody []byte) (*UnmapSubwindowsRequest, error) {
+func parseUnmapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapSubwindowsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: unmap subwindows request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, UnmapSubwindows)
 	}
 	req := &UnmapSubwindowsRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -668,9 +668,9 @@ type ConfigureWindowRequest struct {
 
 func (ConfigureWindowRequest) OpCode() reqCode { return ConfigureWindow }
 
-func parseConfigureWindowRequest(order binary.ByteOrder, requestBody []byte) (*ConfigureWindowRequest, error) {
+func parseConfigureWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConfigureWindowRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: configure window request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ConfigureWindow)
 	}
 	req := &ConfigureWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -688,9 +688,9 @@ type CirculateWindowRequest struct {
 
 func (CirculateWindowRequest) OpCode() reqCode { return CirculateWindow }
 
-func parseCirculateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte) (*CirculateWindowRequest, error) {
+func parseCirculateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CirculateWindowRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: circulate window request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CirculateWindow)
 	}
 	req := &CirculateWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -704,9 +704,9 @@ type GetGeometryRequest struct {
 
 func (GetGeometryRequest) OpCode() reqCode { return GetGeometry }
 
-func parseGetGeometryRequest(order binary.ByteOrder, requestBody []byte) (*GetGeometryRequest, error) {
+func parseGetGeometryRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetGeometryRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: get geometry request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetGeometry)
 	}
 	req := &GetGeometryRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -719,9 +719,9 @@ type QueryTreeRequest struct {
 
 func (QueryTreeRequest) OpCode() reqCode { return QueryTree }
 
-func parseQueryTreeRequest(order binary.ByteOrder, requestBody []byte) (*QueryTreeRequest, error) {
+func parseQueryTreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryTreeRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: query tree request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTree)
 	}
 	req := &QueryTreeRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -735,14 +735,14 @@ type InternAtomRequest struct {
 
 func (InternAtomRequest) OpCode() reqCode { return InternAtom }
 
-func parseInternAtomRequest(order binary.ByteOrder, requestBody []byte) (*InternAtomRequest, error) {
+func parseInternAtomRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*InternAtomRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: intern atom request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, InternAtom)
 	}
 	req := &InternAtomRequest{}
 	nameLen := order.Uint16(requestBody[0:2])
 	if len(requestBody) < 4+int(nameLen) {
-		return nil, fmt.Errorf("%w: intern atom request too short for name", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, InternAtom)
 	}
 	req.Name = string(requestBody[4 : 4+nameLen])
 	return req, nil
@@ -754,9 +754,9 @@ type GetAtomNameRequest struct {
 
 func (GetAtomNameRequest) OpCode() reqCode { return GetAtomName }
 
-func parseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte) (*GetAtomNameRequest, error) {
+func parseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetAtomNameRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: get atom name request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetAtomName)
 	}
 	req := &GetAtomNameRequest{}
 	req.Atom = Atom(order.Uint32(requestBody[0:4]))
@@ -773,9 +773,9 @@ type ChangePropertyRequest struct {
 
 func (ChangePropertyRequest) OpCode() reqCode { return ChangeProperty }
 
-func parseChangePropertyRequest(order binary.ByteOrder, requestBody []byte) (*ChangePropertyRequest, error) {
+func parseChangePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangePropertyRequest, error) {
 	if len(requestBody) < 20 {
-		return nil, fmt.Errorf("%w: change property request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeProperty)
 	}
 	req := &ChangePropertyRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -784,7 +784,7 @@ func parseChangePropertyRequest(order binary.ByteOrder, requestBody []byte) (*Ch
 	req.Format = requestBody[12]
 	dataLen := order.Uint32(requestBody[16:20])
 	if len(requestBody) < 20+int(dataLen) {
-		return nil, fmt.Errorf("%w: change property request too short for data", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeProperty)
 	}
 	req.Data = requestBody[20 : 20+dataLen]
 	return req, nil
@@ -797,9 +797,9 @@ type DeletePropertyRequest struct {
 
 func (DeletePropertyRequest) OpCode() reqCode { return DeleteProperty }
 
-func parseDeletePropertyRequest(order binary.ByteOrder, requestBody []byte) (*DeletePropertyRequest, error) {
+func parseDeletePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DeletePropertyRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: delete property request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, DeleteProperty)
 	}
 	req := &DeletePropertyRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -818,9 +818,9 @@ type GetPropertyRequest struct {
 
 func (GetPropertyRequest) OpCode() reqCode { return GetProperty }
 
-func parseGetPropertyRequest(order binary.ByteOrder, requestBody []byte) (*GetPropertyRequest, error) {
+func parseGetPropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPropertyRequest, error) {
 	if len(requestBody) < 20 {
-		return nil, fmt.Errorf("%w: get property request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetProperty)
 	}
 	req := &GetPropertyRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -837,9 +837,9 @@ type ListPropertiesRequest struct {
 
 func (ListPropertiesRequest) OpCode() reqCode { return ListProperties }
 
-func parseListPropertiesRequest(order binary.ByteOrder, requestBody []byte) (*ListPropertiesRequest, error) {
+func parseListPropertiesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListPropertiesRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: list properties request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ListProperties)
 	}
 	req := &ListPropertiesRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -854,9 +854,9 @@ type SetSelectionOwnerRequest struct {
 
 func (SetSelectionOwnerRequest) OpCode() reqCode { return SetSelectionOwner }
 
-func parseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte) (*SetSelectionOwnerRequest, error) {
+func parseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetSelectionOwnerRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: set selection owner request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetSelectionOwner)
 	}
 	req := &SetSelectionOwnerRequest{}
 	req.Owner = Window(order.Uint32(requestBody[0:4]))
@@ -871,9 +871,9 @@ type GetSelectionOwnerRequest struct {
 
 func (GetSelectionOwnerRequest) OpCode() reqCode { return GetSelectionOwner }
 
-func parseGetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte) (*GetSelectionOwnerRequest, error) {
+func parseGetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetSelectionOwnerRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: get selection owner request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetSelectionOwner)
 	}
 	req := &GetSelectionOwnerRequest{}
 	req.Selection = Atom(order.Uint32(requestBody[0:4]))
@@ -890,9 +890,9 @@ type ConvertSelectionRequest struct {
 
 func (ConvertSelectionRequest) OpCode() reqCode { return ConvertSelection }
 
-func parseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte) (*ConvertSelectionRequest, error) {
+func parseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConvertSelectionRequest, error) {
 	if len(requestBody) < 20 {
-		return nil, fmt.Errorf("%w: convert selection request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ConvertSelection)
 	}
 	req := &ConvertSelectionRequest{}
 	req.Requestor = Window(order.Uint32(requestBody[0:4]))
@@ -912,9 +912,9 @@ type SendEventRequest struct {
 
 func (SendEventRequest) OpCode() reqCode { return SendEvent }
 
-func parseSendEventRequest(order binary.ByteOrder, requestBody []byte) (*SendEventRequest, error) {
+func parseSendEventRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SendEventRequest, error) {
 	if len(requestBody) < 44 {
-		return nil, fmt.Errorf("%w: send event request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SendEvent)
 	}
 	req := &SendEventRequest{}
 	req.Destination = Window(order.Uint32(requestBody[4:8]))
@@ -936,9 +936,9 @@ type GrabPointerRequest struct {
 
 func (GrabPointerRequest) OpCode() reqCode { return GrabPointer }
 
-func parseGrabPointerRequest(order binary.ByteOrder, requestBody []byte) (*GrabPointerRequest, error) {
+func parseGrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabPointerRequest, error) {
 	if len(requestBody) < 20 {
-		return nil, fmt.Errorf("%w: grab pointer request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabPointer)
 	}
 	req := &GrabPointerRequest{}
 	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
@@ -957,9 +957,9 @@ type UngrabPointerRequest struct {
 
 func (UngrabPointerRequest) OpCode() reqCode { return UngrabPointer }
 
-func parseUngrabPointerRequest(order binary.ByteOrder, requestBody []byte) (*UngrabPointerRequest, error) {
+func parseUngrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabPointerRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: ungrab pointer request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabPointer)
 	}
 	req := &UngrabPointerRequest{}
 	req.Time = Timestamp(order.Uint32(requestBody[0:4]))
@@ -980,9 +980,9 @@ type GrabButtonRequest struct {
 
 func (GrabButtonRequest) OpCode() reqCode { return GrabButton }
 
-func parseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte) (*GrabButtonRequest, error) {
+func parseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabButtonRequest, error) {
 	if len(requestBody) < 20 {
-		return nil, fmt.Errorf("%w: grab button request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabButton)
 	}
 	req := &GrabButtonRequest{}
 	req.OwnerEvents = data != 0
@@ -1005,9 +1005,9 @@ type UngrabButtonRequest struct {
 
 func (UngrabButtonRequest) OpCode() reqCode { return UngrabButton }
 
-func parseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte) (*UngrabButtonRequest, error) {
+func parseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*UngrabButtonRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: ungrab button request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabButton)
 	}
 	req := &UngrabButtonRequest{}
 	req.Button = data
@@ -1024,9 +1024,9 @@ type ChangeActivePointerGrabRequest struct {
 
 func (ChangeActivePointerGrabRequest) OpCode() reqCode { return ChangeActivePointerGrab }
 
-func parseChangeActivePointerGrabRequest(order binary.ByteOrder, requestBody []byte) (*ChangeActivePointerGrabRequest, error) {
+func parseChangeActivePointerGrabRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeActivePointerGrabRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: change active pointer grab request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeActivePointerGrab)
 	}
 	req := &ChangeActivePointerGrabRequest{}
 	req.Cursor = Cursor(order.Uint32(requestBody[0:4]))
@@ -1045,9 +1045,9 @@ type GrabKeyboardRequest struct {
 
 func (GrabKeyboardRequest) OpCode() reqCode { return GrabKeyboard }
 
-func parseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte) (*GrabKeyboardRequest, error) {
+func parseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabKeyboardRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: grab keyboard request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabKeyboard)
 	}
 	req := &GrabKeyboardRequest{}
 	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
@@ -1063,9 +1063,9 @@ type UngrabKeyboardRequest struct {
 
 func (UngrabKeyboardRequest) OpCode() reqCode { return UngrabKeyboard }
 
-func parseUngrabKeyboardRequest(order binary.ByteOrder, requestBody []byte) (*UngrabKeyboardRequest, error) {
+func parseUngrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyboardRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: ungrab keyboard request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabKeyboard)
 	}
 	req := &UngrabKeyboardRequest{}
 	req.Time = Timestamp(order.Uint32(requestBody[0:4]))
@@ -1083,9 +1083,9 @@ type GrabKeyRequest struct {
 
 func (GrabKeyRequest) OpCode() reqCode { return GrabKey }
 
-func parseGrabKeyRequest(order binary.ByteOrder, requestBody []byte) (*GrabKeyRequest, error) {
+func parseGrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabKeyRequest, error) {
 	if len(requestBody) < 13 {
-		return nil, fmt.Errorf("%w: grab key request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabKey)
 	}
 	req := &GrabKeyRequest{}
 	req.OwnerEvents = requestBody[0] != 0
@@ -1105,9 +1105,9 @@ type UngrabKeyRequest struct {
 
 func (UngrabKeyRequest) OpCode() reqCode { return UngrabKey }
 
-func parseUngrabKeyRequest(order binary.ByteOrder, requestBody []byte) (*UngrabKeyRequest, error) {
+func parseUngrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: ungrab key request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabKey)
 	}
 	req := &UngrabKeyRequest{}
 	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
@@ -1123,9 +1123,9 @@ type AllowEventsRequest struct {
 
 func (AllowEventsRequest) OpCode() reqCode { return AllowEvents }
 
-func parseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []byte) (*AllowEventsRequest, error) {
+func parseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*AllowEventsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: allow events request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, AllowEvents)
 	}
 	req := &AllowEventsRequest{}
 	req.Mode = data
@@ -1137,7 +1137,7 @@ type GrabServerRequest struct{}
 
 func (GrabServerRequest) OpCode() reqCode { return GrabServer }
 
-func parseGrabServerRequest(order binary.ByteOrder, requestBody []byte) (*GrabServerRequest, error) {
+func parseGrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabServerRequest, error) {
 	return &GrabServerRequest{}, nil
 }
 
@@ -1145,7 +1145,7 @@ type UngrabServerRequest struct{}
 
 func (UngrabServerRequest) OpCode() reqCode { return UngrabServer }
 
-func parseUngrabServerRequest(order binary.ByteOrder, requestBody []byte) (*UngrabServerRequest, error) {
+func parseUngrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabServerRequest, error) {
 	return &UngrabServerRequest{}, nil
 }
 
@@ -1155,9 +1155,9 @@ type QueryPointerRequest struct {
 
 func (QueryPointerRequest) OpCode() reqCode { return QueryPointer }
 
-func parseQueryPointerRequest(order binary.ByteOrder, requestBody []byte) (*QueryPointerRequest, error) {
+func parseQueryPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryPointerRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: query pointer request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryPointer)
 	}
 	req := &QueryPointerRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1172,9 +1172,9 @@ type GetMotionEventsRequest struct {
 
 func (GetMotionEventsRequest) OpCode() reqCode { return GetMotionEvents }
 
-func parseGetMotionEventsRequest(order binary.ByteOrder, requestBody []byte) (*GetMotionEventsRequest, error) {
+func parseGetMotionEventsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetMotionEventsRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: get motion events request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetMotionEvents)
 	}
 	req := &GetMotionEventsRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -1192,9 +1192,9 @@ type TranslateCoordsRequest struct {
 
 func (TranslateCoordsRequest) OpCode() reqCode { return TranslateCoords }
 
-func parseTranslateCoordsRequest(order binary.ByteOrder, requestBody []byte) (*TranslateCoordsRequest, error) {
+func parseTranslateCoordsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*TranslateCoordsRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: translate coords request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, TranslateCoords)
 	}
 	req := &TranslateCoordsRequest{}
 	req.SrcWindow = Window(order.Uint32(requestBody[0:4]))
@@ -1217,9 +1217,9 @@ type WarpPointerRequest struct {
 
 func (WarpPointerRequest) OpCode() reqCode { return WarpPointer }
 
-func parseWarpPointerRequest(order binary.ByteOrder, payload []byte) (*WarpPointerRequest, error) {
+func parseWarpPointerRequest(order binary.ByteOrder, payload []byte, seq uint16) (*WarpPointerRequest, error) {
 	if len(payload) < 16 {
-		return nil, fmt.Errorf("%w: warp pointer request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, WarpPointer)
 	}
 	req := &WarpPointerRequest{}
 	req.DstX = int16(order.Uint16(payload[12:14]))
@@ -1235,9 +1235,9 @@ type SetInputFocusRequest struct {
 
 func (SetInputFocusRequest) OpCode() reqCode { return SetInputFocus }
 
-func parseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte) (*SetInputFocusRequest, error) {
+func parseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetInputFocusRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: set input focus request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetInputFocus)
 	}
 	req := &SetInputFocusRequest{}
 	req.Focus = Window(order.Uint32(requestBody[0:4]))
@@ -1250,7 +1250,7 @@ type GetInputFocusRequest struct{}
 
 func (GetInputFocusRequest) OpCode() reqCode { return GetInputFocus }
 
-func parseGetInputFocusRequest(order binary.ByteOrder, requestBody []byte) (*GetInputFocusRequest, error) {
+func parseGetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetInputFocusRequest, error) {
 	return &GetInputFocusRequest{}, nil
 }
 
@@ -1258,7 +1258,7 @@ type QueryKeymapRequest struct{}
 
 func (QueryKeymapRequest) OpCode() reqCode { return QueryKeymap }
 
-func parseQueryKeymapRequest(order binary.ByteOrder, requestBody []byte) (*QueryKeymapRequest, error) {
+func parseQueryKeymapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryKeymapRequest, error) {
 	return &QueryKeymapRequest{}, nil
 }
 
@@ -1269,15 +1269,15 @@ type OpenFontRequest struct {
 
 func (OpenFontRequest) OpCode() reqCode { return OpenFont }
 
-func parseOpenFontRequest(order binary.ByteOrder, requestBody []byte) (*OpenFontRequest, error) {
+func parseOpenFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*OpenFontRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: open font request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, OpenFont)
 	}
 	req := &OpenFontRequest{}
 	req.Fid = Font(order.Uint32(requestBody[0:4]))
 	nameLen := order.Uint16(requestBody[4:6])
 	if len(requestBody) < 8+int(nameLen) {
-		return nil, fmt.Errorf("%w: open font request too short for name", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, OpenFont)
 	}
 	req.Name = string(requestBody[8 : 8+nameLen])
 	return req, nil
@@ -1289,9 +1289,9 @@ type CloseFontRequest struct {
 
 func (CloseFontRequest) OpCode() reqCode { return CloseFont }
 
-func parseCloseFontRequest(order binary.ByteOrder, requestBody []byte) (*CloseFontRequest, error) {
+func parseCloseFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CloseFontRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: close font request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CloseFont)
 	}
 	req := &CloseFontRequest{}
 	req.Fid = Font(order.Uint32(requestBody[0:4]))
@@ -1304,9 +1304,9 @@ type QueryFontRequest struct {
 
 func (QueryFontRequest) OpCode() reqCode { return QueryFont }
 
-func parseQueryFontRequest(order binary.ByteOrder, requestBody []byte) (*QueryFontRequest, error) {
+func parseQueryFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryFontRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: query font request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryFont)
 	}
 	req := &QueryFontRequest{}
 	req.Fid = Font(order.Uint32(requestBody[0:4]))
@@ -1320,9 +1320,9 @@ type QueryTextExtentsRequest struct {
 
 func (QueryTextExtentsRequest) OpCode() reqCode { return QueryTextExtents }
 
-func parseQueryTextExtentsRequest(order binary.ByteOrder, requestBody []byte) (*QueryTextExtentsRequest, error) {
+func parseQueryTextExtentsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryTextExtentsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: query text extents request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTextExtents)
 	}
 	req := &QueryTextExtentsRequest{}
 	req.Fid = Font(order.Uint32(requestBody[0:4]))
@@ -1339,15 +1339,15 @@ type ListFontsRequest struct {
 
 func (ListFontsRequest) OpCode() reqCode { return ListFonts }
 
-func parseListFontsRequest(order binary.ByteOrder, requestBody []byte) (*ListFontsRequest, error) {
+func parseListFontsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListFontsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: list fonts request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFonts)
 	}
 	req := &ListFontsRequest{}
 	req.MaxNames = order.Uint16(requestBody[0:2])
 	nameLen := order.Uint16(requestBody[2:4])
 	if len(requestBody) < 4+int(nameLen) {
-		return nil, fmt.Errorf("%w: list fonts request too short for pattern", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFonts)
 	}
 	req.Pattern = string(requestBody[4 : 4+nameLen])
 	return req, nil
@@ -1360,15 +1360,15 @@ type ListFontsWithInfoRequest struct {
 
 func (ListFontsWithInfoRequest) OpCode() reqCode { return ListFontsWithInfo }
 
-func parseListFontsWithInfoRequest(order binary.ByteOrder, requestBody []byte) (*ListFontsWithInfoRequest, error) {
+func parseListFontsWithInfoRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListFontsWithInfoRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: list fonts with info request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFontsWithInfo)
 	}
 	req := &ListFontsWithInfoRequest{}
 	req.MaxNames = order.Uint16(requestBody[0:2])
 	nameLen := order.Uint16(requestBody[2:4])
 	if len(requestBody) < 4+int(nameLen) {
-		return nil, fmt.Errorf("%w: list fonts with info request too short for pattern", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFontsWithInfo)
 	}
 	req.Pattern = string(requestBody[4 : 4+nameLen])
 	return req, nil
@@ -1381,21 +1381,21 @@ type SetFontPathRequest struct {
 
 func (SetFontPathRequest) OpCode() reqCode { return SetFontPath }
 
-func parseSetFontPathRequest(order binary.ByteOrder, requestBody []byte) (*SetFontPathRequest, error) {
+func parseSetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetFontPathRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: set font path request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 	}
 	req := &SetFontPathRequest{}
 	req.NumPaths = order.Uint16(requestBody[0:2])
 	pathsData := requestBody[4:]
 	for i := 0; i < int(req.NumPaths); i++ {
 		if len(pathsData) == 0 {
-			return nil, fmt.Errorf("%w: set font path request too short for path length", errParseError)
+			return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 		}
 		pathLen := int(pathsData[0])
 		pathsData = pathsData[1:]
 		if len(pathsData) < pathLen {
-			return nil, fmt.Errorf("%w: set font path request too short for path", errParseError)
+			return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 		}
 		req.Paths = append(req.Paths, string(pathsData[:pathLen]))
 		pathsData = pathsData[pathLen:]
@@ -1407,7 +1407,7 @@ type GetFontPathRequest struct{}
 
 func (GetFontPathRequest) OpCode() reqCode { return GetFontPath }
 
-func parseGetFontPathRequest(order binary.ByteOrder, requestBody []byte) (*GetFontPathRequest, error) {
+func parseGetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetFontPathRequest, error) {
 	return &GetFontPathRequest{}, nil
 }
 
@@ -1421,9 +1421,9 @@ type CreatePixmapRequest struct {
 
 func (CreatePixmapRequest) OpCode() reqCode { return CreatePixmap }
 
-func parseCreatePixmapRequest(order binary.ByteOrder, data byte, payload []byte) (*CreatePixmapRequest, error) {
+func parseCreatePixmapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreatePixmapRequest, error) {
 	if len(payload) < 12 {
-		return nil, fmt.Errorf("%w: create pixmap request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CreatePixmap)
 	}
 	req := &CreatePixmapRequest{}
 	req.Depth = data
@@ -1440,9 +1440,9 @@ type FreePixmapRequest struct {
 
 func (FreePixmapRequest) OpCode() reqCode { return FreePixmap }
 
-func parseFreePixmapRequest(order binary.ByteOrder, requestBody []byte) (*FreePixmapRequest, error) {
+func parseFreePixmapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreePixmapRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: free pixmap request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, FreePixmap)
 	}
 	req := &FreePixmapRequest{}
 	req.Pid = Pixmap(order.Uint32(requestBody[0:4]))
@@ -1458,15 +1458,15 @@ type CreateGCRequest struct {
 
 func (CreateGCRequest) OpCode() reqCode { return CreateGC }
 
-func parseCreateGCRequest(order binary.ByteOrder, requestBody []byte) (*CreateGCRequest, error) {
+func parseCreateGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CreateGCRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: create gc request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 	}
 	req := &CreateGCRequest{}
 	req.Cid = GContext(order.Uint32(requestBody[0:4]))
 	req.Drawable = Drawable(order.Uint32(requestBody[4:8]))
 	req.ValueMask = order.Uint32(requestBody[8:12])
-	values, _, err := parseGCValues(order, req.ValueMask, requestBody[12:])
+	values, _, err := parseGCValues(order, req.ValueMask, requestBody[12:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -1482,14 +1482,14 @@ type ChangeGCRequest struct {
 
 func (ChangeGCRequest) OpCode() reqCode { return ChangeGC }
 
-func parseChangeGCRequest(order binary.ByteOrder, requestBody []byte) (*ChangeGCRequest, error) {
+func parseChangeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeGCRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: change gc request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeGC)
 	}
 	req := &ChangeGCRequest{}
 	req.Gc = GContext(order.Uint32(requestBody[0:4]))
 	req.ValueMask = order.Uint32(requestBody[4:8])
-	values, _, err := parseGCValues(order, req.ValueMask, requestBody[8:])
+	values, _, err := parseGCValues(order, req.ValueMask, requestBody[8:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -1504,9 +1504,9 @@ type CopyGCRequest struct {
 
 func (CopyGCRequest) OpCode() reqCode { return CopyGC }
 
-func parseCopyGCRequest(order binary.ByteOrder, requestBody []byte) (*CopyGCRequest, error) {
+func parseCopyGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyGCRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: copy gc request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyGC)
 	}
 	req := &CopyGCRequest{}
 	req.SrcGC = GContext(order.Uint32(requestBody[0:4]))
@@ -1522,16 +1522,16 @@ type SetDashesRequest struct {
 
 func (SetDashesRequest) OpCode() reqCode { return SetDashes }
 
-func parseSetDashesRequest(order binary.ByteOrder, requestBody []byte) (*SetDashesRequest, error) {
+func parseSetDashesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetDashesRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: set dashes request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetDashes)
 	}
 	req := &SetDashesRequest{}
 	req.GC = GContext(order.Uint32(requestBody[0:4]))
 	req.DashOffset = order.Uint16(requestBody[4:6])
 	nDashes := order.Uint16(requestBody[6:8])
 	if len(requestBody) < 8+int(nDashes) {
-		return nil, fmt.Errorf("%w: set dashes request too short for dashes", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetDashes)
 	}
 	req.Dashes = requestBody[8 : 8+nDashes]
 	return req, nil
@@ -1547,9 +1547,9 @@ type SetClipRectanglesRequest struct {
 
 func (SetClipRectanglesRequest) OpCode() reqCode { return SetClipRectangles }
 
-func parseSetClipRectanglesRequest(order binary.ByteOrder, data byte, requestBody []byte) (*SetClipRectanglesRequest, error) {
+func parseSetClipRectanglesRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetClipRectanglesRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: set clip rectangles request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetClipRectangles)
 	}
 	req := &SetClipRectanglesRequest{}
 	req.Ordering = data
@@ -1576,9 +1576,9 @@ type FreeGCRequest struct {
 
 func (FreeGCRequest) OpCode() reqCode { return FreeGC }
 
-func parseFreeGCRequest(order binary.ByteOrder, requestBody []byte) (*FreeGCRequest, error) {
+func parseFreeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeGCRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: free gc request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeGC)
 	}
 	req := &FreeGCRequest{}
 	req.GC = GContext(order.Uint32(requestBody[0:4]))
@@ -1596,9 +1596,9 @@ type ClearAreaRequest struct {
 
 func (ClearAreaRequest) OpCode() reqCode { return ClearArea }
 
-func parseClearAreaRequest(order binary.ByteOrder, requestBody []byte) (*ClearAreaRequest, error) {
+func parseClearAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ClearAreaRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: clear area request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ClearArea)
 	}
 	req := &ClearAreaRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -1623,9 +1623,9 @@ type CopyAreaRequest struct {
 
 func (CopyAreaRequest) OpCode() reqCode { return CopyArea }
 
-func parseCopyAreaRequest(order binary.ByteOrder, requestBody []byte) (*CopyAreaRequest, error) {
+func parseCopyAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyAreaRequest, error) {
 	if len(requestBody) < 28 {
-		return nil, fmt.Errorf("%w: copy area request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyArea)
 	}
 	req := &CopyAreaRequest{}
 	req.SrcDrawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1648,9 +1648,9 @@ type PolyPointRequest struct {
 
 func (PolyPointRequest) OpCode() reqCode { return PolyPoint }
 
-func parsePolyPointRequest(order binary.ByteOrder, requestBody []byte) (*PolyPointRequest, error) {
+func parsePolyPointRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyPointRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: poly point request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyPoint)
 	}
 	req := &PolyPointRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1673,9 +1673,9 @@ type PolyLineRequest struct {
 
 func (PolyLineRequest) OpCode() reqCode { return PolyLine }
 
-func parsePolyLineRequest(order binary.ByteOrder, requestBody []byte) (*PolyLineRequest, error) {
+func parsePolyLineRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyLineRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: poly line request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyLine)
 	}
 	req := &PolyLineRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1698,9 +1698,9 @@ type PolySegmentRequest struct {
 
 func (PolySegmentRequest) OpCode() reqCode { return PolySegment }
 
-func parsePolySegmentRequest(order binary.ByteOrder, requestBody []byte) (*PolySegmentRequest, error) {
+func parsePolySegmentRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolySegmentRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: poly segment request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolySegment)
 	}
 	req := &PolySegmentRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1725,9 +1725,9 @@ type PolyRectangleRequest struct {
 
 func (PolyRectangleRequest) OpCode() reqCode { return PolyRectangle }
 
-func parsePolyRectangleRequest(order binary.ByteOrder, requestBody []byte) (*PolyRectangleRequest, error) {
+func parsePolyRectangleRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyRectangleRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: poly rectangle request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyRectangle)
 	}
 	req := &PolyRectangleRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1752,9 +1752,9 @@ type PolyArcRequest struct {
 
 func (PolyArcRequest) OpCode() reqCode { return PolyArc }
 
-func parsePolyArcRequest(order binary.ByteOrder, requestBody []byte) (*PolyArcRequest, error) {
+func parsePolyArcRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyArcRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: poly arc request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyArc)
 	}
 	req := &PolyArcRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1782,9 +1782,9 @@ type FillPolyRequest struct {
 
 func (FillPolyRequest) OpCode() reqCode { return FillPoly }
 
-func parseFillPolyRequest(order binary.ByteOrder, requestBody []byte) (*FillPolyRequest, error) {
+func parseFillPolyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FillPolyRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: fill poly request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, FillPoly)
 	}
 	req := &FillPolyRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1807,9 +1807,9 @@ type PolyFillRectangleRequest struct {
 
 func (PolyFillRectangleRequest) OpCode() reqCode { return PolyFillRectangle }
 
-func parsePolyFillRectangleRequest(order binary.ByteOrder, requestBody []byte) (*PolyFillRectangleRequest, error) {
+func parsePolyFillRectangleRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyFillRectangleRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: poly fill rectangle request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyFillRectangle)
 	}
 	req := &PolyFillRectangleRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1834,9 +1834,9 @@ type PolyFillArcRequest struct {
 
 func (PolyFillArcRequest) OpCode() reqCode { return PolyFillArc }
 
-func parsePolyFillArcRequest(order binary.ByteOrder, requestBody []byte) (*PolyFillArcRequest, error) {
+func parsePolyFillArcRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyFillArcRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: poly fill arc request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyFillArc)
 	}
 	req := &PolyFillArcRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -1870,9 +1870,9 @@ type PutImageRequest struct {
 
 func (PutImageRequest) OpCode() reqCode { return PutImage }
 
-func parsePutImageRequest(order binary.ByteOrder, data byte, requestBody []byte) (*PutImageRequest, error) {
+func parsePutImageRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*PutImageRequest, error) {
 	if len(requestBody) < 20 {
-		return nil, fmt.Errorf("%w: put image request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PutImage)
 	}
 	req := &PutImageRequest{}
 	req.Format = data
@@ -1900,9 +1900,9 @@ type GetImageRequest struct {
 
 func (GetImageRequest) OpCode() reqCode { return GetImage }
 
-func parseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte) (*GetImageRequest, error) {
+func parseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GetImageRequest, error) {
 	if len(requestBody) < 16 {
-		return nil, fmt.Errorf("%w: get image request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetImage)
 	}
 	req := &GetImageRequest{}
 	req.Format = data
@@ -1924,10 +1924,10 @@ type PolyText8Request struct {
 
 func (PolyText8Request) OpCode() reqCode { return PolyText8 }
 
-func parsePolyText8Request(order binary.ByteOrder, data []byte) (*PolyText8Request, error) {
+func parsePolyText8Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText8Request, error) {
 	var req PolyText8Request
 	if len(data) < 12 {
-		return nil, fmt.Errorf("poly text 8 request too short for header")
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyText8)
 	}
 	req.Drawable = Drawable(order.Uint32(data[0:4]))
 	req.GC = GContext(order.Uint32(data[4:8]))
@@ -1974,10 +1974,10 @@ type PolyText16Request struct {
 
 func (PolyText16Request) OpCode() reqCode { return PolyText16 }
 
-func parsePolyText16Request(order binary.ByteOrder, data []byte) (*PolyText16Request, error) {
+func parsePolyText16Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText16Request, error) {
 	var req PolyText16Request
 	if len(data) < 12 {
-		return nil, fmt.Errorf("poly text 16 request too short for header")
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyText16)
 	}
 	req.Drawable = Drawable(order.Uint32(data[0:4]))
 	req.GC = GContext(order.Uint32(data[4:8]))
@@ -2029,9 +2029,9 @@ type ImageText8Request struct {
 
 func (ImageText8Request) OpCode() reqCode { return ImageText8 }
 
-func parseImageText8Request(order binary.ByteOrder, requestBody []byte) (*ImageText8Request, error) {
+func parseImageText8Request(order binary.ByteOrder, requestBody []byte, seq uint16) (*ImageText8Request, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: image text 8 request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ImageText8)
 	}
 	req := &ImageText8Request{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -2052,9 +2052,9 @@ type ImageText16Request struct {
 
 func (ImageText16Request) OpCode() reqCode { return ImageText16 }
 
-func parseImageText16Request(order binary.ByteOrder, requestBody []byte) (*ImageText16Request, error) {
+func parseImageText16Request(order binary.ByteOrder, requestBody []byte, seq uint16) (*ImageText16Request, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: image text 16 request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ImageText16)
 	}
 	req := &ImageText16Request{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -2076,9 +2076,9 @@ type CreateColormapRequest struct {
 
 func (CreateColormapRequest) OpCode() reqCode { return CreateColormap }
 
-func parseCreateColormapRequest(order binary.ByteOrder, data byte, payload []byte) (*CreateColormapRequest, error) {
+func parseCreateColormapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreateColormapRequest, error) {
 	if len(payload) < 12 {
-		return nil, fmt.Errorf("%w: create colormap request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateColormap)
 	}
 	req := &CreateColormapRequest{}
 	req.Alloc = data
@@ -2094,9 +2094,9 @@ type FreeColormapRequest struct {
 
 func (FreeColormapRequest) OpCode() reqCode { return FreeColormap }
 
-func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte) (*FreeColormapRequest, error) {
+func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeColormapRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: free colormap request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeColormap)
 	}
 	req := &FreeColormapRequest{}
 	req.Cmap = Colormap(order.Uint32(requestBody[0:4]))
@@ -2109,9 +2109,9 @@ type InstallColormapRequest struct {
 
 func (InstallColormapRequest) OpCode() reqCode { return InstallColormap }
 
-func parseInstallColormapRequest(order binary.ByteOrder, requestBody []byte) (*InstallColormapRequest, error) {
+func parseInstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*InstallColormapRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: install colormap request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, InstallColormap)
 	}
 	req := &InstallColormapRequest{}
 	req.Cmap = Colormap(order.Uint32(requestBody[0:4]))
@@ -2124,9 +2124,9 @@ type UninstallColormapRequest struct {
 
 func (UninstallColormapRequest) OpCode() reqCode { return UninstallColormap }
 
-func parseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte) (*UninstallColormapRequest, error) {
+func parseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UninstallColormapRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: uninstall colormap request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, UninstallColormap)
 	}
 	req := &UninstallColormapRequest{}
 	req.Cmap = Colormap(order.Uint32(requestBody[0:4]))
@@ -2139,9 +2139,9 @@ type ListInstalledColormapsRequest struct {
 
 func (ListInstalledColormapsRequest) OpCode() reqCode { return ListInstalledColormaps }
 
-func parseListInstalledColormapsRequest(order binary.ByteOrder, requestBody []byte) (*ListInstalledColormapsRequest, error) {
+func parseListInstalledColormapsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListInstalledColormapsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: list installed colormaps request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ListInstalledColormaps)
 	}
 	req := &ListInstalledColormapsRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
@@ -2157,9 +2157,9 @@ type AllocColorRequest struct {
 
 func (AllocColorRequest) OpCode() reqCode { return AllocColor }
 
-func parseAllocColorRequest(order binary.ByteOrder, payload []byte) (*AllocColorRequest, error) {
+func parseAllocColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocColorRequest, error) {
 	if len(payload) < 12 {
-		return nil, fmt.Errorf("%w: alloc color request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColor)
 	}
 	req := &AllocColorRequest{}
 	req.Cmap = Colormap(order.Uint32(payload[0:4]))
@@ -2176,15 +2176,15 @@ type AllocNamedColorRequest struct {
 
 func (AllocNamedColorRequest) OpCode() reqCode { return AllocNamedColor }
 
-func parseAllocNamedColorRequest(order binary.ByteOrder, payload []byte) (*AllocNamedColorRequest, error) {
+func parseAllocNamedColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocNamedColorRequest, error) {
 	if len(payload) < 8 {
-		return nil, fmt.Errorf("%w: alloc named color request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocNamedColor)
 	}
 	req := &AllocNamedColorRequest{}
 	req.Cmap = Colormap(order.Uint32(payload[0:4]))
 	nameLen := order.Uint16(payload[4:6])
 	if len(payload) < 8+int(nameLen) {
-		return nil, fmt.Errorf("%w: alloc named color request too short for name", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocNamedColor)
 	}
 	req.Name = payload[8 : 8+nameLen]
 	return req, nil
@@ -2208,16 +2208,16 @@ FreeColors
 	4     CARD32                          plane-mask
 	4n     LISTofCARD32                   pixels
 */
-func parseFreeColorsRequest(order binary.ByteOrder, requestBody []byte) (*FreeColorsRequest, error) {
+func parseFreeColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeColorsRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: free colors request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeColors)
 	}
 	req := &FreeColorsRequest{}
 	req.Cmap = Colormap(order.Uint32(requestBody[0:4]))
 	req.PlaneMask = order.Uint32(requestBody[4:8])
 	numPixels := (len(requestBody) - 8) / 4
 	if len(requestBody) < 8+numPixels*4 {
-		return nil, fmt.Errorf("%w: free colors request too short for %d colors", errParseError, numPixels)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeColors)
 	}
 	for i := 0; i < numPixels; i++ {
 		offset := 8 + i*4
@@ -2239,9 +2239,9 @@ type StoreColorsRequest struct {
 
 func (StoreColorsRequest) OpCode() reqCode { return StoreColors }
 
-func parseStoreColorsRequest(order binary.ByteOrder, requestBody []byte) (*StoreColorsRequest, error) {
+func parseStoreColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*StoreColorsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: store colors request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, StoreColors)
 	}
 	req := &StoreColorsRequest{}
 	req.Cmap = Colormap(order.Uint32(requestBody[0:4]))
@@ -2275,16 +2275,16 @@ type StoreNamedColorRequest struct {
 
 func (StoreNamedColorRequest) OpCode() reqCode { return StoreNamedColor }
 
-func parseStoreNamedColorRequest(order binary.ByteOrder, data byte, requestBody []byte) (*StoreNamedColorRequest, error) {
+func parseStoreNamedColorRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*StoreNamedColorRequest, error) {
 	if len(requestBody) < 12 {
-		return nil, fmt.Errorf("%w: store named color request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, StoreNamedColor)
 	}
 	req := &StoreNamedColorRequest{}
 	req.Cmap = Colormap(order.Uint32(requestBody[0:4]))
 	req.Pixel = order.Uint32(requestBody[4:8])
 	nameLen := order.Uint16(requestBody[8:10])
 	if len(requestBody) < 12+int(nameLen) {
-		return nil, fmt.Errorf("%w: store named color request too short for name", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, StoreNamedColor)
 	}
 	req.Name = string(requestBody[12 : 12+nameLen])
 	req.Flags = data
@@ -2298,9 +2298,9 @@ type QueryColorsRequest struct {
 
 func (QueryColorsRequest) OpCode() reqCode { return QueryColors }
 
-func parseQueryColorsRequest(order binary.ByteOrder, requestBody []byte) (*QueryColorsRequest, error) {
+func parseQueryColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryColorsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: query colors request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryColors)
 	}
 	req := &QueryColorsRequest{}
 	req.Cmap = xID{local: order.Uint32(requestBody[0:4])}
@@ -2319,15 +2319,15 @@ type LookupColorRequest struct {
 
 func (LookupColorRequest) OpCode() reqCode { return LookupColor }
 
-func parseLookupColorRequest(order binary.ByteOrder, payload []byte) (*LookupColorRequest, error) {
+func parseLookupColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*LookupColorRequest, error) {
 	if len(payload) < 8 {
-		return nil, fmt.Errorf("%w: lookup color request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, LookupColor)
 	}
 	req := &LookupColorRequest{}
 	req.Cmap = Colormap(order.Uint32(payload[0:4]))
 	nameLen := order.Uint16(payload[4:6])
 	if len(payload) < 8+int(nameLen) {
-		return nil, fmt.Errorf("%w: lookup color request too short for name", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, LookupColor)
 	}
 	req.Name = string(payload[8 : 8+nameLen])
 	return req, nil
@@ -2345,9 +2345,9 @@ type CreateGlyphCursorRequest struct {
 
 func (CreateGlyphCursorRequest) OpCode() reqCode { return CreateGlyphCursor }
 
-func parseCreateGlyphCursorRequest(order binary.ByteOrder, requestBody []byte) (*CreateGlyphCursorRequest, error) {
+func parseCreateGlyphCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CreateGlyphCursorRequest, error) {
 	if len(requestBody) < 28 {
-		return nil, fmt.Errorf("%w: create glyph cursor request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateGlyphCursor)
 	}
 	req := &CreateGlyphCursorRequest{}
 	req.Cid = Cursor(order.Uint32(requestBody[0:4]))
@@ -2370,9 +2370,9 @@ type FreeCursorRequest struct {
 
 func (FreeCursorRequest) OpCode() reqCode { return FreeCursor }
 
-func parseFreeCursorRequest(order binary.ByteOrder, requestBody []byte) (*FreeCursorRequest, error) {
+func parseFreeCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeCursorRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: free cursor request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeCursor)
 	}
 	req := &FreeCursorRequest{}
 	req.Cursor = Cursor(order.Uint32(requestBody[0:4]))
@@ -2387,9 +2387,9 @@ type RecolorCursorRequest struct {
 
 func (RecolorCursorRequest) OpCode() reqCode { return RecolorCursor }
 
-func parseRecolorCursorRequest(order binary.ByteOrder, requestBody []byte) (*RecolorCursorRequest, error) {
+func parseRecolorCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*RecolorCursorRequest, error) {
 	if len(requestBody) < 16 {
-		return nil, fmt.Errorf("%w: recolor cursor request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, RecolorCursor)
 	}
 	req := &RecolorCursorRequest{}
 	req.Cursor = Cursor(order.Uint32(requestBody[0:4]))
@@ -2411,9 +2411,9 @@ type QueryBestSizeRequest struct {
 
 func (QueryBestSizeRequest) OpCode() reqCode { return QueryBestSize }
 
-func parseQueryBestSizeRequest(order binary.ByteOrder, requestBody []byte) (*QueryBestSizeRequest, error) {
+func parseQueryBestSizeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryBestSizeRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: query best size request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryBestSize)
 	}
 	req := &QueryBestSizeRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
@@ -2428,14 +2428,14 @@ type QueryExtensionRequest struct {
 
 func (QueryExtensionRequest) OpCode() reqCode { return QueryExtension }
 
-func parseQueryExtensionRequest(order binary.ByteOrder, requestBody []byte) (*QueryExtensionRequest, error) {
+func parseQueryExtensionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryExtensionRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: query extension request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryExtension)
 	}
 	req := &QueryExtensionRequest{}
 	nameLen := order.Uint16(requestBody[0:2])
 	if len(requestBody) < 4+int(nameLen) {
-		return nil, fmt.Errorf("%w: query extension request too short for name", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryExtension)
 	}
 	req.Name = string(requestBody[4 : 4+nameLen])
 	return req, nil
@@ -2447,7 +2447,7 @@ type BellRequest struct {
 
 func (BellRequest) OpCode() reqCode { return Bell }
 
-func parseBellRequest(requestBody byte) (*BellRequest, error) {
+func parseBellRequest(requestBody byte, seq uint16) (*BellRequest, error) {
 	req := &BellRequest{}
 	req.Percent = int8(requestBody)
 	return req, nil
@@ -2459,7 +2459,7 @@ type SetPointerMappingRequest struct {
 
 func (SetPointerMappingRequest) OpCode() reqCode { return SetPointerMapping }
 
-func parseSetPointerMappingRequest(order binary.ByteOrder, requestBody []byte) (*SetPointerMappingRequest, error) {
+func parseSetPointerMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetPointerMappingRequest, error) {
 	req := &SetPointerMappingRequest{}
 	req.Map = requestBody
 	return req, nil
@@ -2469,7 +2469,7 @@ type GetPointerMappingRequest struct{}
 
 func (GetPointerMappingRequest) OpCode() reqCode { return GetPointerMapping }
 
-func parseGetPointerMappingRequest(order binary.ByteOrder, requestBody []byte) (*GetPointerMappingRequest, error) {
+func parseGetPointerMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPointerMappingRequest, error) {
 	return &GetPointerMappingRequest{}, nil
 }
 
@@ -2480,9 +2480,9 @@ type GetKeyboardMappingRequest struct {
 
 func (GetKeyboardMappingRequest) OpCode() reqCode { return GetKeyboardMapping }
 
-func parseGetKeyboardMappingRequest(order binary.ByteOrder, requestBody []byte) (*GetKeyboardMappingRequest, error) {
+func parseGetKeyboardMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetKeyboardMappingRequest, error) {
 	if len(requestBody) < 2 {
-		return nil, fmt.Errorf("%w: get keyboard mapping request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, GetKeyboardMapping)
 	}
 	req := &GetKeyboardMappingRequest{}
 	req.FirstKeyCode = KeyCode(requestBody[0])
@@ -2499,9 +2499,9 @@ type ChangeKeyboardMappingRequest struct {
 
 func (ChangeKeyboardMappingRequest) OpCode() reqCode { return ChangeKeyboardMapping }
 
-func parseChangeKeyboardMappingRequest(order binary.ByteOrder, data byte, requestBody []byte) (*ChangeKeyboardMappingRequest, error) {
+func parseChangeKeyboardMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeKeyboardMappingRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: change keyboard mapping request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardMapping)
 	}
 	req := &ChangeKeyboardMappingRequest{}
 	req.KeyCodeCount = data
@@ -2509,7 +2509,7 @@ func parseChangeKeyboardMappingRequest(order binary.ByteOrder, data byte, reques
 	req.KeySymsPerKeyCode = requestBody[1]
 	numKeySyms := int(req.KeyCodeCount) * int(req.KeySymsPerKeyCode)
 	if len(requestBody) < 4+numKeySyms*4 {
-		return nil, fmt.Errorf("%w: change keyboard mapping request too short for key syms", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardMapping)
 	}
 	for i := 0; i < numKeySyms; i++ {
 		offset := 4 + i*4
@@ -2525,13 +2525,13 @@ type ChangeKeyboardControlRequest struct {
 
 func (ChangeKeyboardControlRequest) OpCode() reqCode { return ChangeKeyboardControl }
 
-func parseChangeKeyboardControlRequest(order binary.ByteOrder, requestBody []byte) (*ChangeKeyboardControlRequest, error) {
+func parseChangeKeyboardControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeKeyboardControlRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: change keyboard control request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 	}
 	req := &ChangeKeyboardControlRequest{}
 	req.ValueMask = order.Uint32(requestBody[0:4])
-	values, _, err := parseKeyboardControl(order, req.ValueMask, requestBody[4:])
+	values, _, err := parseKeyboardControl(order, req.ValueMask, requestBody[4:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -2543,7 +2543,7 @@ type GetKeyboardControlRequest struct{}
 
 func (GetKeyboardControlRequest) OpCode() reqCode { return GetKeyboardControl }
 
-func parseGetKeyboardControlRequest(order binary.ByteOrder, requestBody []byte) (*GetKeyboardControlRequest, error) {
+func parseGetKeyboardControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetKeyboardControlRequest, error) {
 	return &GetKeyboardControlRequest{}, nil
 }
 
@@ -2556,9 +2556,9 @@ type SetScreenSaverRequest struct {
 
 func (SetScreenSaverRequest) OpCode() reqCode { return SetScreenSaver }
 
-func parseSetScreenSaverRequest(order binary.ByteOrder, requestBody []byte) (*SetScreenSaverRequest, error) {
+func parseSetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetScreenSaverRequest, error) {
 	if len(requestBody) < 6 {
-		return nil, fmt.Errorf("%w: set screen saver request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetScreenSaver)
 	}
 	req := &SetScreenSaverRequest{}
 	req.Timeout = int16(order.Uint16(requestBody[0:2]))
@@ -2572,7 +2572,7 @@ type GetScreenSaverRequest struct{}
 
 func (GetScreenSaverRequest) OpCode() reqCode { return GetScreenSaver }
 
-func parseGetScreenSaverRequest(order binary.ByteOrder, requestBody []byte) (*GetScreenSaverRequest, error) {
+func parseGetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetScreenSaverRequest, error) {
 	return &GetScreenSaverRequest{}, nil
 }
 
@@ -2583,16 +2583,16 @@ type ChangeHostsRequest struct {
 
 func (ChangeHostsRequest) OpCode() reqCode { return ChangeHosts }
 
-func parseChangeHostsRequest(order binary.ByteOrder, data byte, requestBody []byte) (*ChangeHostsRequest, error) {
+func parseChangeHostsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeHostsRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: change hosts request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeHosts)
 	}
 	req := &ChangeHostsRequest{}
 	req.Mode = data
 	family := requestBody[0]
 	addressLen := order.Uint16(requestBody[2:4])
 	if len(requestBody) < 4+int(addressLen) {
-		return nil, fmt.Errorf("%w: change hosts request too short for host data", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeHosts)
 	}
 	req.Host = Host{
 		Family: family,
@@ -2605,7 +2605,7 @@ type ListHostsRequest struct{}
 
 func (ListHostsRequest) OpCode() reqCode { return ListHosts }
 
-func parseListHostsRequest(order binary.ByteOrder, requestBody []byte) (*ListHostsRequest, error) {
+func parseListHostsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListHostsRequest, error) {
 	return &ListHostsRequest{}, nil
 }
 
@@ -2615,7 +2615,7 @@ type SetAccessControlRequest struct {
 
 func (SetAccessControlRequest) OpCode() reqCode { return SetAccessControl }
 
-func parseSetAccessControlRequest(order binary.ByteOrder, data byte, requestBody []byte) (*SetAccessControlRequest, error) {
+func parseSetAccessControlRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetAccessControlRequest, error) {
 	req := &SetAccessControlRequest{}
 	req.Mode = data
 	return req, nil
@@ -2627,7 +2627,7 @@ type SetCloseDownModeRequest struct {
 
 func (SetCloseDownModeRequest) OpCode() reqCode { return SetCloseDownMode }
 
-func parseSetCloseDownModeRequest(order binary.ByteOrder, data byte, requestBody []byte) (*SetCloseDownModeRequest, error) {
+func parseSetCloseDownModeRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetCloseDownModeRequest, error) {
 	req := &SetCloseDownModeRequest{}
 	req.Mode = data
 	return req, nil
@@ -2639,9 +2639,9 @@ type KillClientRequest struct {
 
 func (KillClientRequest) OpCode() reqCode { return KillClient }
 
-func parseKillClientRequest(order binary.ByteOrder, requestBody []byte) (*KillClientRequest, error) {
+func parseKillClientRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*KillClientRequest, error) {
 	if len(requestBody) < 4 {
-		return nil, fmt.Errorf("%w: kill client request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, KillClient)
 	}
 	req := &KillClientRequest{}
 	req.Resource = order.Uint32(requestBody[0:4])
@@ -2656,16 +2656,16 @@ type RotatePropertiesRequest struct {
 
 func (RotatePropertiesRequest) OpCode() reqCode { return RotateProperties }
 
-func parseRotatePropertiesRequest(order binary.ByteOrder, requestBody []byte) (*RotatePropertiesRequest, error) {
+func parseRotatePropertiesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*RotatePropertiesRequest, error) {
 	if len(requestBody) < 8 {
-		return nil, fmt.Errorf("%w: rotate properties request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, RotateProperties)
 	}
 	req := &RotatePropertiesRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
 	numAtoms := order.Uint16(requestBody[4:6])
 	req.Delta = int16(order.Uint16(requestBody[6:8]))
 	if len(requestBody) < 8+int(numAtoms)*4 {
-		return nil, fmt.Errorf("%w: rotate properties request too short for atoms", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, RotateProperties)
 	}
 	for i := 0; i < int(numAtoms); i++ {
 		offset := 8 + i*4
@@ -2680,7 +2680,7 @@ type ForceScreenSaverRequest struct {
 
 func (ForceScreenSaverRequest) OpCode() reqCode { return ForceScreenSaver }
 
-func parseForceScreenSaverRequest(order binary.ByteOrder, data byte, requestBody []byte) (*ForceScreenSaverRequest, error) {
+func parseForceScreenSaverRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ForceScreenSaverRequest, error) {
 	req := &ForceScreenSaverRequest{}
 	req.Mode = data
 	return req, nil
@@ -2693,9 +2693,9 @@ type SetModifierMappingRequest struct {
 
 func (SetModifierMappingRequest) OpCode() reqCode { return SetModifierMapping }
 
-func parseSetModifierMappingRequest(order binary.ByteOrder, requestBody []byte) (*SetModifierMappingRequest, error) {
+func parseSetModifierMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetModifierMappingRequest, error) {
 	if len(requestBody) < 1 {
-		return nil, fmt.Errorf("%w: set modifier mapping request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetModifierMapping)
 	}
 	req := &SetModifierMappingRequest{}
 	req.KeyCodesPerModifier = requestBody[0]
@@ -2709,65 +2709,65 @@ type GetModifierMappingRequest struct{}
 
 func (GetModifierMappingRequest) OpCode() reqCode { return GetModifierMapping }
 
-func parseGetModifierMappingRequest(order binary.ByteOrder, requestBody []byte) (*GetModifierMappingRequest, error) {
+func parseGetModifierMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetModifierMappingRequest, error) {
 	return &GetModifierMappingRequest{}, nil
 }
 
-func parseKeyboardControl(order binary.ByteOrder, valueMask uint32, valuesData []byte) (KeyboardControl, int, error) {
+func parseKeyboardControl(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (KeyboardControl, int, error) {
 	kc := KeyboardControl{}
 	offset := 0
 	if valueMask&KBKeyClickPercent != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for key click percent", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.KeyClickPercent = int32(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&KBBellPercent != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for bell percent", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.BellPercent = int32(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&KBBellPitch != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for bell pitch", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.BellPitch = int32(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&KBBellDuration != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for bell duration", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.BellDuration = int32(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&KBLed != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for led", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.Led = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&KBLedMode != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for led mode", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.LedMode = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&KBKey != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for key", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.Key = KeyCode(valuesData[offset])
 		offset += 4
 	}
 	if valueMask&KBAutoRepeatMode != 0 {
 		if len(valuesData) < offset+4 {
-			return kc, 0, fmt.Errorf("%w: keyboard control values too short for auto repeat mode", errParseError)
+			return kc, 0, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 		}
 		kc.AutoRepeatMode = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
@@ -2779,7 +2779,7 @@ type NoOperationRequest struct{}
 
 func (NoOperationRequest) OpCode() reqCode { return NoOperation }
 
-func parseNoOperationRequest(order binary.ByteOrder, requestBody []byte) (*NoOperationRequest, error) {
+func parseNoOperationRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*NoOperationRequest, error) {
 	return &NoOperationRequest{}, nil
 }
 
@@ -2789,7 +2789,7 @@ func min(a, b int) int {
 	}
 	return b
 }
-func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) (GC, int, error) {
+func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (GC, int, error) {
 	// http://www.x.org/releases/X11R7.6/doc/xproto/x11protocol.html#requests:CreateGC
 	gc := GC{
 		Function:          FunctionCopy,
@@ -2819,161 +2819,161 @@ func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) 
 	offset := 0
 	if valueMask&GCFunction != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for function", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.Function = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCPlaneMask != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for plane mask", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.PlaneMask = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCForeground != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for foreground", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.Foreground = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCBackground != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for background", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.Background = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCLineWidth != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for line width", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.LineWidth = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCLineStyle != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for line style", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.LineStyle = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCCapStyle != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for cap style", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.CapStyle = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCJoinStyle != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for join style", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.JoinStyle = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCFillStyle != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for fill style", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.FillStyle = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCFillRule != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for fill rule", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.FillRule = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCTile != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for tile", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.Tile = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCStipple != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for stipple", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.Stipple = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCTileStipXOrigin != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for tile stip x origin", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.TileStipXOrigin = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCTileStipYOrigin != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for tile stip y origin", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.TileStipYOrigin = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCFont != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for font", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.Font = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCSubwindowMode != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for subwindow mode", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.SubwindowMode = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCGraphicsExposures != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for graphics exposures", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.GraphicsExposures = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCClipXOrigin != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for clip x origin", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.ClipXOrigin = int32(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&GCClipYOrigin != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for clip y origin", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.ClipYOrigin = int32(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&GCClipMask != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for clip mask", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.ClipMask = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCDashOffset != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for dash offset", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.DashOffset = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCDashes != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for dash list", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.Dashes = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&GCArcMode != 0 {
 		if len(valuesData) < offset+4 {
-			return gc, 0, fmt.Errorf("%w: gc values too short for arc mode", errParseError)
+			return gc, 0, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 		}
 		gc.ArcMode = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
@@ -2981,19 +2981,19 @@ func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte) 
 	return gc, offset, nil
 }
 
-func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData []byte) (WindowAttributes, int, error) {
+func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (WindowAttributes, int, error) {
 	wa := WindowAttributes{}
 	offset := 0
 	if valueMask&CWBackPixmap != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for background pixmap", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BackgroundPixmap = Pixmap(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&CWBackPixel != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for background pixel", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BackgroundPixel = order.Uint32(valuesData[offset : offset+4])
 		wa.BackgroundPixelSet = true
@@ -3001,91 +3001,91 @@ func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData 
 	}
 	if valueMask&CWBorderPixmap != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for border pixmap", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BorderPixmap = Pixmap(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&CWBorderPixel != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for border pixel", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BorderPixel = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWBitGravity != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for bit gravity", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BitGravity = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWWinGravity != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for win gravity", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.WinGravity = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWBackingStore != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for backing store", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BackingStore = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWBackingPlanes != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for backing planes", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BackingPlanes = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWBackingPixel != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for backing pixel", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.BackingPixel = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWOverrideRedirect != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for override redirect", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.OverrideRedirect = order.Uint32(valuesData[offset:offset+4]) != 0
 		offset += 4
 	}
 	if valueMask&CWSaveUnder != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for save under", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.SaveUnder = order.Uint32(valuesData[offset:offset+4]) != 0
 		offset += 4
 	}
 	if valueMask&CWEventMask != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for event mask", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.EventMask = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWDontPropagate != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for dont propagate mask", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.DontPropagateMask = order.Uint32(valuesData[offset : offset+4])
 		offset += 4
 	}
 	if valueMask&CWColormap != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for colormap", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.Colormap = Colormap(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
 	}
 	if valueMask&CWCursor != 0 {
 		if len(valuesData) < offset+4 {
-			return wa, 0, fmt.Errorf("%w: window attributes too short for cursor", errParseError)
+			return wa, 0, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 		}
 		wa.Cursor = Cursor(order.Uint32(valuesData[offset : offset+4]))
 		offset += 4
@@ -3103,9 +3103,9 @@ type AllocColorCellsRequest struct {
 
 func (r *AllocColorCellsRequest) OpCode() reqCode { return AllocColorCells }
 
-func parseAllocColorCellsRequest(order binary.ByteOrder, data byte, body []byte) (*AllocColorCellsRequest, error) {
+func parseAllocColorCellsRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorCellsRequest, error) {
 	if len(body) < 8 {
-		return nil, fmt.Errorf("%w: alloc color cells request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColorCells)
 	}
 	req := &AllocColorCellsRequest{}
 	req.Contiguous = data != 0
@@ -3127,9 +3127,9 @@ type AllocColorPlanesRequest struct {
 
 func (r *AllocColorPlanesRequest) OpCode() reqCode { return AllocColorPlanes }
 
-func parseAllocColorPlanesRequest(order binary.ByteOrder, data byte, body []byte) (*AllocColorPlanesRequest, error) {
+func parseAllocColorPlanesRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorPlanesRequest, error) {
 	if len(body) < 12 {
-		return nil, fmt.Errorf("%w: alloc color planes request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColorPlanes)
 	}
 	req := &AllocColorPlanesRequest{}
 	req.Contiguous = data != 0
@@ -3158,9 +3158,9 @@ type CreateCursorRequest struct {
 
 func (r *CreateCursorRequest) OpCode() reqCode { return CreateCursor }
 
-func parseCreateCursorRequest(order binary.ByteOrder, body []byte) (*CreateCursorRequest, error) {
+func parseCreateCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (*CreateCursorRequest, error) {
 	if len(body) < 28 {
-		return nil, fmt.Errorf("%w: create cursor request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateCursor)
 	}
 	req := &CreateCursorRequest{}
 	req.Cid = Cursor(order.Uint32(body[0:4]))
@@ -3193,9 +3193,9 @@ type CopyPlaneRequest struct {
 
 func (r *CopyPlaneRequest) OpCode() reqCode { return CopyPlane }
 
-func parseCopyPlaneRequest(order binary.ByteOrder, body []byte) (*CopyPlaneRequest, error) {
+func parseCopyPlaneRequest(order binary.ByteOrder, body []byte, seq uint16) (*CopyPlaneRequest, error) {
 	if len(body) < 28 {
-		return nil, fmt.Errorf("%w: copy plane request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyPlane)
 	}
 	req := &CopyPlaneRequest{}
 	req.SrcDrawable = Drawable(order.Uint32(body[0:4]))
@@ -3216,7 +3216,7 @@ type ListExtensionsRequest struct{}
 
 func (r *ListExtensionsRequest) OpCode() reqCode { return ListExtensions }
 
-func parseListExtensionsRequest(order binary.ByteOrder, raw []byte) (*ListExtensionsRequest, error) {
+func parseListExtensionsRequest(order binary.ByteOrder, raw []byte, seq uint16) (*ListExtensionsRequest, error) {
 	return &ListExtensionsRequest{}, nil
 }
 
@@ -3231,9 +3231,9 @@ type ChangePointerControlRequest struct {
 
 func (r *ChangePointerControlRequest) OpCode() reqCode { return ChangePointerControl }
 
-func parseChangePointerControlRequest(order binary.ByteOrder, body []byte) (*ChangePointerControlRequest, error) {
+func parseChangePointerControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangePointerControlRequest, error) {
 	if len(body) < 8 {
-		return nil, fmt.Errorf("%w: change pointer control request too short", errParseError)
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangePointerControl)
 	}
 	req := &ChangePointerControlRequest{}
 	req.AccelerationNumerator = int16(order.Uint16(body[0:2]))
@@ -3249,6 +3249,6 @@ type GetPointerControlRequest struct{}
 
 func (r *GetPointerControlRequest) OpCode() reqCode { return GetPointerControl }
 
-func parseGetPointerControlRequest(order binary.ByteOrder, raw []byte) (*GetPointerControlRequest, error) {
+func parseGetPointerControlRequest(order binary.ByteOrder, raw []byte, seq uint16) (*GetPointerControlRequest, error) {
 	return &GetPointerControlRequest{}, nil
 }

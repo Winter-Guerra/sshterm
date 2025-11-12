@@ -34,7 +34,7 @@ func TestRequestParsing(t *testing.T) {
 			t.Errorf("#%d %q: %v", i, tc.Raw, err)
 			continue
 		}
-		parsedReq, err := parseRequest(binary.LittleEndian, req)
+		parsedReq, err := parseRequest(binary.LittleEndian, req, 1)
 		if err != nil {
 			t.Errorf("#%d parseRequest(%q): %v", i, tc.Raw, err)
 			continue
@@ -172,7 +172,7 @@ func TestRequestParsingErrors(t *testing.T) {
 			hdr := make([]byte, 4)
 			hdr[0] = byte(tc.reqType)
 			binary.LittleEndian.PutUint16(hdr[2:4], uint16(len(tc.raw)/4))
-			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...))
+			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...), 1)
 			assert.Error(t, err, "parseRequest should return an error for undersized requests")
 		})
 	}
@@ -193,7 +193,7 @@ func TestParseImageText8Request(t *testing.T) {
 	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
 	payload = append(payload, text...)
 
-	p, err := parseImageText8Request(binary.LittleEndian, payload)
+	p, err := parseImageText8Request(binary.LittleEndian, payload, 1)
 	assert.NoError(t, err, "parseImageText8Request should not return an error")
 
 	if p.Drawable != Drawable(drawable) {
@@ -232,7 +232,7 @@ func TestParseImageText16Request(t *testing.T) {
 		payload = append(payload, buf...)
 	}
 
-	p, err := parseImageText16Request(binary.LittleEndian, payload)
+	p, err := parseImageText16Request(binary.LittleEndian, payload, 1)
 	assert.NoError(t, err, "parseImageText16Request should not return an error")
 
 	assert.Equal(t, Drawable(drawable), p.Drawable, "drawable mismatch")
@@ -270,7 +270,7 @@ func TestParsePolyText8Request(t *testing.T) {
 	// 11 % 4 = 3. Need 1 byte of padding.
 	payload = append(payload, 0)
 
-	p, err := parsePolyText8Request(binary.LittleEndian, payload)
+	p, err := parsePolyText8Request(binary.LittleEndian, payload, 1)
 	assert.NoError(t, err, "parsePolyText8Request should not return an error")
 
 	assert.Equal(t, Drawable(drawable), p.Drawable, "drawable mismatch")
@@ -319,7 +319,7 @@ func TestParsePolyText8Request_WithFontChange(t *testing.T) {
 	// 19 % 4 = 3. Need 1 byte of padding.
 	payload = append(payload, 0)
 
-	p, err := parsePolyText8Request(binary.LittleEndian, payload)
+	p, err := parsePolyText8Request(binary.LittleEndian, payload, 1)
 	assert.NoError(t, err, "parsePolyText8Request should not return an error")
 
 	expectedItems := []PolyTextItem{
@@ -358,7 +358,7 @@ func TestParsePolyText16Request(t *testing.T) {
 	// 18 % 4 = 2. Need 2 bytes of padding.
 	payload = append(payload, 0, 0)
 
-	p, err := parsePolyText16Request(binary.LittleEndian, payload)
+	p, err := parsePolyText16Request(binary.LittleEndian, payload, 1)
 	assert.NoError(t, err, "parsePolyText16Request should not return an error")
 
 	assert.Equal(t, Drawable(drawable), p.Drawable, "drawable mismatch")
@@ -417,7 +417,7 @@ func TestParsePolyText16Request_WithFontChange(t *testing.T) {
 	// 29 % 4 = 1. Need 3 bytes of padding.
 	payload = append(payload, 0, 0, 0)
 
-	p, err := parsePolyText16Request(binary.LittleEndian, payload)
+	p, err := parsePolyText16Request(binary.LittleEndian, payload, 1)
 	assert.NoError(t, err, "parsePolyText16Request should not return an error")
 
 	expectedItems := []PolyTextItem{
@@ -432,7 +432,7 @@ func TestParseQueryPointerRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody, 123)
-	p, err := parseQueryPointerRequest(order, reqBody)
+	p, err := parseQueryPointerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseQueryPointerRequest should not return an error")
 	assert.Equal(t, Drawable(123), p.Drawable, "Drawable ID should be parsed correctly")
 
@@ -445,7 +445,7 @@ func TestParseGetMotionEventsRequest(t *testing.T) {
 	order.PutUint32(reqBody[4:8], 456)
 	order.PutUint32(reqBody[8:12], 789)
 
-	p, err := parseGetMotionEventsRequest(order, reqBody)
+	p, err := parseGetMotionEventsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetMotionEventsRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, Timestamp(456), p.Start, "Start should be parsed correctly")
@@ -465,7 +465,7 @@ func TestParseCopyAreaRequest(t *testing.T) {
 	order.PutUint16(reqBody[20:22], 100) // width
 	order.PutUint16(reqBody[22:24], 200) // height
 
-	p, err := parseCopyAreaRequest(order, reqBody)
+	p, err := parseCopyAreaRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseCopyAreaRequest should not return an error")
 
 	assert.Equal(t, Drawable(1), p.SrcDrawable, "srcDrawable should be parsed correctly")
@@ -489,7 +489,7 @@ func TestParseGetImageRequest(t *testing.T) {
 	order.PutUint16(reqBody[10:12], 200)        // height
 	order.PutUint32(reqBody[12:16], 0xFFFFFFFF) // planeMask
 
-	p, err := parseGetImageRequest(order, 2, reqBody)
+	p, err := parseGetImageRequest(order, 2, reqBody, 1)
 	assert.NoError(t, err, "parseGetImageRequest should not return an error")
 
 	assert.Equal(t, Drawable(1), p.Drawable, "drawable should be parsed correctly")
@@ -506,7 +506,7 @@ func TestParseGetAtomNameRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123) // atom
 
-	p, err := parseGetAtomNameRequest(order, reqBody)
+	p, err := parseGetAtomNameRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetAtomNameRequest should not return an error")
 
 	assert.Equal(t, Atom(123), p.Atom, "atom should be parsed correctly")
@@ -517,7 +517,7 @@ func TestParseListPropertiesRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123) // window
 
-	p, err := parseListPropertiesRequest(order, reqBody)
+	p, err := parseListPropertiesRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseListPropertiesRequest should not return an error")
 
 	assert.Equal(t, Window(123), p.Window, "window should be parsed correctly")
@@ -532,7 +532,7 @@ func TestParseChangeWindowAttributesRequest(t *testing.T) {
 	order.PutUint32(reqBody[8:12], 0xFF00FF) // background pixel
 	order.PutUint32(reqBody[12:16], 456)     // cursor
 
-	p, err := parseChangeWindowAttributesRequest(order, reqBody)
+	p, err := parseChangeWindowAttributesRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseChangeWindowAttributesRequest should not return an error")
 
 	assert.Equal(t, Window(123), p.Window, "window should be parsed correctly")
@@ -546,7 +546,7 @@ func TestParseGetWindowAttributesRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseGetWindowAttributesRequest(order, reqBody)
+	p, err := parseGetWindowAttributesRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetWindowAttributesRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
@@ -556,7 +556,7 @@ func TestParseDestroyWindowRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseDestroyWindowRequest(order, reqBody)
+	p, err := parseDestroyWindowRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseDestroyWindowRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
@@ -566,7 +566,7 @@ func TestParseDestroySubwindowsRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseDestroySubwindowsRequest(order, reqBody)
+	p, err := parseDestroySubwindowsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseDestroySubwindowsRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
@@ -577,7 +577,7 @@ func TestParseChangeSaveSetRequest(t *testing.T) {
 	order.PutUint32(reqBody[0:4], 123)
 	reqBody[4] = 1
 
-	p, err := parseChangeSaveSetRequest(order, reqBody)
+	p, err := parseChangeSaveSetRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseChangeSaveSetRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, byte(1), p.Mode, "Mode should be parsed correctly")
@@ -591,7 +591,7 @@ func TestParseReparentWindowRequest(t *testing.T) {
 	order.PutUint16(reqBody[8:10], 10)
 	order.PutUint16(reqBody[10:12], 20)
 
-	p, err := parseReparentWindowRequest(order, reqBody)
+	p, err := parseReparentWindowRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseReparentWindowRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, Window(456), p.Parent, "Parent should be parsed correctly")
@@ -604,7 +604,7 @@ func TestParseCirculateWindowRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseCirculateWindowRequest(order, 1, reqBody)
+	p, err := parseCirculateWindowRequest(order, 1, reqBody, 1)
 	assert.NoError(t, err, "parseCirculateWindowRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, byte(1), p.Direction, "Direction should be parsed correctly")
@@ -615,7 +615,7 @@ func TestParseQueryTreeRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseQueryTreeRequest(order, reqBody)
+	p, err := parseQueryTreeRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseQueryTreeRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
@@ -625,7 +625,7 @@ func TestParseUnmapWindowRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseUnmapWindowRequest(order, reqBody)
+	p, err := parseUnmapWindowRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseUnmapWindowRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
@@ -635,7 +635,7 @@ func TestParseUnmapSubwindowsRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseUnmapSubwindowsRequest(order, reqBody)
+	p, err := parseUnmapSubwindowsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseUnmapSubwindowsRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
@@ -645,7 +645,7 @@ func TestParseGetGeometryRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseGetGeometryRequest(order, reqBody)
+	p, err := parseGetGeometryRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetGeometryRequest should not return an error")
 	assert.Equal(t, Drawable(123), p.Drawable, "Drawable should be parsed correctly")
 }
@@ -656,7 +656,7 @@ func TestParseDeletePropertyRequest(t *testing.T) {
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint32(reqBody[4:8], 456)
 
-	p, err := parseDeletePropertyRequest(order, reqBody)
+	p, err := parseDeletePropertyRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseDeletePropertyRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, Atom(456), p.Property, "Property should be parsed correctly")
@@ -669,7 +669,7 @@ func TestParseSetSelectionOwnerRequest(t *testing.T) {
 	order.PutUint32(reqBody[4:8], 456)
 	order.PutUint32(reqBody[8:12], 789)
 
-	p, err := parseSetSelectionOwnerRequest(order, reqBody)
+	p, err := parseSetSelectionOwnerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSetSelectionOwnerRequest should not return an error")
 	assert.Equal(t, Window(123), p.Owner, "Owner should be parsed correctly")
 	assert.Equal(t, Atom(456), p.Selection, "Selection should be parsed correctly")
@@ -681,7 +681,7 @@ func TestParseGetSelectionOwnerRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseGetSelectionOwnerRequest(order, reqBody)
+	p, err := parseGetSelectionOwnerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetSelectionOwnerRequest should not return an error")
 	assert.Equal(t, Atom(123), p.Selection, "Selection should be parsed correctly")
 }
@@ -695,7 +695,7 @@ func TestParseConvertSelectionRequest(t *testing.T) {
 	order.PutUint32(reqBody[12:16], 4)
 	order.PutUint32(reqBody[16:20], 5)
 
-	p, err := parseConvertSelectionRequest(order, reqBody)
+	p, err := parseConvertSelectionRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseConvertSelectionRequest should not return an error")
 	assert.Equal(t, Window(1), p.Requestor, "Requestor should be parsed correctly")
 	assert.Equal(t, Atom(2), p.Selection, "Selection should be parsed correctly")
@@ -713,7 +713,7 @@ func TestParseSendEventRequest(t *testing.T) {
 		reqBody[i] = byte(i)
 	}
 
-	p, err := parseSendEventRequest(order, reqBody)
+	p, err := parseSendEventRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSendEventRequest should not return an error")
 	assert.Equal(t, Window(123), p.Destination, "Destination should be parsed correctly")
 	assert.Equal(t, uint32(456), p.EventMask, "EventMask should be parsed correctly")
@@ -731,7 +731,7 @@ func TestParseGrabPointerRequest(t *testing.T) {
 	order.PutUint32(reqBody[12:16], 101)
 	order.PutUint32(reqBody[16:20], 112)
 
-	p, err := parseGrabPointerRequest(order, reqBody)
+	p, err := parseGrabPointerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGrabPointerRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, uint16(456), p.EventMask, "EventMask should be parsed correctly")
@@ -747,7 +747,7 @@ func TestParseUngrabPointerRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseUngrabPointerRequest(order, reqBody)
+	p, err := parseUngrabPointerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseUngrabPointerRequest should not return an error")
 	assert.Equal(t, Timestamp(123), p.Time, "Time should be parsed correctly")
 }
@@ -765,7 +765,7 @@ func TestParseGrabButtonRequest(t *testing.T) {
 	reqBody[16] = 3
 	order.PutUint16(reqBody[18:20], 112)
 
-	p, err := parseGrabButtonRequest(order, data, reqBody)
+	p, err := parseGrabButtonRequest(order, data, reqBody, 1)
 	assert.NoError(t, err, "parseGrabButtonRequest should not return an error")
 	assert.True(t, p.OwnerEvents, "OwnerEvents should be true")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
@@ -785,7 +785,7 @@ func TestParseUngrabButtonRequest(t *testing.T) {
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint16(reqBody[6:8], 112)
 
-	p, err := parseUngrabButtonRequest(order, data, reqBody)
+	p, err := parseUngrabButtonRequest(order, data, reqBody, 1)
 	assert.NoError(t, err, "parseUngrabButtonRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, byte(3), p.Button, "Button should be parsed correctly")
@@ -799,7 +799,7 @@ func TestParseChangeActivePointerGrabRequest(t *testing.T) {
 	order.PutUint32(reqBody[4:8], 456)
 	order.PutUint16(reqBody[8:10], 789)
 
-	p, err := parseChangeActivePointerGrabRequest(order, reqBody)
+	p, err := parseChangeActivePointerGrabRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseChangeActivePointerGrabRequest should not return an error")
 	assert.Equal(t, Cursor(123), p.Cursor, "Cursor should be parsed correctly")
 	assert.Equal(t, Timestamp(456), p.Time, "Time should be parsed correctly")
@@ -814,7 +814,7 @@ func TestParseGrabKeyboardRequest(t *testing.T) {
 	reqBody[8] = 1
 	reqBody[9] = 2
 
-	p, err := parseGrabKeyboardRequest(order, reqBody)
+	p, err := parseGrabKeyboardRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGrabKeyboardRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, Timestamp(456), p.Time, "Time should be parsed correctly")
@@ -827,7 +827,7 @@ func TestParseUngrabKeyboardRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseUngrabKeyboardRequest(order, reqBody)
+	p, err := parseUngrabKeyboardRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseUngrabKeyboardRequest should not return an error")
 	assert.Equal(t, Timestamp(123), p.Time, "Time should be parsed correctly")
 }
@@ -842,7 +842,7 @@ func TestParseGrabKeyRequest(t *testing.T) {
 	reqBody[11] = 1
 	reqBody[12] = 2
 
-	p, err := parseGrabKeyRequest(order, reqBody)
+	p, err := parseGrabKeyRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGrabKeyRequest should not return an error")
 	assert.True(t, p.OwnerEvents, "OwnerEvents should be true")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
@@ -859,7 +859,7 @@ func TestParseUngrabKeyRequest(t *testing.T) {
 	order.PutUint16(reqBody[4:6], 456)
 	reqBody[6] = 7
 
-	p, err := parseUngrabKeyRequest(order, reqBody)
+	p, err := parseUngrabKeyRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseUngrabKeyRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, uint16(456), p.Modifiers, "Modifiers should be parsed correctly")
@@ -871,7 +871,7 @@ func TestParseAllowEventsRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseAllowEventsRequest(order, 5, reqBody)
+	p, err := parseAllowEventsRequest(order, 5, reqBody, 1)
 	assert.NoError(t, err, "parseAllowEventsRequest should not return an error")
 	assert.Equal(t, byte(5), p.Mode, "Mode should be parsed correctly")
 	assert.Equal(t, Timestamp(123), p.Time, "Time should be parsed correctly")
@@ -881,7 +881,7 @@ func TestParseGrabServerRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := make([]byte, 0)
 
-	_, err := parseGrabServerRequest(order, reqBody)
+	_, err := parseGrabServerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGrabServerRequest should not return an error")
 }
 
@@ -889,7 +889,7 @@ func TestParseUngrabServerRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := make([]byte, 0)
 
-	_, err := parseUngrabServerRequest(order, reqBody)
+	_, err := parseUngrabServerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseUngrabServerRequest should not return an error")
 }
 
@@ -901,7 +901,7 @@ func TestParseTranslateCoordsRequest(t *testing.T) {
 	order.PutUint16(reqBody[8:10], 10)
 	order.PutUint16(reqBody[10:12], 20)
 
-	p, err := parseTranslateCoordsRequest(order, reqBody)
+	p, err := parseTranslateCoordsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseTranslateCoordsRequest should not return an error")
 	assert.Equal(t, Window(1), p.SrcWindow, "SrcWindow should be parsed correctly")
 	assert.Equal(t, Window(2), p.DstWindow, "DstWindow should be parsed correctly")
@@ -915,7 +915,7 @@ func TestParseWarpPointerRequest(t *testing.T) {
 	order.PutUint16(reqBody[12:14], 10)
 	order.PutUint16(reqBody[14:16], 20)
 
-	p, err := parseWarpPointerRequest(order, reqBody)
+	p, err := parseWarpPointerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseWarpPointerRequest should not return an error")
 	assert.Equal(t, int16(10), p.DstX, "DstX should be parsed correctly")
 	assert.Equal(t, int16(20), p.DstY, "DstY should be parsed correctly")
@@ -928,7 +928,7 @@ func TestParseSetInputFocusRequest(t *testing.T) {
 	reqBody[4] = 2
 	order.PutUint32(reqBody[8:12], 456)
 
-	p, err := parseSetInputFocusRequest(order, reqBody)
+	p, err := parseSetInputFocusRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSetInputFocusRequest should not return an error")
 	assert.Equal(t, Window(123), p.Focus, "Focus should be parsed correctly")
 	assert.Equal(t, byte(2), p.RevertTo, "RevertTo should be parsed correctly")
@@ -939,7 +939,7 @@ func TestParseQueryKeymapRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := make([]byte, 0)
 
-	_, err := parseQueryKeymapRequest(order, reqBody)
+	_, err := parseQueryKeymapRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseQueryKeymapRequest should not return an error")
 }
 
@@ -948,7 +948,7 @@ func TestParseCloseFontRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseCloseFontRequest(order, reqBody)
+	p, err := parseCloseFontRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseCloseFontRequest should not return an error")
 	assert.Equal(t, Font(123), p.Fid, "Fid should be parsed correctly")
 }
@@ -960,7 +960,7 @@ func TestParseQueryTextExtentsRequest(t *testing.T) {
 	order.PutUint16(reqBody[4:6], 0x0048)
 	order.PutUint16(reqBody[6:8], 0x0065)
 
-	p, err := parseQueryTextExtentsRequest(order, reqBody)
+	p, err := parseQueryTextExtentsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseQueryTextExtentsRequest should not return an error")
 	assert.Equal(t, Font(123), p.Fid, "Fid should be parsed correctly")
 	assert.Equal(t, []uint16{0x0048, 0x0065}, p.Text, "Text should be parsed correctly")
@@ -973,7 +973,7 @@ func TestParseListFontsWithInfoRequest(t *testing.T) {
 	order.PutUint16(reqBody[2:4], 4)
 	copy(reqBody[4:8], []byte("test"))
 
-	p, err := parseListFontsWithInfoRequest(order, reqBody)
+	p, err := parseListFontsWithInfoRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseListFontsWithInfoRequest should not return an error")
 	assert.Equal(t, uint16(10), p.MaxNames, "MaxNames should be parsed correctly")
 	assert.Equal(t, "test", p.Pattern, "Pattern should be parsed correctly")
@@ -992,7 +992,7 @@ func TestParseSetFontPathRequest(t *testing.T) {
 	reqBody = append(reqBody, byte(len(path2)))
 	reqBody = append(reqBody, []byte(path2)...)
 
-	p, err := parseSetFontPathRequest(order, reqBody)
+	p, err := parseSetFontPathRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSetFontPathRequest should not return an error")
 	assert.Equal(t, uint16(2), p.NumPaths, "NumPaths should be parsed correctly")
 	assert.Equal(t, []string{path1, path2}, p.Paths, "Paths should be parsed correctly")
@@ -1002,7 +1002,7 @@ func TestParseGetFontPathRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := make([]byte, 0)
 
-	_, err := parseGetFontPathRequest(order, reqBody)
+	_, err := parseGetFontPathRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetFontPathRequest should not return an error")
 }
 
@@ -1011,7 +1011,7 @@ func TestParseFreePixmapRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseFreePixmapRequest(order, reqBody)
+	p, err := parseFreePixmapRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseFreePixmapRequest should not return an error")
 	assert.Equal(t, Pixmap(123), p.Pid, "Pid should be parsed correctly")
 }
@@ -1025,7 +1025,7 @@ func TestParseChangeGCRequest(t *testing.T) {
 	order.PutUint32(reqBody[8:12], 0xFF00FF)
 	order.PutUint32(reqBody[12:16], 0x00FF00)
 
-	p, err := parseChangeGCRequest(order, reqBody)
+	p, err := parseChangeGCRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseChangeGCRequest should not return an error")
 	assert.Equal(t, GContext(123), p.Gc, "Gc should be parsed correctly")
 	assert.Equal(t, uint32(GCForeground|GCBackground), p.ValueMask, "ValueMask should be parsed correctly")
@@ -1039,7 +1039,7 @@ func TestParseCopyGCRequest(t *testing.T) {
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint32(reqBody[4:8], 456)
 
-	p, err := parseCopyGCRequest(order, reqBody)
+	p, err := parseCopyGCRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseCopyGCRequest should not return an error")
 	assert.Equal(t, GContext(123), p.SrcGC, "SrcGC should be parsed correctly")
 	assert.Equal(t, GContext(456), p.DstGC, "DstGC should be parsed correctly")
@@ -1054,7 +1054,7 @@ func TestParseClearAreaRequest(t *testing.T) {
 	order.PutUint16(reqBody[8:10], 100)
 	order.PutUint16(reqBody[10:12], 200)
 
-	p, err := parseClearAreaRequest(order, reqBody)
+	p, err := parseClearAreaRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseClearAreaRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, int16(10), p.X, "X should be parsed correctly")
@@ -1073,7 +1073,7 @@ func TestParsePolyPointRequest(t *testing.T) {
 	order.PutUint16(reqBody[12:14], 30)
 	order.PutUint16(reqBody[14:16], 40)
 
-	p, err := parsePolyPointRequest(order, reqBody)
+	p, err := parsePolyPointRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parsePolyPointRequest should not return an error")
 	assert.Equal(t, Drawable(123), p.Drawable, "Drawable should be parsed correctly")
 	assert.Equal(t, GContext(456), p.Gc, "Gc should be parsed correctly")
@@ -1094,7 +1094,7 @@ func TestParsePolyRectangleRequest(t *testing.T) {
 	order.PutUint16(reqBody[20:22], 50)
 	order.PutUint16(reqBody[22:24], 60)
 
-	p, err := parsePolyRectangleRequest(order, reqBody)
+	p, err := parsePolyRectangleRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parsePolyRectangleRequest should not return an error")
 	assert.Equal(t, Drawable(123), p.Drawable, "Drawable should be parsed correctly")
 	assert.Equal(t, GContext(456), p.Gc, "Gc should be parsed correctly")
@@ -1119,7 +1119,7 @@ func TestParsePolyArcRequest(t *testing.T) {
 	order.PutUint16(reqBody[28:30], 270)
 	order.PutUint16(reqBody[30:32], 360)
 
-	p, err := parsePolyArcRequest(order, reqBody)
+	p, err := parsePolyArcRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parsePolyArcRequest should not return an error")
 	assert.Equal(t, Drawable(123), p.Drawable, "Drawable should be parsed correctly")
 	assert.Equal(t, GContext(456), p.Gc, "Gc should be parsed correctly")
@@ -1134,7 +1134,7 @@ func TestParseCreateColormapRequest(t *testing.T) {
 	order.PutUint32(reqBody[4:8], 456)
 	order.PutUint32(reqBody[8:12], 789)
 
-	p, err := parseCreateColormapRequest(order, 1, reqBody)
+	p, err := parseCreateColormapRequest(order, 1, reqBody, 1)
 	assert.NoError(t, err, "parseCreateColormapRequest should not return an error")
 	assert.Equal(t, byte(1), p.Alloc, "Alloc should be parsed correctly")
 	assert.Equal(t, Colormap(123), p.Mid, "Mid should be parsed correctly")
@@ -1147,7 +1147,7 @@ func TestParseFreeColormapRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseFreeColormapRequest(order, reqBody)
+	p, err := parseFreeColormapRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseFreeColormapRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 }
@@ -1157,7 +1157,7 @@ func TestParseInstallColormapRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseInstallColormapRequest(order, reqBody)
+	p, err := parseInstallColormapRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseInstallColormapRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 }
@@ -1167,7 +1167,7 @@ func TestParseUninstallColormapRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseUninstallColormapRequest(order, reqBody)
+	p, err := parseUninstallColormapRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseUninstallColormapRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 }
@@ -1177,7 +1177,7 @@ func TestParseListInstalledColormapsRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseListInstalledColormapsRequest(order, reqBody)
+	p, err := parseListInstalledColormapsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseListInstalledColormapsRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 }
@@ -1190,7 +1190,7 @@ func TestParseAllocColorRequest(t *testing.T) {
 	order.PutUint16(reqBody[6:8], 200)
 	order.PutUint16(reqBody[8:10], 255)
 
-	p, err := parseAllocColorRequest(order, reqBody)
+	p, err := parseAllocColorRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseAllocColorRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 	assert.Equal(t, uint16(100), p.Red, "Red should be parsed correctly")
@@ -1205,7 +1205,7 @@ func TestParseAllocNamedColorRequest(t *testing.T) {
 	order.PutUint16(reqBody[4:6], 4)
 	copy(reqBody[8:12], []byte("blue"))
 
-	p, err := parseAllocNamedColorRequest(order, reqBody)
+	p, err := parseAllocNamedColorRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseAllocNamedColorRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 	assert.Equal(t, []byte("blue"), p.Name, "Name should be parsed correctly")
@@ -1219,7 +1219,7 @@ func TestParseFreeColorsRequest(t *testing.T) {
 	order.PutUint32(reqBody[8:12], 1)
 	order.PutUint32(reqBody[12:16], 2)
 
-	p, err := parseFreeColorsRequest(order, reqBody)
+	p, err := parseFreeColorsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseFreeColorsRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 	assert.Equal(t, uint32(0xFF), p.PlaneMask, "PlaneMask should be parsed correctly")
@@ -1243,7 +1243,7 @@ func TestParseStoreColorsRequest(t *testing.T) {
 	order.PutUint16(reqBody[24:26], 60)
 	reqBody[26] = 3
 
-	p, err := parseStoreColorsRequest(order, reqBody)
+	p, err := parseStoreColorsRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseStoreColorsRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 	assert.Equal(t, uint32(1), p.Items[0].Pixel, "Item 1 Pixel should be parsed correctly")
@@ -1266,7 +1266,7 @@ func TestParseStoreNamedColorRequest(t *testing.T) {
 	order.PutUint16(reqBody[8:10], 4)
 	copy(reqBody[12:16], []byte("blue"))
 
-	p, err := parseStoreNamedColorRequest(order, 7, reqBody)
+	p, err := parseStoreNamedColorRequest(order, 7, reqBody, 1)
 	assert.NoError(t, err, "parseStoreNamedColorRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 	assert.Equal(t, uint32(456), p.Pixel, "Pixel should be parsed correctly")
@@ -1281,7 +1281,7 @@ func TestParseLookupColorRequest(t *testing.T) {
 	order.PutUint16(reqBody[4:6], 4)
 	copy(reqBody[8:12], []byte("blue"))
 
-	p, err := parseLookupColorRequest(order, reqBody)
+	p, err := parseLookupColorRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseLookupColorRequest should not return an error")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
 	assert.Equal(t, "blue", p.Name, "Name should be parsed correctly")
@@ -1292,7 +1292,7 @@ func TestParseFreeCursorRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseFreeCursorRequest(order, reqBody)
+	p, err := parseFreeCursorRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseFreeCursorRequest should not return an error")
 	assert.Equal(t, Cursor(123), p.Cursor, "Cursor should be parsed correctly")
 }
@@ -1304,7 +1304,7 @@ func TestParseQueryBestSizeRequest(t *testing.T) {
 	order.PutUint16(reqBody[4:6], 100)
 	order.PutUint16(reqBody[6:8], 200)
 
-	p, err := parseQueryBestSizeRequest(order, reqBody)
+	p, err := parseQueryBestSizeRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseQueryBestSizeRequest should not return an error")
 	assert.Equal(t, Drawable(123), p.Drawable, "Drawable should be parsed correctly")
 	assert.Equal(t, uint16(100), p.Width, "Width should be parsed correctly")
@@ -1312,7 +1312,7 @@ func TestParseQueryBestSizeRequest(t *testing.T) {
 }
 
 func TestParseBellRequest(t *testing.T) {
-	p, err := parseBellRequest(50)
+	p, err := parseBellRequest(50, 1)
 	assert.NoError(t, err, "parseBellRequest should not return an error")
 	assert.Equal(t, int8(50), p.Percent, "Percent should be parsed correctly")
 }
@@ -1326,7 +1326,7 @@ func TestParseSetDashesRequest(t *testing.T) {
 	reqBody[8] = 10
 	reqBody[9] = 20
 
-	p, err := parseSetDashesRequest(order, reqBody)
+	p, err := parseSetDashesRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSetDashesRequest should not return an error")
 	assert.Equal(t, GContext(123), p.GC, "GC should be parsed correctly")
 	assert.Equal(t, uint16(456), p.DashOffset, "DashOffset should be parsed correctly")
@@ -1350,7 +1350,7 @@ func TestParseSetClipRectanglesRequest(t *testing.T) {
 	order.PutUint16(reqBody[20:22], 7)
 	order.PutUint16(reqBody[22:24], 8)
 
-	p, err := parseSetClipRectanglesRequest(order, 1, reqBody)
+	p, err := parseSetClipRectanglesRequest(order, 1, reqBody, 1)
 	assert.NoError(t, err, "parseSetClipRectanglesRequest should not return an error")
 	assert.Equal(t, GContext(123), p.GC, "GC should be parsed correctly")
 	assert.Equal(t, int16(10), p.ClippingX, "ClippingX should be parsed correctly")
@@ -1370,7 +1370,7 @@ func TestParseRecolorCursorRequest(t *testing.T) {
 	order.PutUint16(reqBody[12:14], 50)
 	order.PutUint16(reqBody[14:16], 60)
 
-	p, err := parseRecolorCursorRequest(order, reqBody)
+	p, err := parseRecolorCursorRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseRecolorCursorRequest should not return an error")
 	assert.Equal(t, Cursor(123), p.Cursor, "Cursor should be parsed correctly")
 	assert.Equal(t, [3]uint16{10, 20, 30}, p.ForeColor, "ForeColor should be parsed correctly")
@@ -1381,7 +1381,7 @@ func TestParseSetPointerMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := []byte{1, 2, 3, 4}
 
-	p, err := parseSetPointerMappingRequest(order, reqBody)
+	p, err := parseSetPointerMappingRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSetPointerMappingRequest should not return an error")
 	assert.Equal(t, []byte{1, 2, 3, 4}, p.Map, "Map should be parsed correctly")
 }
@@ -1390,7 +1390,7 @@ func TestParseGetKeyboardMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := []byte{10, 5}
 
-	p, err := parseGetKeyboardMappingRequest(order, reqBody)
+	p, err := parseGetKeyboardMappingRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetKeyboardMappingRequest should not return an error")
 	assert.Equal(t, KeyCode(10), p.FirstKeyCode, "FirstKeyCode should be parsed correctly")
 	assert.Equal(t, byte(5), p.Count, "Count should be parsed correctly")
@@ -1406,7 +1406,7 @@ func TestParseChangeKeyboardMappingRequest(t *testing.T) {
 	order.PutUint32(reqBody[12:16], 789)
 	order.PutUint32(reqBody[16:20], 101)
 
-	p, err := parseChangeKeyboardMappingRequest(order, 2, reqBody)
+	p, err := parseChangeKeyboardMappingRequest(order, 2, reqBody, 1)
 	assert.NoError(t, err, "parseChangeKeyboardMappingRequest should not return an error")
 	assert.Equal(t, byte(2), p.KeyCodeCount, "KeyCodeCount should be parsed correctly")
 	assert.Equal(t, KeyCode(10), p.FirstKeyCode, "FirstKeyCode should be parsed correctly")
@@ -1421,7 +1421,7 @@ func TestParseChangeKeyboardControlRequest(t *testing.T) {
 	order.PutUint32(reqBody[4:8], 50)
 	order.PutUint32(reqBody[8:12], 60)
 
-	p, err := parseChangeKeyboardControlRequest(order, reqBody)
+	p, err := parseChangeKeyboardControlRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseChangeKeyboardControlRequest should not return an error")
 	assert.Equal(t, uint32(KBKeyClickPercent|KBBellPercent), p.ValueMask, "ValueMask should be parsed correctly")
 	assert.Equal(t, int32(50), p.Values.KeyClickPercent, "KeyClickPercent should be parsed correctly")
@@ -1436,7 +1436,7 @@ func TestParseSetScreenSaverRequest(t *testing.T) {
 	reqBody[4] = 1
 	reqBody[5] = 2
 
-	p, err := parseSetScreenSaverRequest(order, reqBody)
+	p, err := parseSetScreenSaverRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSetScreenSaverRequest should not return an error")
 	assert.Equal(t, int16(10), p.Timeout, "Timeout should be parsed correctly")
 	assert.Equal(t, int16(20), p.Interval, "Interval should be parsed correctly")
@@ -1451,7 +1451,7 @@ func TestParseChangeHostsRequest(t *testing.T) {
 	order.PutUint16(reqBody[2:4], 4)
 	copy(reqBody[4:8], []byte{1, 2, 3, 4})
 
-	p, err := parseChangeHostsRequest(order, 2, reqBody)
+	p, err := parseChangeHostsRequest(order, 2, reqBody, 1)
 	assert.NoError(t, err, "parseChangeHostsRequest should not return an error")
 	assert.Equal(t, byte(2), p.Mode, "Mode should be parsed correctly")
 	assert.Equal(t, byte(1), p.Host.Family, "Family should be parsed correctly")
@@ -1463,7 +1463,7 @@ func TestParseKillClientRequest(t *testing.T) {
 	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
 
-	p, err := parseKillClientRequest(order, reqBody)
+	p, err := parseKillClientRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseKillClientRequest should not return an error")
 	assert.Equal(t, uint32(123), p.Resource, "Resource should be parsed correctly")
 }
@@ -1477,7 +1477,7 @@ func TestParseRotatePropertiesRequest(t *testing.T) {
 	order.PutUint32(reqBody[8:12], 456)
 	order.PutUint32(reqBody[12:16], 789)
 
-	p, err := parseRotatePropertiesRequest(order, reqBody)
+	p, err := parseRotatePropertiesRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseRotatePropertiesRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, int16(10), p.Delta, "Delta should be parsed correctly")
@@ -1485,7 +1485,7 @@ func TestParseRotatePropertiesRequest(t *testing.T) {
 }
 
 func TestParseForceScreenSaverRequest(t *testing.T) {
-	p, err := parseForceScreenSaverRequest(nil, 1, nil)
+	p, err := parseForceScreenSaverRequest(nil, 1, nil, 1)
 	assert.NoError(t, err, "parseForceScreenSaverRequest should not return an error")
 	assert.Equal(t, byte(1), p.Mode, "Mode should be parsed correctly")
 }
@@ -1494,7 +1494,7 @@ func TestParseSetModifierMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
 	reqBody := []byte{2, 1, 2, 3, 4}
 
-	p, err := parseSetModifierMappingRequest(order, reqBody)
+	p, err := parseSetModifierMappingRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseSetModifierMappingRequest should not return an error")
 	assert.Equal(t, byte(2), p.KeyCodesPerModifier, "KeyCodesPerModifier should be parsed correctly")
 	assert.Equal(t, []KeyCode{1, 2, 3, 4}, p.KeyCodes, "KeyCodes should be parsed correctly")
@@ -1509,7 +1509,7 @@ func TestAllocColorPlanesRequest(t *testing.T) {
 	order.PutUint16(reqBody[8:10], 30)
 	order.PutUint16(reqBody[10:12], 40)
 
-	p, err := parseAllocColorPlanesRequest(order, 1, reqBody)
+	p, err := parseAllocColorPlanesRequest(order, 1, reqBody, 1)
 	assert.NoError(t, err, "parseAllocColorPlanesRequest should not return an error")
 	assert.True(t, p.Contiguous, "Contiguous should be true")
 	assert.Equal(t, Colormap(123), p.Cmap, "Cmap should be parsed correctly")
@@ -1534,7 +1534,7 @@ func TestParseCreateCursorRequest(t *testing.T) {
 	order.PutUint16(reqBody[24:26], 5)
 	order.PutUint16(reqBody[26:28], 15)
 
-	p, err := parseCreateCursorRequest(order, reqBody)
+	p, err := parseCreateCursorRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseCreateCursorRequest should not return an error")
 	assert.Equal(t, Cursor(1), p.Cid, "Cid should be parsed correctly")
 	assert.Equal(t, Pixmap(2), p.Source, "Source should be parsed correctly")
