@@ -3513,6 +3513,13 @@ type BellRequest struct {
 
 func (BellRequest) OpCode() reqCode { return Bell }
 
+/*
+Bell
+
+	1     102                             opcode
+	1     INT8                            percent
+	2     1                               request length
+*/
 func parseBellRequest(requestBody byte, seq uint16) (*BellRequest, error) {
 	req := &BellRequest{}
 	req.Percent = int8(requestBody)

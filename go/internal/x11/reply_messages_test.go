@@ -658,11 +658,11 @@ func TestReplyMessages(t *testing.T) {
 		encoded := reply.encodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
-		expected[1] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 30)
 		expected[8] = 1
-		expected[9] = 2
-		expected[10] = 3
+		expected[9] = 1
+		expected[10] = 2
+		expected[11] = 3
 		if !bytes.Equal(encoded, expected) {
 			t.Errorf("QueryExtensionReply encoding failed. Got %v, want %v", encoded, expected)
 		}
