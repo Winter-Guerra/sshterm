@@ -1403,11 +1403,12 @@ func TestParseRecolorCursorRequest(t *testing.T) {
 
 func TestParseSetPointerMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := []byte{1, 2, 3, 4}
+	reqBody := []byte{1, 2, 3}
+	data := byte(len(reqBody))
 
-	p, err := parseSetPointerMappingRequest(order, reqBody, 1)
+	p, err := parseSetPointerMappingRequest(order, data, reqBody, 1)
 	assert.NoError(t, err, "parseSetPointerMappingRequest should not return an error")
-	assert.Equal(t, []byte{1, 2, 3, 4}, p.Map, "Map should be parsed correctly")
+	assert.Equal(t, []byte{1, 2, 3}, p.Map, "Map should be parsed correctly")
 }
 
 func TestParseGetKeyboardMappingRequest(t *testing.T) {

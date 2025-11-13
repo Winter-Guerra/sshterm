@@ -78,6 +78,7 @@ type wasmX11Frontend struct {
 	atoms            map[string]uint32      // Map atom names to IDs
 	nextAtomID       uint32                 // Next available atom ID
 	cursorStyles     map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
+	modifierMap      []KeyCode
 }
 
 func (w *wasmX11Frontend) showMessage(message string) {
@@ -2169,29 +2170,60 @@ func (w *wasmX11Frontend) SetPointerMapping(pMap []byte) (byte, error) {
 }
 
 func (w *wasmX11Frontend) GetPointerMapping() ([]byte, error) {
-	debugf("X11: GetPointerMapping (not implemented)")
+	debugf("X11: GetPointerMapping")
 	w.recordOperation(CanvasOperation{
 		Type: "getPointerMapping",
 		Args: []any{},
 	})
-	return nil, nil
+	// For a web environment, we can return a simple default mapping.
+	// 1, 2, 3 represents the left, middle, and right mouse buttons.
+	return []byte{1, 2, 3}, nil
+}
+
+func (w *wasmX11Frontend) GetPointerControl() (accelNumerator, accelDenominator, threshold uint16, err error) {
+	debugf("X11: GetPointerControl")
+	w.recordOperation(CanvasOperation{
+		Type: "getPointerControl",
+		Args: []any{},
+	})
+	// Return default values, as pointer acceleration is controlled by the OS/browser.
+	return 1, 1, 1, nil
 }
 
 func (w *wasmX11Frontend) GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error) {
-	debugf("X11: GetKeyboardMapping (not implemented)")
+	debugf("X11: GetKeyboardMapping first=%d count=%d", firstKeyCode, count)
 	w.recordOperation(CanvasOperation{
 		Type: "getKeyboardMapping",
-		Args: []any{},
+		Args: []any{firstKeyCode, count},
 	})
-	return nil, nil
+
+	keySyms := make([]uint32, count)
+	for i := 0; i < int(count); i++ {
+		keyCode := byte(firstKeyCode) + byte(i)
+		if sym, ok := keycodeToKeysym[keyCode]; ok {
+			keySyms[i] = sym
+		} else {
+			keySyms[i] = 0 // NoSymbol
+		}
+	}
+	return keySyms, nil
 }
 
 func (w *wasmX11Frontend) ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32) {
-	debugf("X11: ChangeKeyboardMapping (not implemented)")
+	debugf("X11: ChangeKeyboardMapping count=%d first=%d syms/key=%d", keyCodeCount, firstKeyCode, keySymsPerKeyCode)
 	w.recordOperation(CanvasOperation{
 		Type: "changeKeyboardMapping",
-		Args: []any{},
+		Args: []any{keyCodeCount, firstKeyCode, keySymsPerKeyCode, keySyms},
 	})
+	for i := 0; i < int(keyCodeCount); i++ {
+		for j := 0; j < int(keySymsPerKeyCode); j++ {
+			idx := i*int(keySymsPerKeyCode) + j
+			// In our simplified implementation, we only store the first keysym for each keycode.
+			if j == 0 {
+				keycodeToKeysym[byte(firstKeyCode)+byte(i)] = keySyms[idx]
+			}
+		}
+	}
 }
 
 func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
@@ -2286,21 +2318,25 @@ func (w *wasmX11Frontend) ForceScreenSaver(mode byte) {
 }
 
 func (w *wasmX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error) {
-	debugf("X11: SetModifierMapping (not implemented)")
+	debugf("X11: SetModifierMapping keyCodesPerModifier=%d keyCodes=%v", keyCodesPerModifier, keyCodes)
 	w.recordOperation(CanvasOperation{
 		Type: "setModifierMapping",
-		Args: []any{},
+		Args: []any{keyCodesPerModifier, keyCodes},
 	})
+	w.modifierMap = keyCodes
 	return 0, nil
 }
 
-func (w *wasmX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCodes []KeyCode, err error) {
-	debugf("X11: GetModifierMapping (not implemented)")
+func (w *wasmX11Frontend) GetModifierMapping() ([]KeyCode, error) {
+	debugf("X11: GetModifierMapping")
 	w.recordOperation(CanvasOperation{
 		Type: "getModifierMapping",
 		Args: []any{},
 	})
-	return 0, nil, nil
+	if w.modifierMap == nil {
+		return make([]KeyCode, 8), nil
+	}
+	return w.modifierMap, nil
 }
 
 func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
@@ -2640,6 +2676,28 @@ func (w *wasmX11Frontend) GetFocusWindow(clientID uint32) xID {
 		return w.focusedWindowID
 	}
 	return xID{}
+}
+
+func (w *wasmX11Frontend) ConvertSelection(selection, target, property uint32, requestor xID) {
+	debugf("X11: ConvertSelection selection=%d target=%d property=%d requestor=%s", selection, target, property, requestor)
+	// This is a simplified implementation. A real implementation would send a SelectionRequest
+	// event to the owner of the selection and wait for a SelectionNotify event.
+	if selection == w.GetAtom(requestor.client, "CLIPBOARD") {
+		// For now, we only support clipboard operations.
+		// We will read the clipboard and send a SelectionNotify event.
+		go func() {
+			clipboardContent, err := w.ReadClipboard()
+			if err != nil {
+				return
+			}
+			// Find the client associated with the requestor window
+			if _, ok := w.windows[requestor]; !ok {
+				debugf("X11: ConvertSelection: Requestor window %s not found", requestor)
+				return
+			}
+			w.server.SendSelectionNotify(requestor, selection, target, property, []byte(clipboardContent))
+		}()
+	}
 }
 
 func (w *wasmX11Frontend) GetProperty(window xID, property uint32, longOffset, longLength uint32) ([]byte, uint32, uint32, uint32) {

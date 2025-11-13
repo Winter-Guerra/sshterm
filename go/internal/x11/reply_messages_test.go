@@ -707,7 +707,7 @@ func TestReplyMessages(t *testing.T) {
 		encoded := reply.encodeMessage(binary.LittleEndian)
 		expected := make([]byte, 44)
 		expected[0] = 1
-		expected[1] = 3
+		expected[1] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 33)
 		binary.LittleEndian.PutUint32(expected[4:8], 3)
 		binary.LittleEndian.PutUint32(expected[32:36], 1)
@@ -825,12 +825,10 @@ func TestReplyMessages(t *testing.T) {
 
 	t.Run("GetPointerControl", func(t *testing.T) {
 		reply := &getPointerControlReply{
-			sequence:         1,
-			accelNumerator:   2,
-			accelDenominator: 3,
-			threshold:        4,
-			doAccel:          true,
-			doThreshold:      true,
+			Sequence:         1,
+			AccelNumerator:   2,
+			AccelDenominator: 3,
+			Threshold:        4,
 		}
 		encoded := reply.encodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)

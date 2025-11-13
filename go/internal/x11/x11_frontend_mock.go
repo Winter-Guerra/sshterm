@@ -118,6 +118,11 @@ type reparentWindowCall struct {
 	x, y   int16
 }
 
+type convertSelectionCall struct {
+	selection, target, property uint32
+	requestor                   xID
+}
+
 // MockX11Frontend is a mock implementation of the X11FrontendAPI for testing.
 type MockX11Frontend struct {
 	CreateWindowCalls               []*window
@@ -127,6 +132,7 @@ type MockX11Frontend struct {
 	DestroyAllWindowsForClientCalls []uint32
 	MapWindowCalls                  []xID
 	UnmapWindowCalls                []xID
+	ConvertSelectionCalls           []*convertSelectionCall
 	ConfigureWindowCalls            []*configureWindowCall
 	CirculateWindowCalls            []*circulateWindowCall
 	CreatedGCs                      map[xID]GC
@@ -169,6 +175,9 @@ type MockX11Frontend struct {
 	GetPropertyBytesAfterReturn     uint32
 	CanvasOperations                []CanvasOperation
 	SetInputFocusCalls              []setInputFocusCall
+	SetPointerMappingCalls          [][]byte
+	keymap                          map[byte]uint32
+	modifierMap                     []KeyCode
 }
 
 type setInputFocusCall struct {
@@ -346,7 +355,9 @@ func (m *MockX11Frontend) SendEvent(eventData messageEncoder) {}
 
 func (m *MockX11Frontend) GetFocusWindow(uint32) xID { return xID{} }
 
-func (m *MockX11Frontend) ConvertSelection(selection, target, property uint32, requestor xID) {}
+func (m *MockX11Frontend) ConvertSelection(selection, target, property uint32, requestor xID) {
+	m.ConvertSelectionCalls = append(m.ConvertSelectionCalls, &convertSelectionCall{selection, target, property, requestor})
+}
 
 func (m *MockX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
 	return 0
@@ -476,18 +487,44 @@ func (m *MockX11Frontend) RecolorCursor(cursor xID, foreColor, backColor [3]uint
 }
 
 func (m *MockX11Frontend) SetPointerMapping(pMap []byte) (byte, error) {
+	m.SetPointerMappingCalls = append(m.SetPointerMappingCalls, pMap)
 	return 0, nil
 }
 
 func (m *MockX11Frontend) GetPointerMapping() ([]byte, error) {
-	return nil, nil
+	return []byte{1, 2, 3}, nil
+}
+
+func (m *MockX11Frontend) GetPointerControl() (accelNumerator, accelDenominator, threshold uint16, err error) {
+	return 1, 1, 1, nil
 }
 
 func (m *MockX11Frontend) GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error) {
-	return nil, nil
+	keySyms := make([]uint32, count)
+	for i := 0; i < int(count); i++ {
+		keyCode := byte(firstKeyCode) + byte(i)
+		if sym, ok := keycodeToKeysym[keyCode]; ok {
+			keySyms[i] = sym
+		} else {
+			keySyms[i] = 0 // NoSymbol
+		}
+	}
+	return keySyms, nil
 }
 
 func (m *MockX11Frontend) ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32) {
+	if m.keymap == nil {
+		m.keymap = make(map[byte]uint32)
+	}
+	for i := 0; i < int(keyCodeCount); i++ {
+		for j := 0; j < int(keySymsPerKeyCode); j++ {
+			idx := i*int(keySymsPerKeyCode) + j
+			// In our simplified mock, we only store the first keysym for each keycode.
+			if j == 0 {
+				m.keymap[byte(firstKeyCode)+byte(i)] = keySyms[idx]
+			}
+		}
+	}
 }
 
 func (m *MockX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
@@ -527,11 +564,15 @@ func (m *MockX11Frontend) ForceScreenSaver(mode byte) {
 }
 
 func (m *MockX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error) {
+	m.modifierMap = keyCodes
 	return 0, nil
 }
 
-func (m *MockX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCodes []KeyCode, err error) {
-	return 0, nil, nil
+func (m *MockX11Frontend) GetModifierMapping() ([]KeyCode, error) {
+	if m.modifierMap == nil {
+		return make([]KeyCode, 8), nil
+	}
+	return m.modifierMap, nil
 }
 
 func (m *MockX11Frontend) SetInputFocus(focus xID, revertTo byte) {
