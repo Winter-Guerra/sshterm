@@ -339,7 +339,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return parseBellRequest(data, seq)
 
 	case SetPointerMapping:
-		return parseSetPointerMappingRequest(order, body, seq)
+		return parseSetPointerMappingRequest(order, data, body, seq)
 
 	case GetPointerMapping:
 		return parseGetPointerMappingRequest(order, body, seq)
@@ -411,7 +411,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return parseChangePointerControlRequest(order, body, seq)
 
 	case GetPointerControl:
-		return parseGetPointerControlRequest(order, raw, seq)
+		return parseGetPointerControlRequest(order, body, seq)
 
 	default:
 		return nil, fmt.Errorf("x11: unhandled opcode %d", opcode)
@@ -3558,9 +3558,13 @@ SetPointerMapping
 2     1+n/4                           request length
 n     LISTofBYTE                      map
 */
-func parseSetPointerMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetPointerMappingRequest, error) {
+func parseSetPointerMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetPointerMappingRequest, error) {
 	req := &SetPointerMappingRequest{}
-	req.Map = requestBody
+	mapLen := int(data)
+	if len(requestBody) < mapLen {
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetPointerMapping)
+	}
+	req.Map = requestBody[:mapLen]
 	return req, nil
 }
 
@@ -3577,6 +3581,21 @@ GetPointerMapping
 */
 func parseGetPointerMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPointerMappingRequest, error) {
 	return &GetPointerMappingRequest{}, nil
+}
+
+type GetPointerControlRequest struct{}
+
+func (GetPointerControlRequest) OpCode() reqCode { return GetPointerControl }
+
+/*
+GetPointerControl
+
+1     106                             opcode
+1                                     unused
+2     1                               request length
+*/
+func parseGetPointerControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPointerControlRequest, error) {
+	return &GetPointerControlRequest{}, nil
 }
 
 type GetKeyboardMappingRequest struct {
@@ -4569,20 +4588,4 @@ func parseChangePointerControlRequest(order binary.ByteOrder, body []byte, seq u
 	req.DoAcceleration = body[6] != 0
 	req.DoThreshold = body[7] != 0
 	return req, nil
-}
-
-// reqCodeGetPointerControl:
-type GetPointerControlRequest struct{}
-
-func (r *GetPointerControlRequest) OpCode() reqCode { return GetPointerControl }
-
-/*
-GetPointerControl
-
-1     106                             opcode
-1                                     unused
-2     1                               request length
-*/
-func parseGetPointerControlRequest(order binary.ByteOrder, raw []byte, seq uint16) (*GetPointerControlRequest, error) {
-	return &GetPointerControlRequest{}, nil
 }

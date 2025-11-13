@@ -111,6 +111,7 @@ type X11FrontendAPI interface {
 	RecolorCursor(cursor xID, foreColor, backColor [3]uint16)
 	SetPointerMapping(pMap []byte) (byte, error)
 	GetPointerMapping() ([]byte, error)
+	GetPointerControl() (accelNumerator, accelDenominator, threshold uint16, err error)
 	GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error)
 	ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32)
 	ChangeKeyboardControl(valueMask uint32, values KeyboardControl)
@@ -125,7 +126,7 @@ type X11FrontendAPI interface {
 	RotateProperties(window xID, delta int16, atoms []Atom)
 	ForceScreenSaver(mode byte)
 	SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error)
-	GetModifierMapping() (keyCodesPerModifier byte, keyCodes []KeyCode, err error)
+	GetModifierMapping() ([]KeyCode, error)
 }
 
 type XError interface {
@@ -1980,13 +1981,12 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		// TODO: Implement
 
 	case *GetPointerControlRequest:
-		debugf("X11: GetPointerControlRequest not implemented")
-		// TODO: Implement
+		accelNumerator, accelDenominator, threshold, _ := s.frontend.GetPointerControl()
 		return &getPointerControlReply{
-			sequence:         seq,
-			accelNumerator:   1,
-			accelDenominator: 1,
-			threshold:        1,
+			Sequence:         seq,
+			AccelNumerator:   accelNumerator,
+			AccelDenominator: accelDenominator,
+			Threshold:        threshold,
 		}
 
 	case *SetScreenSaverRequest:
@@ -2051,10 +2051,14 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *GetModifierMappingRequest:
-		keyCodesPerModifier, keyCodes, _ := s.frontend.GetModifierMapping()
+		keyCodes, err := s.frontend.GetModifierMapping()
+		if err != nil {
+			// TODO: proper error handling
+			return nil
+		}
 		return &getModifierMappingReply{
 			sequence:            seq,
-			keyCodesPerModifier: keyCodesPerModifier,
+			keyCodesPerModifier: byte(len(keyCodes) / 8),
 			keyCodes:            keyCodes,
 		}
 

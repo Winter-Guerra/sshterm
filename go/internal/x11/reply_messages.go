@@ -973,11 +973,17 @@ type getKeyboardMappingReply struct {
 }
 
 func (r *getKeyboardMappingReply) encodeMessage(order binary.ByteOrder) []byte {
-	reply := make([]byte, 32+len(r.keySyms)*4)
+	// The number of keysyms per keycode is implicitly 1 in our simplified implementation.
+	keysymsPerKeycode := 1
+	numKeysyms := len(r.keySyms)
+	length := uint32(numKeysyms * keysymsPerKeycode)
+
+	reply := make([]byte, 32+numKeysyms*4)
 	reply[0] = 1 // Reply type
-	reply[1] = byte(len(r.keySyms))
+	reply[1] = byte(keysymsPerKeycode)
 	order.PutUint16(reply[2:4], r.sequence)
-	order.PutUint32(reply[4:8], uint32(len(r.keySyms)))
+	order.PutUint32(reply[4:8], length)
+	// bytes 8-31 are unused
 	for i, keySym := range r.keySyms {
 		order.PutUint32(reply[32+i*4:], keySym)
 	}
@@ -1303,6 +1309,27 @@ type listExtensionsReply struct {
 	names    []string
 }
 
+// GetPointerControl: 106
+type getPointerControlReply struct {
+	Sequence         uint16
+	AccelNumerator   uint16
+	AccelDenominator uint16
+	Threshold        uint16
+}
+
+func (r *getPointerControlReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply type
+	// byte 1 is unused
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0) // Reply length
+	order.PutUint16(reply[8:10], r.AccelNumerator)
+	order.PutUint16(reply[10:12], r.AccelDenominator)
+	order.PutUint16(reply[12:14], r.Threshold)
+	// reply[14:32] is padding
+	return reply
+}
+
 func (r *listExtensionsReply) encodeMessage(order binary.ByteOrder) []byte {
 	var data []byte
 	for _, name := range r.names {
@@ -1315,28 +1342,5 @@ func (r *listExtensionsReply) encodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.sequence)
 	order.PutUint32(reply[4:8], uint32((len(data)+3)/4))
 	copy(reply[32:], data)
-	return reply
-}
-
-// GetPointerControl: 106
-type getPointerControlReply struct {
-	sequence         uint16
-	accelNumerator   uint16
-	accelDenominator uint16
-	threshold        uint16
-	doAccel          bool
-	doThreshold      bool
-}
-
-func (r *getPointerControlReply) encodeMessage(order binary.ByteOrder) []byte {
-	reply := make([]byte, 32)
-	reply[0] = 1 // Reply type
-	// byte 1 is unused
-	order.PutUint16(reply[2:4], r.sequence)
-	order.PutUint32(reply[4:8], 0) // Reply length
-	order.PutUint16(reply[8:10], r.accelNumerator)
-	order.PutUint16(reply[10:12], r.accelDenominator)
-	order.PutUint16(reply[12:14], r.threshold)
-	// reply[14:32] is padding
 	return reply
 }
