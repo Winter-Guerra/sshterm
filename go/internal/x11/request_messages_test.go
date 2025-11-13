@@ -29,6 +29,7 @@ func TestRequestParsing(t *testing.T) {
 	}
 	_, update := os.LookupEnv("UPDATE_TESTDATA")
 	for i, tc := range testdata {
+		t.Logf("Running test case #%d: %s", i, tc.Raw)
 		req, err := hex.DecodeString(tc.Raw)
 		if err != nil {
 			t.Errorf("#%d %q: %v", i, tc.Raw, err)
@@ -1492,12 +1493,44 @@ func TestParseForceScreenSaverRequest(t *testing.T) {
 
 func TestParseSetModifierMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := []byte{2, 1, 2, 3, 4}
+	keyCodesPerModifier := byte(2)
+	reqBody := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 
-	p, err := parseSetModifierMappingRequest(order, reqBody, 1)
+	p, err := parseSetModifierMappingRequest(order, keyCodesPerModifier, reqBody, 1)
 	assert.NoError(t, err, "parseSetModifierMappingRequest should not return an error")
-	assert.Equal(t, byte(2), p.KeyCodesPerModifier, "KeyCodesPerModifier should be parsed correctly")
-	assert.Equal(t, []KeyCode{1, 2, 3, 4}, p.KeyCodes, "KeyCodes should be parsed correctly")
+	assert.Equal(t, keyCodesPerModifier, p.KeyCodesPerModifier, "KeyCodesPerModifier should be parsed correctly")
+	expectedKeyCodes := make([]KeyCode, 16)
+	for i := 0; i < 16; i++ {
+		expectedKeyCodes[i] = KeyCode(i + 1)
+	}
+	assert.Equal(t, expectedKeyCodes, p.KeyCodes, "KeyCodes should be parsed correctly")
+}
+
+func TestRequestParsingTooLongErrors(t *testing.T) {
+	testCases := []struct {
+		name    string
+		reqType reqCode
+		raw     []byte
+		data    byte
+	}{
+		{
+			name:    "SetModifierMapping",
+			reqType: SetModifierMapping,
+			data:    1,
+			raw:     make([]byte, 9),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			hdr := make([]byte, 4)
+			hdr[0] = byte(tc.reqType)
+			hdr[1] = tc.data
+			binary.LittleEndian.PutUint16(hdr[2:4], uint16((len(tc.raw)+4)/4))
+			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...), 1)
+			assert.Error(t, err, "parseRequest should return an error for oversized requests")
+		})
+	}
 }
 
 func TestAllocColorPlanesRequest(t *testing.T) {
