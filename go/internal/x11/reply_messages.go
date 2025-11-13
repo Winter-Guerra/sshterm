@@ -653,16 +653,25 @@ type queryExtensionReply struct {
 	firstError  byte
 }
 
+// 1     1                               Reply
+// 1                                     unused
+// 2     CARD16                          sequence number
+// 4     0                               reply length
+// 1     BOOL                            present
+// 1     CARD8                           major-opcode
+// 1     CARD8                           first-event
+// 1     CARD8                           first-error
+// 20                                    unused
 func (r *queryExtensionReply) encodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
-	reply[1] = boolToByte(r.present)
 	order.PutUint16(reply[2:4], r.sequence)
 	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
-	reply[8] = r.majorOpcode
-	reply[9] = r.firstEvent
-	reply[10] = r.firstError
-	// reply[11:32] is padding
+	reply[8] = boolToByte(r.present)
+	reply[9] = r.majorOpcode
+	reply[10] = r.firstEvent
+	reply[11] = r.firstError
+	// reply[12:32] is padding
 	return reply
 }
 
