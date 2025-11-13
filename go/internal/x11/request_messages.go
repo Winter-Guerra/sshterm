@@ -363,7 +363,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, erro
 		return parseForceScreenSaverRequest(order, data, body, seq)
 
 	case SetModifierMapping:
-		return parseSetModifierMappingRequest(order, body, seq)
+		return parseSetModifierMappingRequest(order, data, body, seq)
 
 	case GetModifierMapping:
 		return parseGetModifierMappingRequest(order, body, seq)
@@ -1884,7 +1884,27 @@ func parsePutImageRequest(order binary.ByteOrder, data byte, requestBody []byte,
 	req.DstY = int16(order.Uint16(requestBody[14:16]))
 	req.LeftPad = requestBody[16]
 	req.Depth = requestBody[17]
-	req.Data = requestBody[20:]
+	scanlinePad := func(widthInBits, padInBits int) int {
+		return (widthInBits + padInBits - 1) / padInBits * padInBits
+	}
+	const scanlinePadUnit = 32
+	var expectedDataLen int
+	switch req.Format {
+	case 0: // XYBitmap
+		bits := scanlinePad(int(req.Width), scanlinePadUnit)
+		expectedDataLen = (bits * int(req.Height)) / 8
+	case 1: // XYPixmap
+		bits := scanlinePad(int(req.Width), scanlinePadUnit)
+		expectedDataLen = (bits * int(req.Height) * int(req.Depth)) / 8
+	case 2: // ZPixmap
+		bits := scanlinePad(int(req.Width)*int(req.Depth), scanlinePadUnit)
+		expectedDataLen = (bits * int(req.Height)) / 8
+	}
+	paddedExpectedDataLen := (expectedDataLen + 3) &^ 3
+	if len(requestBody)-20 != paddedExpectedDataLen {
+		return nil, NewError(LengthErrorCode, seq, 0, 0, PutImage)
+	}
+	req.Data = requestBody[20 : 20+expectedDataLen]
 	return req, nil
 }
 
@@ -2693,13 +2713,14 @@ type SetModifierMappingRequest struct {
 
 func (SetModifierMappingRequest) OpCode() reqCode { return SetModifierMapping }
 
-func parseSetModifierMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetModifierMappingRequest, error) {
-	if len(requestBody) < 1 {
+func parseSetModifierMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetModifierMappingRequest, error) {
+	req := &SetModifierMappingRequest{}
+	req.KeyCodesPerModifier = data
+	expectedLen := 8 * int(req.KeyCodesPerModifier)
+	if len(requestBody) != expectedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetModifierMapping)
 	}
-	req := &SetModifierMappingRequest{}
-	req.KeyCodesPerModifier = requestBody[0]
-	for i := 1; i < len(requestBody); i++ {
+	for i := 0; i < len(requestBody); i++ {
 		req.KeyCodes = append(req.KeyCodes, KeyCode(requestBody[i]))
 	}
 	return req, nil
