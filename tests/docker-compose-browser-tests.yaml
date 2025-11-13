@@ -31,7 +31,6 @@ services:
       "--output-dir=/output",
       "--test.v",
       "--test.failfast",
-      "--test.timeout=1m",
       "--test.run=${TEST_RUN:-.*}",
     ]
     working_dir: "/"
