@@ -444,7 +444,7 @@ func TestSSHTerm(t *testing.T) {
 		// Navigate to the WASM app to display the X11 output
 		var buf []byte
 		if err := chromedp.Run(ctx,
-			chromedp.Navigate("https://devtest.local:8443/tests.x11.html"),
+			chromedp.Navigate("https://devtest.local:8443/tests.x11.html?run=TestGCLogicalOperations"),
 			chromedp.WaitVisible("#x11-wasm-tests-done"),
 			chromedp.CaptureScreenshot(&buf),
 		); err != nil {

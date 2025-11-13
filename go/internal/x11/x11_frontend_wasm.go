@@ -1193,8 +1193,10 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc GC) {
 }
 
 func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw func(js.Value)) {
+	debugf("applyGC: start gcID=%s", gcID)
 	gc, ok := w.gcs[gcID]
 	if !ok {
+		debugf("applyGC: gcID %s not found", gcID)
 		return
 	}
 
@@ -1207,48 +1209,63 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 	case FunctionCopy:
 		nativeOp = "source-over"
 	case FunctionNoOp:
+		debugf("applyGC: NoOp, returning")
 		return
 	case FunctionXor:
 		nativeOp = "xor"
 	default:
 		useSoftwareEmulation = true
 	}
+	debugf("applyGC: gc.Function=%d, useSoftwareEmulation=%t, nativeOp=%q", gc.Function, useSoftwareEmulation, nativeOp)
 
 	if !useSoftwareEmulation {
+		debugf("applyGC: using native path")
 		destCtx.Call("save")
 		w.applyGCState(destCtx, colormap, gc)
 		destCtx.Set("globalCompositeOperation", nativeOp)
 		draw(destCtx)
 		destCtx.Call("restore")
+		debugf("applyGC: native path done")
 		return
 	}
 
-	// Software Emulation Path
+	debugf("applyGC: using software emulation path")
 	width := destCtx.Get("canvas").Get("width").Int()
 	height := destCtx.Get("canvas").Get("height").Int()
 	if width == 0 || height == 0 {
+		debugf("applyGC: canvas size is zero, returning")
 		return
 	}
+	debugf("applyGC: canvas size: %dx%d", width, height)
 
+	debugf("applyGC: getting destination image data")
 	destImageData := destCtx.Call("getImageData", 0, 0, width, height)
 	destPixels := jsutil.GetImageDataBytes(destImageData)
+	debugf("applyGC: got %d destination pixels", len(destPixels)/4)
 
+	debugf("applyGC: creating temporary canvas")
 	tempCanvas := w.document.Call("createElement", "canvas")
 	tempCanvas.Set("width", width)
 	tempCanvas.Set("height", height)
 	tempCtx := tempCanvas.Call("getContext", "2d")
 
+	debugf("applyGC: drawing to temporary canvas")
 	tempCtx.Call("save")
 	w.applyGCState(tempCtx, colormap, gc)
 	draw(tempCtx)
 	tempCtx.Call("restore")
+	debugf("applyGC: finished drawing to temporary canvas")
 
+	debugf("applyGC: getting source image data")
 	srcImageData := tempCtx.Call("getImageData", 0, 0, width, height)
 	srcPixels := jsutil.GetImageDataBytes(srcImageData)
+	debugf("applyGC: got %d source pixels", len(srcPixels)/4)
 
 	r, g, b := w.GetRGBColor(colormap, gc.Foreground)
 	srcColor := (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
+	debugf("applyGC: srcColor=%#06x", srcColor)
 
+	debugf("applyGC: starting pixel loop")
 	for i := 0; i < len(destPixels); i += 4 {
 		if srcPixels[i+3] == 0 {
 			continue
@@ -1290,9 +1307,13 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 		destPixels[i+2] = byte(result & 0xff)
 		destPixels[i+3] = 255
 	}
+	debugf("applyGC: finished pixel loop")
 
+	debugf("applyGC: creating new image data")
 	newImageData := js.Global().Get("ImageData").New(jsutil.Uint8ClampedArrayFromBytes(destPixels), width, height)
+	debugf("applyGC: putting new image data")
 	destCtx.Call("putImageData", newImageData, 0, 0)
+	debugf("applyGC: software emulation path done")
 }
 
 func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
