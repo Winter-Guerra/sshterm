@@ -57,7 +57,7 @@ func TestRequestParsing(t *testing.T) {
 			t.Errorf("#%d %q: %v", i, tc.Raw, err)
 			continue
 		}
-		parsedReq, err := parseRequest(binary.LittleEndian, req, 1)
+		parsedReq, err := parseRequest(binary.LittleEndian, req, 1, false)
 		if err != nil {
 			t.Errorf("#%d parseRequest(%q): %v", i, tc.Raw, err)
 			continue
@@ -195,7 +195,7 @@ func TestRequestParsingErrors(t *testing.T) {
 			hdr := make([]byte, 4)
 			hdr[0] = byte(tc.reqType)
 			binary.LittleEndian.PutUint16(hdr[2:4], uint16(len(tc.raw)/4))
-			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...), 1)
+			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...), 1, false)
 			assert.Error(t, err, "parseRequest should return an error for undersized requests")
 		})
 	}
@@ -1550,7 +1550,7 @@ func TestRequestParsingTooLongErrors(t *testing.T) {
 			hdr[0] = byte(tc.reqType)
 			hdr[1] = tc.data
 			binary.LittleEndian.PutUint16(hdr[2:4], uint16((len(tc.raw)+4)/4))
-			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...), 1)
+			_, err := parseRequest(binary.LittleEndian, append(hdr, tc.raw...), 1, false)
 			assert.Error(t, err, "parseRequest should return an error for oversized requests")
 		})
 	}

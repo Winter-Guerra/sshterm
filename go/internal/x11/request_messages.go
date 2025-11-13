@@ -20,20 +20,34 @@ func padLen(n int) int {
 	return (4 - n%4) % 4
 }
 
-func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, error) {
+func parseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEnabled bool) (request, error) {
 	var reqHeader [4]byte
 	if n := copy(reqHeader[:], raw); n != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, 0)
 	}
-	length := order.Uint16(reqHeader[2:4])
+
+	length := uint32(order.Uint16(reqHeader[2:4]))
 	opcode := reqCode(reqHeader[0])
-	if int(4*length) != len(raw) {
+	bodyOffset := 4
+	if bigRequestsEnabled && length == 0 {
+		if len(raw) < 8 {
+			return nil, NewError(LengthErrorCode, seq, 0, 0, opcode)
+		}
+		length = order.Uint32(raw[4:8])
+		bodyOffset = 8
+	}
+
+	if uint64(length)*4 != uint64(len(raw)) {
 		debugf("X11: parseRequest(%x...) length=%d, %d != %d", reqHeader, length, 4*length, len(raw))
 		return nil, NewError(LengthErrorCode, seq, 0, 0, opcode)
 	}
 
 	data := reqHeader[1]
-	body := raw[4:]
+	body := raw[bodyOffset:]
+
+	if opcode == bigRequestsOpcode {
+		return parseEnableBigRequestsRequest(order, raw, seq)
+	}
 
 	switch opcode {
 	case CreateWindow:

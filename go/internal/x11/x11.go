@@ -667,20 +667,39 @@ func (s *x11Server) readRequest(client *x11Client) (request, uint16, error) {
 	if _, err := io.ReadFull(client.conn, header[:]); err != nil {
 		return nil, 0, err
 	}
-	length := client.byteOrder.Uint16(header[2:4])
+
+	length := uint32(client.byteOrder.Uint16(header[2:4]))
+	var extendedHeader []byte
+	if client.bigRequestsEnabled && length == 0 {
+		var extendedLengthBytes [4]byte
+		if _, err := io.ReadFull(client.conn, extendedLengthBytes[:]); err != nil {
+			return nil, 0, err
+		}
+		length = client.byteOrder.Uint32(extendedLengthBytes[:])
+		extendedHeader = extendedLengthBytes[:]
+	}
+
 	if length == 0 {
 		client.send(NewError(LengthErrorCode, client.sequence, 0, 0, reqCode(header[0])))
 		return nil, 0, errParseError
 	}
-	raw := make([]byte, 4*length)
-	copy(raw, header[:])
-	if length > 1 {
-		if _, err := io.ReadFull(client.conn, raw[4:]); err != nil {
+
+	totalSize := 4 * length
+	raw := make([]byte, totalSize)
+	copy(raw[0:4], header[:])
+	if extendedHeader != nil {
+		copy(raw[4:8], extendedHeader)
+	}
+
+	readOffset := 4 + len(extendedHeader)
+	if totalSize > uint32(readOffset) {
+		if _, err := io.ReadFull(client.conn, raw[readOffset:]); err != nil {
 			return nil, 0, err
 		}
 	}
+
 	debugf("X11DEBUG: RAW Request: %x", raw)
-	req, err := parseRequest(client.byteOrder, raw, client.sequence)
+	req, err := parseRequest(client.byteOrder, raw, client.sequence, client.bigRequestsEnabled)
 	if err != nil {
 		if x11Err, ok := err.(Error); ok {
 			client.send(x11Err)
@@ -1848,6 +1867,16 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 	case *QueryExtensionRequest:
 		debugf("X11: QueryExtension name=%s", p.Name)
 
+		if p.Name == BigRequestsExtensionName {
+			return &queryExtensionReply{
+				sequence:    seq,
+				present:     true,
+				majorOpcode: bigRequestsOpcode,
+				firstEvent:  0,
+				firstError:  0,
+			}
+		}
+
 		return &queryExtensionReply{
 			sequence:    seq,
 			present:     false,
@@ -1977,6 +2006,13 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *NoOperationRequest:
 		// TODO: implement
+
+	case *EnableBigRequestsRequest:
+		client.bigRequestsEnabled = true
+		return &BigRequestsEnableReply{
+			sequence:         seq,
+			maxRequestLength: 0x100000,
+		}
 
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())

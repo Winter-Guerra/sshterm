@@ -25,11 +25,12 @@ func (e *x11Error) encodeMessage(order binary.ByteOrder) []byte {
 }
 
 type x11Client struct {
-	id           uint32
-	conn         io.ReadWriteCloser
-	sequence     uint16
-	byteOrder    binary.ByteOrder
-	sentMessages []messageEncoder
+	id                 uint32
+	conn               io.ReadWriteCloser
+	sequence           uint16
+	byteOrder          binary.ByteOrder
+	sentMessages       []messageEncoder
+	bigRequestsEnabled bool
 }
 
 func (c *x11Client) xID(local uint32) xID {
