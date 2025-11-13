@@ -3,6 +3,7 @@
 
 cd $(dirname $0)/..
 
+mkdir -p output
 exec &> >(grep -v "^headless-shell.*:CONSOLE" | tee output/headless-tests.log)
 echo "# $0 $*"
 
