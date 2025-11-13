@@ -168,6 +168,12 @@ type MockX11Frontend struct {
 	GetPropertyFormatReturn         uint32
 	GetPropertyBytesAfterReturn     uint32
 	CanvasOperations                []CanvasOperation
+	SetInputFocusCalls              []setInputFocusCall
+}
+
+type setInputFocusCall struct {
+	focus    xID
+	revertTo byte
 }
 
 type imageText8Call struct {
@@ -354,9 +360,9 @@ func (m *MockX11Frontend) GrabKeyboard(grabWindow xID, ownerEvents bool, time ui
 
 func (m *MockX11Frontend) UngrabKeyboard(time uint32) {}
 
-func (m *MockX11Frontend) WarpPointer(x, y int16) {}
-
 func (m *MockX11Frontend) SetCursor(window xID, cursor uint32) {}
+
+func (m *MockX11Frontend) WarpPointer(x, y int16) {}
 
 func (m *MockX11Frontend) Bell(percent int8) {
 	m.BellCalls = append(m.BellCalls, percent)
@@ -428,6 +434,9 @@ func (m *MockX11Frontend) ChangeGC(id xID, valueMask uint32, gc GC) {
 
 func (m *MockX11Frontend) ChangeProperty(id xID, property, typ, format uint32, data []byte) {
 	m.ChangedProperties = append(m.ChangedProperties, &propertyChange{id, property, typ, byte(format), data})
+}
+
+func (m *MockX11Frontend) DeleteProperty(xid xID, property uint32) {
 }
 
 func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
@@ -523,4 +532,8 @@ func (m *MockX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes 
 
 func (m *MockX11Frontend) GetModifierMapping() (keyCodesPerModifier byte, keyCodes []KeyCode, err error) {
 	return 0, nil, nil
+}
+
+func (m *MockX11Frontend) SetInputFocus(focus xID, revertTo byte) {
+	m.SetInputFocusCalls = append(m.SetInputFocusCalls, setInputFocusCall{focus, revertTo})
 }

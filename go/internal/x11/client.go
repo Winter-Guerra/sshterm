@@ -31,6 +31,7 @@ type x11Client struct {
 	byteOrder          binary.ByteOrder
 	sentMessages       []messageEncoder
 	bigRequestsEnabled bool
+	saveSet            map[uint32]bool
 }
 
 func (c *x11Client) xID(local uint32) xID {

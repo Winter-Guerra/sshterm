@@ -44,6 +44,7 @@ type X11FrontendAPI interface {
 	ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes)
 	GetWindowAttributes(xid xID) WindowAttributes
 	ChangeProperty(xid xID, property, typeAtom, format uint32, data []byte)
+	DeleteProperty(xid xID, property uint32)
 	CreateGC(xid xID, valueMask uint32, values GC)
 	ChangeGC(xid xID, valueMask uint32, gc GC)
 	DestroyWindow(xid xID)
@@ -75,6 +76,7 @@ type X11FrontendAPI interface {
 	GetAtomName(atom uint32) string
 	ListProperties(window xID) []uint32
 	GetProperty(window xID, property uint32, longOffset, longLength uint32) (data []byte, typ, format, bytesAfter uint32)
+	SetInputFocus(focus xID, revertTo byte)
 	ImageText8(drawable xID, gcID xID, x, y int32, text []byte)
 	ImageText16(drawable xID, gcID xID, x, y int32, text []uint16)
 	PolyText8(drawable xID, gcID xID, x, y int32, items []PolyTextItem)
@@ -95,6 +97,7 @@ type X11FrontendAPI interface {
 	UngrabPointer(time uint32)
 	GrabKeyboard(grabWindow xID, ownerEvents bool, time uint32, pointerMode, keyboardMode byte) byte
 	UngrabKeyboard(time uint32)
+	WarpPointer(x, y int16)
 	GetCanvasOperations() []CanvasOperation
 	GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8)
 	OpenFont(fid xID, name string)
@@ -195,6 +198,9 @@ type x11Server struct {
 	passiveGrabs         map[xID][]*passiveGrab
 	authProtocol         string
 	authCookie           []byte
+	serverGrabbed        bool
+	grabbingClientID     uint32
+	fontPath             []string
 }
 
 type passiveGrab struct {
@@ -743,6 +749,10 @@ func (s *x11Server) serve(client *x11Client) {
 }
 
 func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (reply messageEncoder) {
+	if s.serverGrabbed && s.grabbingClientID != client.id {
+		// Ignore requests from other clients while the server is grabbed
+		return nil
+	}
 	debugf("X11DEBUG: handleRequest(%d) opcode: %d: %#v", seq, req.OpCode(), req)
 	switch p := req.(type) {
 	case *CreateWindowRequest:
@@ -881,7 +891,11 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.DestroySubwindows(xid)
 
 	case *ChangeSaveSetRequest:
-		// TODO: implement
+		if p.Mode == 0 { // Insert
+			client.saveSet[uint32(p.Window)] = true
+		} else { // Delete
+			delete(client.saveSet, uint32(p.Window))
+		}
 
 	case *ReparentWindowRequest:
 		windowXID := client.xID(uint32(p.Window))
@@ -946,7 +960,16 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.UnmapWindow(xid)
 
 	case *UnmapSubwindowsRequest:
-		// TODO: implement
+		xid := client.xID(uint32(p.Window))
+		if parentWindow, ok := s.windows[xid]; ok {
+			for _, childID := range parentWindow.children {
+				childXID := xID{client: xid.client, local: childID}
+				if childWindow, ok := s.windows[childXID]; ok {
+					childWindow.mapped = false
+					s.frontend.UnmapWindow(childXID)
+				}
+			}
+		}
 
 	case *ConfigureWindowRequest:
 		xid := client.xID(uint32(p.Window))
@@ -1051,10 +1074,12 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.ChangeProperty(xid, uint32(p.Property), uint32(p.Type), uint32(p.Format), p.Data)
 
 	case *DeletePropertyRequest:
-		// TODO: implement
+		xid := client.xID(uint32(p.Window))
+		s.frontend.DeleteProperty(xid, uint32(p.Property))
 
 	case *GetPropertyRequest:
-		data, typ, format, bytesAfter := s.frontend.GetProperty(client.xID(uint32(p.Window)), uint32(p.Property), p.Offset, p.Length)
+		xid := client.xID(uint32(p.Window))
+		data, typ, format, bytesAfter := s.frontend.GetProperty(xid, uint32(p.Property), p.Offset, p.Length)
 
 		if data == nil {
 			return &getPropertyReply{
@@ -1072,8 +1097,8 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			valueLenInFormatUnits = uint32(len(data) / 4)
 		}
 
-		if p.Delete && len(data) > 0 {
-			// TODO: delete property
+		if p.Delete {
+			s.frontend.DeleteProperty(xid, uint32(p.Property))
 		}
 
 		if p.Type != 0 && typ != uint32(p.Type) {
@@ -1216,10 +1241,14 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		s.frontend.AllowEvents(client.id, p.Mode, uint32(p.Time))
 
 	case *GrabServerRequest:
-		// TODO: implement
+		if !s.serverGrabbed {
+			s.serverGrabbed = true
+			s.grabbingClientID = client.id
+		}
 
 	case *UngrabServerRequest:
-		// TODO: implement
+		s.serverGrabbed = false
+		s.grabbingClientID = 0
 
 	case *QueryPointerRequest:
 		xid := client.xID(uint32(p.Drawable))
@@ -1237,9 +1266,9 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *GetMotionEventsRequest:
-		// TODO: implement
 		return &getMotionEventsReply{
 			sequence: seq,
+			events:   []TimeCoord{},
 		}
 
 	case *TranslateCoordsRequest:
@@ -1266,10 +1295,11 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *WarpPointerRequest:
-		// TODO: implement
+		s.frontend.WarpPointer(p.DstX, p.DstY)
 
 	case *SetInputFocusRequest:
-		// TODO: implement
+		xid := client.xID(uint32(p.Focus))
+		s.frontend.SetInputFocus(xid, p.RevertTo)
 
 	case *GetInputFocusRequest:
 		return &getInputFocusReply{
@@ -1279,9 +1309,9 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *QueryKeymapRequest:
-		// TODO: implement
 		return &queryKeymapReply{
 			sequence: seq,
+			keys:     [32]byte{},
 		}
 
 	case *OpenFontRequest:
@@ -1334,18 +1364,18 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *ListFontsWithInfoRequest:
-		// TODO: implement
 		return &listFontsWithInfoReply{
 			sequence: seq,
+			fontName: "",
 		}
 
 	case *SetFontPathRequest:
-		// TODO: implement
+		s.fontPath = p.Paths
 
 	case *GetFontPathRequest:
-		// TODO: implement
 		return &getFontPathReply{
 			sequence: seq,
+			paths:    s.fontPath,
 		}
 
 	case *CreatePixmapRequest:
@@ -2029,7 +2059,6 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *NoOperationRequest:
-		// TODO: implement
 
 	case *EnableBigRequestsRequest:
 		client.bigRequestsEnabled = true
@@ -2175,6 +2204,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 				conn:      channel,
 				sequence:  0,
 				byteOrder: binary.LittleEndian, // Default, will be updated in handshake
+				saveSet:   make(map[uint32]bool),
 			}
 			x11ServerInstance.clients[client.id] = client
 			x11ServerInstance.nextClientID++

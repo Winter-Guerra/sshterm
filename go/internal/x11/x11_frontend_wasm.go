@@ -986,6 +986,36 @@ func (w *wasmX11Frontend) ChangeProperty(xid xID, p, typ, format uint32, data []
 	})
 }
 
+func (w *wasmX11Frontend) DeleteProperty(xid xID, property uint32) {
+	debugf("X11: deleteProperty id=%s property=%d", xid, property)
+	if winInfo, ok := w.windows[xid]; ok {
+		delete(winInfo.properties, property)
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "deleteProperty",
+		Args: []any{xid.local, property},
+	})
+}
+
+func (w *wasmX11Frontend) SetInputFocus(focus xID, revertTo byte) {
+	debugf("X11: setInputFocus focus=%s revertTo=%d", focus, revertTo)
+	if winInfo, ok := w.windows[focus]; ok {
+		winInfo.div.Call("focus")
+		w.focusedWindowID = focus
+	} else if focus.local == 0 { // Revert to root
+		if w.focusedWindowID.local != 0 {
+			if focusedWin, ok := w.windows[w.focusedWindowID]; ok {
+				focusedWin.div.Call("blur")
+			}
+		}
+		w.focusedWindowID = xID{}
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "setInputFocus",
+		Args: []any{focus.local, revertTo},
+	})
+}
+
 func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, imgData []byte) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
@@ -2403,6 +2433,15 @@ func (w *wasmX11Frontend) CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, 
 	})
 }
 
+func (w *wasmX11Frontend) WarpPointer(x, y int16) {
+	debugf("X11: warpPointer x=%d y=%d", x, y)
+	w.server.UpdatePointerPosition(x, y)
+	w.recordOperation(CanvasOperation{
+		Type: "warpPointer",
+		Args: []any{x, y},
+	})
+}
+
 func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor, backColor [3]uint16, x, y uint16) {
 	debugf("X11: CreateCursor id=%s source=%s mask=%s", cursorID, source, mask)
 
@@ -2503,15 +2542,6 @@ func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor
 	w.recordOperation(CanvasOperation{
 		Type: "createCursor",
 		Args: []any{cursorID.local, source.local, mask.local, x, y},
-	})
-}
-
-func (w *wasmX11Frontend) WarpPointer(x, y int16) {
-	debugf("X11: warpPointer x=%d y=%d", x, y)
-	w.server.UpdatePointerPosition(x, y)
-	w.recordOperation(CanvasOperation{
-		Type: "warpPointer",
-		Args: []any{x, y},
 	})
 }
 
