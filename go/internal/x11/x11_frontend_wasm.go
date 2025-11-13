@@ -2763,27 +2763,6 @@ func (w *wasmX11Frontend) GetProperty(window xID, property uint32, longOffset, l
 	return dataToReturn, typ, format, bytesAfter
 }
 
-func (w *wasmX11Frontend) ConvertSelection(selection, target, property uint32, requestor xID) {
-	debugf("X11: convertSelection selection=%d target=%d property=%d requestor=%s", selection, target, property, requestor)
-	// This is a simplified implementation. A real implementation would send a SelectionRequest
-	// event to the owner of the selection and wait for a SelectionNotify event.
-	if selection == w.GetAtom(requestor.client, "CLIPBOARD") {
-		// For now, we only support clipboard operations.
-		// We will read the clipboard and send a SelectionNotify event.
-		go func() {
-			clipboardContent, err := w.ReadClipboard()
-			if err != nil {
-				return
-			}
-			// Find the client associated with the requestor window
-			if _, ok := w.windows[requestor]; !ok {
-				debugf("X11: ConvertSelection: Requestor window %s not found", requestor)
-				return
-			}
-			w.server.SendSelectionNotify(requestor, selection, target, property, []byte(clipboardContent))
-		}()
-	}
-}
 
 func (w *wasmX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
 	debugf("X11: GrabPointer (not implemented)")
