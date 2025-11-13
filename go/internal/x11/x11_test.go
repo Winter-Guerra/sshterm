@@ -789,4 +789,36 @@ func TestColormapRequests(t *testing.T) {
 			t.Errorf("GetRGBColor (non-existent): expected R:0x11 G:0x22 B:0x33, got R:0x%x G:0x%x B:0x%x", r, g, b)
 		}
 	})
+
+	// Test CopyColormapAndFreeRequest
+	t.Run("CopyColormapAndFreeRequest", func(t *testing.T) {
+		srcCmapID := xID{client: client.id, local: 200}
+		newCmapID := xID{client: client.id, local: 201}
+
+		// 1. Create source colormap and allocate a color
+		server.colormaps[srcCmapID] = &colormap{pixels: make(map[uint32]xColorItem)}
+		color := xColorItem{Pixel: 0xABCDEF, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, ClientID: client.id}
+		server.colormaps[srcCmapID].pixels[color.Pixel] = color
+
+		// 2. Send CopyColormapAndFree request
+		req := &CopyColormapAndFreeRequest{Mid: Colormap(newCmapID.local), SrcCmap: Colormap(srcCmapID.local)}
+		reply := server.handleRequest(client, req, 16)
+		if reply != nil {
+			t.Fatalf("CopyColormapAndFreeRequest: expected nil reply for success, got %v", reply)
+		}
+
+		// 3. Verify new colormap and copied color
+		newCmap, ok := server.colormaps[newCmapID]
+		if !ok {
+			t.Fatalf("CopyColormapAndFreeRequest: new colormap %s not created", newCmapID)
+		}
+		if _, ok := newCmap.pixels[color.Pixel]; !ok {
+			t.Errorf("CopyColormapAndFreeRequest: color not copied to new colormap")
+		}
+
+		// 4. Verify color is freed from source colormap
+		if _, ok := server.colormaps[srcCmapID].pixels[color.Pixel]; ok {
+			t.Errorf("CopyColormapAndFreeRequest: color not freed from source colormap")
+		}
+	})
 }

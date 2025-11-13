@@ -63,9 +63,10 @@ type Host struct {
 
 // xColorItem defines a color item.
 type xColorItem struct {
-	Pixel uint32
-	Red   uint16
-	Green uint16
-	Blue  uint16
-	Flags byte
+	Pixel    uint32
+	Red      uint16
+	Green    uint16
+	Blue     uint16
+	Flags    byte
+	ClientID uint32
 }

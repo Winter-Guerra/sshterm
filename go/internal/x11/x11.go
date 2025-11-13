@@ -1569,6 +1569,30 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 		delete(s.colormaps, xid)
 
+	case *CopyColormapAndFreeRequest:
+		srcCmapID := client.xID(uint32(p.SrcCmap))
+		srcCmap, ok := s.colormaps[srcCmapID]
+		if !ok {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.SrcCmap), majorOp: CopyColormapAndFree, code: ColormapErrorCode})
+		}
+
+		newCmapID := client.xID(uint32(p.Mid))
+		if _, exists := s.colormaps[newCmapID]; exists {
+			return client.sendError(&GenericError{seq: seq, badValue: uint32(p.Mid), majorOp: CopyColormapAndFree, code: IDChoiceErrorCode})
+		}
+
+		newCmap := &colormap{
+			pixels: make(map[uint32]xColorItem),
+		}
+		s.colormaps[newCmapID] = newCmap
+
+		for pixel, color := range srcCmap.pixels {
+			if color.ClientID == client.id {
+				newCmap.pixels[pixel] = color
+				delete(srcCmap.pixels, pixel)
+			}
+		}
+
 	case *InstallColormapRequest:
 		xid := client.xID(uint32(p.Cmap))
 		_, ok := s.colormaps[xid]
@@ -1655,7 +1679,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		b8 := byte(p.Blue >> 8)
 		pixel := (uint32(r8) << 16) | (uint32(g8) << 8) | uint32(b8)
 
-		cm.pixels[pixel] = xColorItem{Red: p.Red, Green: p.Green, Blue: p.Blue}
+		cm.pixels[pixel] = xColorItem{Red: p.Red, Green: p.Green, Blue: p.Blue, ClientID: client.id}
 
 		return &allocColorReply{
 			sequence: seq,
@@ -1686,7 +1710,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		exactBlue := scale8to16(rgb.Blue)
 
 		pixel := (uint32(rgb.Red) << 16) | (uint32(rgb.Green) << 8) | uint32(rgb.Blue)
-		cm.pixels[pixel] = xColorItem{Red: exactRed, Green: exactGreen, Blue: exactBlue}
+		cm.pixels[pixel] = xColorItem{Red: exactRed, Green: exactGreen, Blue: exactBlue, ClientID: client.id}
 
 		return &allocNamedColorReply{
 			sequence: seq,

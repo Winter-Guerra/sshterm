@@ -284,6 +284,9 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 	case FreeColormap:
 		return parseFreeColormapRequest(order, body, seq)
 
+	case CopyColormapAndFree:
+		return parseCopyColormapAndFreeRequest(order, body, seq)
+
 	case InstallColormap:
 		return parseInstallColormapRequest(order, body, seq)
 
@@ -3004,15 +3007,30 @@ func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte, seq ui
 }
 
 /*
-	CopyColormapAndFree
+CopyColormapAndFree
 
-	1     80                              opcode
-	1                                     unused
-	2     3                               request length
-	4     COLORMAP                        mid
-	4     COLORMAP                        src-cmap
+1     80                              opcode
+1                                     unused
+2     3                               request length
+4     COLORMAP                        mid
+4     COLORMAP                        src-cmap
 */
-// CopyColormapAndFree is not implemented.
+type CopyColormapAndFreeRequest struct {
+	Mid     Colormap
+	SrcCmap Colormap
+}
+
+func (CopyColormapAndFreeRequest) OpCode() reqCode { return CopyColormapAndFree }
+
+func parseCopyColormapAndFreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyColormapAndFreeRequest, error) {
+	if len(requestBody) != 8 {
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyColormapAndFree)
+	}
+	req := &CopyColormapAndFreeRequest{}
+	req.Mid = Colormap(order.Uint32(requestBody[0:4]))
+	req.SrcCmap = Colormap(order.Uint32(requestBody[4:8]))
+	return req, nil
+}
 
 /*
 InstallColormap
