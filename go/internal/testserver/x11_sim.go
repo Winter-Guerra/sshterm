@@ -1253,13 +1253,14 @@ func (s *sshServer) openFont(channel ssh.Channel, fid uint32, name string) error
 
 	nameBytes := []byte(name)
 	nameLen := uint16(len(nameBytes))
+	p := (4 - nameLen%4) % 4
 
-	payload := make([]byte, 4+2+2) // fid + nameLen + padding
+	payload := make([]byte, 8+nameLen+p) // fid + nameLen + padding
 	binary.LittleEndian.PutUint32(payload[0:4], fid)
 	binary.LittleEndian.PutUint16(payload[4:6], nameLen)
 	// payload[6:8] is padding
 
-	payload = append(payload, nameBytes...)
+	copy(payload[8:], nameBytes)
 
 	_, err := s.writeX11Request(channel, 45, 0, payload)
 	if err != nil {
@@ -1562,6 +1563,9 @@ func (s *sshServer) allocNamedColor(channel ssh.Channel, cmap uint32, name strin
 	binary.LittleEndian.PutUint16(payload[4:6], nameLen)
 
 	payload = append(payload, nameBytes...)
+	if nameLen%4 != 0 {
+		payload = append(payload, make([]byte, (4-nameLen%4)%4)...)
+	}
 
 	expectedSequence, err := s.writeX11Request(channel, 85, 0, payload)
 	if err != nil {
@@ -1730,7 +1734,8 @@ func (s *sshServer) setDashes(channel ssh.Channel, gcID uint32, dashOffset uint1
 		Type: "setDashes",
 		Args: []any{gcID, dashOffset, base64.StdEncoding.EncodeToString(dashes)},
 	})
-	payload := make([]byte, 8+len(dashes))
+	p := (4 - len(dashes)%4) % 4
+	payload := make([]byte, 8+len(dashes)+p)
 	binary.LittleEndian.PutUint32(payload[0:4], gcID)
 	binary.LittleEndian.PutUint16(payload[4:6], dashOffset)
 	binary.LittleEndian.PutUint16(payload[6:8], uint16(len(dashes)))
@@ -1745,12 +1750,11 @@ func (s *sshServer) createPixmap(channel ssh.Channel, pid, drawable, width, heig
 		Type: "createPixmap",
 		Args: []any{pid, drawable, width, height, depth},
 	})
-	payload := make([]byte, 16)
+	payload := make([]byte, 12)
 	binary.LittleEndian.PutUint32(payload[0:4], pid)
 	binary.LittleEndian.PutUint32(payload[4:8], drawable)
 	binary.LittleEndian.PutUint16(payload[8:10], uint16(width))
 	binary.LittleEndian.PutUint16(payload[10:12], uint16(height))
-	payload[12] = 0 // unused
 	_, err := s.writeX11Request(channel, 53, byte(depth), payload)
 	return err
 }

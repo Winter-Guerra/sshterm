@@ -16,6 +16,10 @@ type request interface {
 	OpCode() reqCode
 }
 
+func padLen(n int) int {
+	return (4 - n%4) % 4
+}
+
 func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, error) {
 	var reqHeader [4]byte
 	if n := copy(reqHeader[:], raw); n != 4 {
@@ -24,7 +28,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, erro
 	length := order.Uint16(reqHeader[2:4])
 	opcode := reqCode(reqHeader[0])
 	if int(4*length) != len(raw) {
-		debugf("X11: Raw request header: %x", reqHeader)
+		debugf("X11: parseRequest(%x...) length=%d, %d != %d", reqHeader, length, 4*length, len(raw))
 		return nil, NewError(LengthErrorCode, seq, 0, 0, opcode)
 	}
 
@@ -48,7 +52,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, erro
 		return parseDestroySubwindowsRequest(order, body, seq)
 
 	case ChangeSaveSet:
-		return parseChangeSaveSetRequest(order, body, seq)
+		return parseChangeSaveSetRequest(order, data, body, seq)
 
 	case ReparentWindow:
 		return parseReparentWindowRequest(order, body, seq)
@@ -78,7 +82,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, erro
 		return parseQueryTreeRequest(order, body, seq)
 
 	case InternAtom:
-		return parseInternAtomRequest(order, body, seq)
+		return parseInternAtomRequest(order, data, body, seq)
 
 	case GetAtomName:
 		return parseGetAtomNameRequest(order, body, seq)
@@ -129,7 +133,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, erro
 		return parseUngrabKeyboardRequest(order, body, seq)
 
 	case GrabKey:
-		return parseGrabKeyRequest(order, body, seq)
+		return parseGrabKeyRequest(order, data, body, seq)
 
 	case UngrabKey:
 		return parseUngrabKeyRequest(order, body, seq)
@@ -174,7 +178,7 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, erro
 		return parseQueryFontRequest(order, body, seq)
 
 	case QueryTextExtents:
-		return parseQueryTextExtentsRequest(order, body, seq)
+		return parseQueryTextExtentsRequest(order, data, body, seq)
 
 	case ListFonts:
 		return parseListFontsRequest(order, body, seq)
@@ -255,10 +259,10 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16) (request, erro
 		return parsePolyText16Request(order, body, seq)
 
 	case ImageText8:
-		return parseImageText8Request(order, body, seq)
+		return parseImageText8Request(order, data, body, seq)
 
 	case ImageText16:
-		return parseImageText16Request(order, body, seq)
+		return parseImageText16Request(order, data, body, seq)
 
 	case CreateColormap:
 		return parseCreateColormapRequest(order, data, body, seq)
@@ -453,6 +457,27 @@ func (PolyTextFont) isPolyTextItem() {}
 
 // request messages
 
+/*
+CreateWindow
+
+1     1                               opcode
+1     DEPTH                           depth
+2     8+n                             request length
+4     WINDOW                          wid
+4     WINDOW                          parent
+2     INT16                           x
+2     INT16                           y
+2     CARD16                          width
+2     CARD16                          height
+2     CARD16                          border-width
+2     { InputOutput, InputOnly,       class
+
+	CopyFromParent }
+
+4     VISUALID                        visual
+4     BITMASK                         value-mask
+4n    LISTofVALUE                     value-list
+*/
 type CreateWindowRequest struct {
 	Depth       uint8
 	Drawable    Window
@@ -486,14 +511,27 @@ func parseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []b
 	req.Class = order.Uint16(requestBody[18:20])
 	req.Visual = VisualID(order.Uint32(requestBody[20:24]))
 	req.ValueMask = order.Uint32(requestBody[24:28])
-	values, _, err := parseWindowAttributes(order, req.ValueMask, requestBody[28:], seq)
+	values, bytesRead, err := parseWindowAttributes(order, req.ValueMask, requestBody[28:], seq)
 	if err != nil {
 		return nil, err
+	}
+	if len(requestBody) != 28+bytesRead {
+		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 	}
 	req.Values = values
 	return req, nil
 }
 
+/*
+ChangeWindowAttributes
+
+1     2                               opcode
+1                                     unused
+2     3+n                             request length
+4     WINDOW                          window
+4     BITMASK                         value-mask
+4n    LISTofVALUE                     value-list
+*/
 type ChangeWindowAttributesRequest struct {
 	Window    Window
 	ValueMask uint32
@@ -509,14 +547,25 @@ func parseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []by
 	req := &ChangeWindowAttributesRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
 	req.ValueMask = order.Uint32(requestBody[4:8])
-	values, _, err := parseWindowAttributes(order, req.ValueMask, requestBody[8:], seq)
+	values, bytesRead, err := parseWindowAttributes(order, req.ValueMask, requestBody[8:], seq)
 	if err != nil {
 		return nil, err
+	}
+	if len(requestBody) != 8+bytesRead {
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeWindowAttributes)
 	}
 	req.Values = values
 	return req, nil
 }
 
+/*
+GetWindowAttributes
+
+1     3                               opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type GetWindowAttributesRequest struct {
 	Window Window
 }
@@ -524,7 +573,7 @@ type GetWindowAttributesRequest struct {
 func (GetWindowAttributesRequest) OpCode() reqCode { return GetWindowAttributes }
 
 func parseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetWindowAttributesRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetWindowAttributes)
 	}
 	req := &GetWindowAttributesRequest{}
@@ -532,6 +581,14 @@ func parseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte,
 	return req, nil
 }
 
+/*
+DestroyWindow
+
+1     4                               opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type DestroyWindowRequest struct {
 	Window Window
 }
@@ -539,7 +596,7 @@ type DestroyWindowRequest struct {
 func (DestroyWindowRequest) OpCode() reqCode { return DestroyWindow }
 
 func parseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroyWindowRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, DestroyWindow)
 	}
 	req := &DestroyWindowRequest{}
@@ -547,6 +604,14 @@ func parseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq u
 	return req, nil
 }
 
+/*
+DestroySubwindows
+
+1     5                               opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type DestroySubwindowsRequest struct {
 	Window Window
 }
@@ -554,7 +619,7 @@ type DestroySubwindowsRequest struct {
 func (DestroySubwindowsRequest) OpCode() reqCode { return DestroySubwindows }
 
 func parseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroySubwindowsRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, DestroySubwindows)
 	}
 	req := &DestroySubwindowsRequest{}
@@ -562,6 +627,14 @@ func parseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, s
 	return req, nil
 }
 
+/*
+ChangeSaveSet
+
+1     6                               opcode
+1     { Insert, Delete }              mode
+2     2                               request length
+4     WINDOW                          window
+*/
 type ChangeSaveSetRequest struct {
 	Window Window
 	Mode   byte
@@ -569,16 +642,27 @@ type ChangeSaveSetRequest struct {
 
 func (ChangeSaveSetRequest) OpCode() reqCode { return ChangeSaveSet }
 
-func parseChangeSaveSetRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeSaveSetRequest, error) {
-	if len(requestBody) < 5 {
+func parseChangeSaveSetRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeSaveSetRequest, error) {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeSaveSet)
 	}
 	req := &ChangeSaveSetRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
-	req.Mode = requestBody[4]
+	req.Mode = data
 	return req, nil
 }
 
+/*
+ReparentWindow
+
+1     7                               opcode
+1                                     unused
+2     4                               request length
+4     WINDOW                          window
+4     WINDOW                          parent
+2     INT16                           x
+2     INT16                           y
+*/
 type ReparentWindowRequest struct {
 	Window Window
 	Parent Window
@@ -589,7 +673,7 @@ type ReparentWindowRequest struct {
 func (ReparentWindowRequest) OpCode() reqCode { return ReparentWindow }
 
 func parseReparentWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ReparentWindowRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ReparentWindow)
 	}
 	req := &ReparentWindowRequest{}
@@ -600,6 +684,14 @@ func parseReparentWindowRequest(order binary.ByteOrder, requestBody []byte, seq 
 	return req, nil
 }
 
+/*
+MapWindow
+
+1     8                               opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type MapWindowRequest struct {
 	Window Window
 }
@@ -607,7 +699,7 @@ type MapWindowRequest struct {
 func (MapWindowRequest) OpCode() reqCode { return MapWindow }
 
 func parseMapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapWindowRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, MapWindow)
 	}
 	req := &MapWindowRequest{}
@@ -615,6 +707,14 @@ func parseMapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	return req, nil
 }
 
+/*
+MapSubwindows
+
+1     9                               opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type MapSubwindowsRequest struct {
 	Window Window
 }
@@ -622,7 +722,7 @@ type MapSubwindowsRequest struct {
 func (MapSubwindowsRequest) OpCode() reqCode { return MapSubwindows }
 
 func parseMapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapSubwindowsRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, MapSubwindows)
 	}
 	req := &MapSubwindowsRequest{}
@@ -630,6 +730,14 @@ func parseMapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq u
 	return req, nil
 }
 
+/*
+UnmapWindow
+
+1     10                              opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type UnmapWindowRequest struct {
 	Window Window
 }
@@ -637,7 +745,7 @@ type UnmapWindowRequest struct {
 func (UnmapWindowRequest) OpCode() reqCode { return UnmapWindow }
 
 func parseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapWindowRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UnmapWindow)
 	}
 	req := &UnmapWindowRequest{}
@@ -645,6 +753,14 @@ func parseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return req, nil
 }
 
+/*
+UnmapSubwindows
+
+1     11                              opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type UnmapSubwindowsRequest struct {
 	Window Window
 }
@@ -652,7 +768,7 @@ type UnmapSubwindowsRequest struct {
 func (UnmapSubwindowsRequest) OpCode() reqCode { return UnmapSubwindows }
 
 func parseUnmapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapSubwindowsRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UnmapSubwindows)
 	}
 	req := &UnmapSubwindowsRequest{}
@@ -660,6 +776,17 @@ func parseUnmapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq
 	return req, nil
 }
 
+/*
+ConfigureWindow
+
+1     12                              opcode
+1                                     unused
+2     3+n                             request length
+4     WINDOW                          window
+2     BITMASK                         value-mask
+2                                     unused
+4n    LISTofVALUE                     value-list
+*/
 type ConfigureWindowRequest struct {
 	Window    Window
 	ValueMask uint16
@@ -675,12 +802,32 @@ func parseConfigureWindowRequest(order binary.ByteOrder, requestBody []byte, seq
 	req := &ConfigureWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
 	req.ValueMask = order.Uint16(requestBody[4:6])
+	// TODO: This doesn't use the value-mask to determine how many values to read.
+	// It just reads to the end of the packet.
+	numValues := 0
+	for i := 0; i < 16; i++ {
+		if (req.ValueMask & (1 << i)) != 0 {
+			numValues++
+		}
+	}
+	if len(requestBody) != 8+numValues*4 {
+		return nil, NewError(LengthErrorCode, seq, 0, 0, ConfigureWindow)
+	}
+
 	for i := 8; i < len(requestBody); i += 4 {
 		req.Values = append(req.Values, order.Uint32(requestBody[i:i+4]))
 	}
 	return req, nil
 }
 
+/*
+CirculateWindow
+
+1     13                              opcode
+1     { RaiseLowest, LowerHighest }   direction
+2     2                               request length
+4     WINDOW                          window
+*/
 type CirculateWindowRequest struct {
 	Window    Window
 	Direction byte
@@ -689,7 +836,7 @@ type CirculateWindowRequest struct {
 func (CirculateWindowRequest) OpCode() reqCode { return CirculateWindow }
 
 func parseCirculateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CirculateWindowRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CirculateWindow)
 	}
 	req := &CirculateWindowRequest{}
@@ -698,6 +845,14 @@ func parseCirculateWindowRequest(order binary.ByteOrder, data byte, requestBody 
 	return req, nil
 }
 
+/*
+GetGeometry
+
+1     14                              opcode
+1                                     unused
+2     2                               request length
+4     DRAWABLE                        drawable
+*/
 type GetGeometryRequest struct {
 	Drawable Drawable
 }
@@ -705,7 +860,7 @@ type GetGeometryRequest struct {
 func (GetGeometryRequest) OpCode() reqCode { return GetGeometry }
 
 func parseGetGeometryRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetGeometryRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetGeometry)
 	}
 	req := &GetGeometryRequest{}
@@ -713,6 +868,14 @@ func parseGetGeometryRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return req, nil
 }
 
+/*
+QueryTree
+
+1     15                              opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type QueryTreeRequest struct {
 	Window Window
 }
@@ -720,7 +883,7 @@ type QueryTreeRequest struct {
 func (QueryTreeRequest) OpCode() reqCode { return QueryTree }
 
 func parseQueryTreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryTreeRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTree)
 	}
 	req := &QueryTreeRequest{}
@@ -735,19 +898,40 @@ type InternAtomRequest struct {
 
 func (InternAtomRequest) OpCode() reqCode { return InternAtom }
 
-func parseInternAtomRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*InternAtomRequest, error) {
+/*
+InternAtom
+
+1     16                              opcode
+1     BOOL                            only-if-exists
+2     2+(n+p)/4                       request length
+2     CARD16                          n
+2                                     unused
+n     STRING8                         name
+p                                     padding
+*/
+func parseInternAtomRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*InternAtomRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, InternAtom)
 	}
 	req := &InternAtomRequest{}
+	req.OnlyIfExists = data != 0
 	nameLen := order.Uint16(requestBody[0:2])
-	if len(requestBody) < 4+int(nameLen) {
+	paddedLen := 4 + int(nameLen) + padLen(int(nameLen))
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, InternAtom)
 	}
 	req.Name = string(requestBody[4 : 4+nameLen])
 	return req, nil
 }
 
+/*
+GetAtomName
+
+1     17                              opcode
+1                                     unused
+2     2                               request length
+4     ATOM                            atom
+*/
 type GetAtomNameRequest struct {
 	Atom Atom
 }
@@ -755,7 +939,7 @@ type GetAtomNameRequest struct {
 func (GetAtomNameRequest) OpCode() reqCode { return GetAtomName }
 
 func parseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetAtomNameRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetAtomName)
 	}
 	req := &GetAtomNameRequest{}
@@ -763,6 +947,24 @@ func parseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return req, nil
 }
 
+/*
+ChangeProperty
+
+1     18                              opcode
+1     { Replace, Prepend, Append }    mode
+2     6+(n+p)/4                       request length
+4     WINDOW                          window
+4     ATOM                            property
+4     ATOM                            type
+1     8, 16, or 32                    format
+3                                     unused
+4     CARD32                          n
+n                                     LISTofBYTE, LISTofCARD16,
+
+	or LISTofCARD32
+
+p                                     padding
+*/
 type ChangePropertyRequest struct {
 	Window   Window
 	Property Atom
@@ -790,6 +992,15 @@ func parseChangePropertyRequest(order binary.ByteOrder, requestBody []byte, seq 
 	return req, nil
 }
 
+/*
+DeleteProperty
+
+1     19                              opcode
+1                                     unused
+2     3                               request length
+4     WINDOW                          window
+4     ATOM                            property
+*/
 type DeletePropertyRequest struct {
 	Window   Window
 	Property Atom
@@ -798,7 +1009,7 @@ type DeletePropertyRequest struct {
 func (DeletePropertyRequest) OpCode() reqCode { return DeleteProperty }
 
 func parseDeletePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DeletePropertyRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, DeleteProperty)
 	}
 	req := &DeletePropertyRequest{}
@@ -807,6 +1018,18 @@ func parseDeletePropertyRequest(order binary.ByteOrder, requestBody []byte, seq 
 	return req, nil
 }
 
+/*
+GetProperty
+
+1     20                              opcode
+1     BOOL                            delete
+2     6                               request length
+4     WINDOW                          window
+4     ATOM                            property
+4     ATOM                            type
+4     CARD32                          long-offset
+4     CARD32                          long-length
+*/
 type GetPropertyRequest struct {
 	Window   Window
 	Property Atom
@@ -819,7 +1042,7 @@ type GetPropertyRequest struct {
 func (GetPropertyRequest) OpCode() reqCode { return GetProperty }
 
 func parseGetPropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPropertyRequest, error) {
-	if len(requestBody) < 20 {
+	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetProperty)
 	}
 	req := &GetPropertyRequest{}
@@ -831,6 +1054,14 @@ func parseGetPropertyRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return req, nil
 }
 
+/*
+ListProperties
+
+1     21                              opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type ListPropertiesRequest struct {
 	Window Window
 }
@@ -838,7 +1069,7 @@ type ListPropertiesRequest struct {
 func (ListPropertiesRequest) OpCode() reqCode { return ListProperties }
 
 func parseListPropertiesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListPropertiesRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListProperties)
 	}
 	req := &ListPropertiesRequest{}
@@ -846,6 +1077,16 @@ func parseListPropertiesRequest(order binary.ByteOrder, requestBody []byte, seq 
 	return req, nil
 }
 
+/*
+SetSelectionOwner
+
+1     22                              opcode
+1                                     unused
+2     4                               request length
+4     WINDOW                          owner
+4     ATOM                            selection
+4     TIMESTAMP                       time
+*/
 type SetSelectionOwnerRequest struct {
 	Owner     Window
 	Selection Atom
@@ -855,7 +1096,7 @@ type SetSelectionOwnerRequest struct {
 func (SetSelectionOwnerRequest) OpCode() reqCode { return SetSelectionOwner }
 
 func parseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetSelectionOwnerRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetSelectionOwner)
 	}
 	req := &SetSelectionOwnerRequest{}
@@ -865,6 +1106,14 @@ func parseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, s
 	return req, nil
 }
 
+/*
+GetSelectionOwner
+
+1     23                              opcode
+1                                     unused
+2     2                               request length
+4     ATOM                            selection
+*/
 type GetSelectionOwnerRequest struct {
 	Selection Atom
 }
@@ -872,7 +1121,7 @@ type GetSelectionOwnerRequest struct {
 func (GetSelectionOwnerRequest) OpCode() reqCode { return GetSelectionOwner }
 
 func parseGetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetSelectionOwnerRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetSelectionOwner)
 	}
 	req := &GetSelectionOwnerRequest{}
@@ -880,6 +1129,18 @@ func parseGetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, s
 	return req, nil
 }
 
+/*
+ConvertSelection
+
+1     24                              opcode
+1                                     unused
+2     6                               request length
+4     WINDOW                          requestor
+4     ATOM                            selection
+4     ATOM                            target
+4     ATOM                            property
+4     TIMESTAMP                       time
+*/
 type ConvertSelectionRequest struct {
 	Requestor Window
 	Selection Atom
@@ -891,7 +1152,7 @@ type ConvertSelectionRequest struct {
 func (ConvertSelectionRequest) OpCode() reqCode { return ConvertSelection }
 
 func parseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConvertSelectionRequest, error) {
-	if len(requestBody) < 20 {
+	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ConvertSelection)
 	}
 	req := &ConvertSelectionRequest{}
@@ -903,6 +1164,16 @@ func parseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte, se
 	return req, nil
 }
 
+/*
+SendEvent
+
+1     25                              opcode
+1     BOOL                            propagate
+2     12                              request length
+4     WINDOW                          destination
+4     EVENT-MASK                      event-mask
+32    any                             event
+*/
 type SendEventRequest struct {
 	Propagate   bool
 	Destination Window
@@ -913,7 +1184,7 @@ type SendEventRequest struct {
 func (SendEventRequest) OpCode() reqCode { return SendEvent }
 
 func parseSendEventRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SendEventRequest, error) {
-	if len(requestBody) < 44 {
+	if len(requestBody) != 44 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SendEvent)
 	}
 	req := &SendEventRequest{}
@@ -923,6 +1194,20 @@ func parseSendEventRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	return req, nil
 }
 
+/*
+GrabPointer
+
+1     26                              opcode
+1     BOOL                            owner-events
+2     6                               request length
+4     WINDOW                          grab-window
+2     EVENT-MASK                      event-mask
+1     { Asynchronous, Synchronous }   pointer-mode
+1     { Asynchronous, Synchronous }   keyboard-mode
+4     WINDOW                          confine-to
+4     CURSOR                          cursor
+4     TIMESTAMP                       time
+*/
 type GrabPointerRequest struct {
 	OwnerEvents  bool
 	GrabWindow   Window
@@ -937,7 +1222,7 @@ type GrabPointerRequest struct {
 func (GrabPointerRequest) OpCode() reqCode { return GrabPointer }
 
 func parseGrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabPointerRequest, error) {
-	if len(requestBody) < 20 {
+	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabPointer)
 	}
 	req := &GrabPointerRequest{}
@@ -951,6 +1236,14 @@ func parseGrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return req, nil
 }
 
+/*
+UngrabPointer
+
+1     27                              opcode
+1                                     unused
+2     2                               request length
+4     TIMESTAMP                       time
+*/
 type UngrabPointerRequest struct {
 	Time Timestamp
 }
@@ -958,7 +1251,7 @@ type UngrabPointerRequest struct {
 func (UngrabPointerRequest) OpCode() reqCode { return UngrabPointer }
 
 func parseUngrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabPointerRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabPointer)
 	}
 	req := &UngrabPointerRequest{}
@@ -966,6 +1259,22 @@ func parseUngrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq u
 	return req, nil
 }
 
+/*
+GrabButton
+
+1     28                              opcode
+1     BOOL                            owner-events
+2     6                               request length
+4     WINDOW                          grab-window
+2     EVENT-MASK                      event-mask
+1     { Asynchronous, Synchronous }   pointer-mode
+1     { Asynchronous, Synchronous }   keyboard-mode
+4     WINDOW                          confine-to
+4     CURSOR                          cursor
+1     BUTTON or AnyButton             button
+1                                     unused
+2     KEYMASK or AnyModifier          modifiers
+*/
 type GrabButtonRequest struct {
 	OwnerEvents  bool
 	GrabWindow   Window
@@ -981,7 +1290,7 @@ type GrabButtonRequest struct {
 func (GrabButtonRequest) OpCode() reqCode { return GrabButton }
 
 func parseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabButtonRequest, error) {
-	if len(requestBody) < 20 {
+	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabButton)
 	}
 	req := &GrabButtonRequest{}
@@ -997,6 +1306,16 @@ func parseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byt
 	return req, nil
 }
 
+/*
+UngrabButton
+
+1     29                              opcode
+1     BUTTON or AnyButton             button
+2     3                               request length
+4     WINDOW                          grab-window
+2                                     unused
+2     KEYMASK or AnyModifier          modifiers
+*/
 type UngrabButtonRequest struct {
 	GrabWindow Window
 	Button     byte
@@ -1006,7 +1325,7 @@ type UngrabButtonRequest struct {
 func (UngrabButtonRequest) OpCode() reqCode { return UngrabButton }
 
 func parseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*UngrabButtonRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabButton)
 	}
 	req := &UngrabButtonRequest{}
@@ -1016,6 +1335,17 @@ func parseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []b
 	return req, nil
 }
 
+/*
+ChangeActivePointerGrab
+
+1     30                              opcode
+1                                     unused
+2     4                               request length
+4     CURSOR                          cursor
+4     TIMESTAMP                       time
+2     EVENT-MASK                      event-mask
+2                                     unused
+*/
 type ChangeActivePointerGrabRequest struct {
 	Cursor    Cursor
 	Time      Timestamp
@@ -1025,7 +1355,7 @@ type ChangeActivePointerGrabRequest struct {
 func (ChangeActivePointerGrabRequest) OpCode() reqCode { return ChangeActivePointerGrab }
 
 func parseChangeActivePointerGrabRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeActivePointerGrabRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeActivePointerGrab)
 	}
 	req := &ChangeActivePointerGrabRequest{}
@@ -1035,6 +1365,18 @@ func parseChangeActivePointerGrabRequest(order binary.ByteOrder, requestBody []b
 	return req, nil
 }
 
+/*
+GrabKeyboard
+
+1     31                              opcode
+1     BOOL                            owner-events
+2     4                               request length
+4     WINDOW                          grab-window
+4     TIMESTAMP                       time
+1     { Asynchronous, Synchronous }   pointer-mode
+1     { Asynchronous, Synchronous }   keyboard-mode
+2                                     unused
+*/
 type GrabKeyboardRequest struct {
 	OwnerEvents  bool
 	GrabWindow   Window
@@ -1046,7 +1388,7 @@ type GrabKeyboardRequest struct {
 func (GrabKeyboardRequest) OpCode() reqCode { return GrabKeyboard }
 
 func parseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabKeyboardRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabKeyboard)
 	}
 	req := &GrabKeyboardRequest{}
@@ -1057,6 +1399,14 @@ func parseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq ui
 	return req, nil
 }
 
+/*
+UngrabKeyboard
+
+1     32                              opcode
+1                                     unused
+2     2                               request length
+4     TIMESTAMP                       time
+*/
 type UngrabKeyboardRequest struct {
 	Time Timestamp
 }
@@ -1064,7 +1414,7 @@ type UngrabKeyboardRequest struct {
 func (UngrabKeyboardRequest) OpCode() reqCode { return UngrabKeyboard }
 
 func parseUngrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyboardRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabKeyboard)
 	}
 	req := &UngrabKeyboardRequest{}
@@ -1072,6 +1422,19 @@ func parseUngrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq 
 	return req, nil
 }
 
+/*
+GrabKey
+
+1     33                              opcode
+1     BOOL                            owner-events
+2     4                               request length
+4     WINDOW                          grab-window
+2     KEYMASK or AnyModifier          modifiers
+1     KEYCODE or AnyKey               key
+1     { Asynchronous, Synchronous }   pointer-mode
+1     { Asynchronous, Synchronous }   keyboard-mode
+3                                     unused
+*/
 type GrabKeyRequest struct {
 	OwnerEvents  bool
 	GrabWindow   Window
@@ -1083,20 +1446,30 @@ type GrabKeyRequest struct {
 
 func (GrabKeyRequest) OpCode() reqCode { return GrabKey }
 
-func parseGrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabKeyRequest, error) {
-	if len(requestBody) < 13 {
+func parseGrabKeyRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabKeyRequest, error) {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabKey)
 	}
 	req := &GrabKeyRequest{}
-	req.OwnerEvents = requestBody[0] != 0
-	req.GrabWindow = Window(order.Uint32(requestBody[4:8]))
-	req.Modifiers = order.Uint16(requestBody[8:10])
-	req.Key = KeyCode(requestBody[10])
-	req.PointerMode = requestBody[11]
-	req.KeyboardMode = requestBody[12]
+	req.OwnerEvents = data != 0
+	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
+	req.Modifiers = order.Uint16(requestBody[4:6])
+	req.Key = KeyCode(requestBody[6])
+	req.PointerMode = requestBody[7]
+	req.KeyboardMode = requestBody[8]
 	return req, nil
 }
 
+/*
+UngrabKey
+
+1     34                              opcode
+1     KEYCODE or AnyKey               key
+2     3                               request length
+4     WINDOW                          grab-window
+2     KEYMASK or AnyModifier          modifiers
+2                                     unused
+*/
 type UngrabKeyRequest struct {
 	GrabWindow Window
 	Modifiers  uint16
@@ -1106,7 +1479,7 @@ type UngrabKeyRequest struct {
 func (UngrabKeyRequest) OpCode() reqCode { return UngrabKey }
 
 func parseUngrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabKey)
 	}
 	req := &UngrabKeyRequest{}
@@ -1116,6 +1489,19 @@ func parseUngrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	return req, nil
 }
 
+/*
+AllowEvents
+
+1     35                              opcode
+1     { AsyncPointer, SyncPointer,    mode
+
+	ReplayPointer, AsyncKeyboard,
+	SyncKeyboard, ReplayKeyboard,
+	AsyncBoth, SyncBoth }
+
+2     2                               request length
+4     TIMESTAMP                       time
+*/
 type AllowEventsRequest struct {
 	Mode byte
 	Time Timestamp
@@ -1124,7 +1510,7 @@ type AllowEventsRequest struct {
 func (AllowEventsRequest) OpCode() reqCode { return AllowEvents }
 
 func parseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*AllowEventsRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllowEvents)
 	}
 	req := &AllowEventsRequest{}
@@ -1133,6 +1519,13 @@ func parseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []by
 	return req, nil
 }
 
+/*
+GrabServer
+
+1     36                              opcode
+1                                     unused
+2     1                               request length
+*/
 type GrabServerRequest struct{}
 
 func (GrabServerRequest) OpCode() reqCode { return GrabServer }
@@ -1141,6 +1534,13 @@ func parseGrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint
 	return &GrabServerRequest{}, nil
 }
 
+/*
+UngrabServer
+
+1     37                              opcode
+1                                     unused
+2     1                               request length
+*/
 type UngrabServerRequest struct{}
 
 func (UngrabServerRequest) OpCode() reqCode { return UngrabServer }
@@ -1149,6 +1549,14 @@ func parseUngrabServerRequest(order binary.ByteOrder, requestBody []byte, seq ui
 	return &UngrabServerRequest{}, nil
 }
 
+/*
+QueryPointer
+
+1     38                              opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type QueryPointerRequest struct {
 	Drawable Drawable
 }
@@ -1156,7 +1564,7 @@ type QueryPointerRequest struct {
 func (QueryPointerRequest) OpCode() reqCode { return QueryPointer }
 
 func parseQueryPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryPointerRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryPointer)
 	}
 	req := &QueryPointerRequest{}
@@ -1164,6 +1572,16 @@ func parseQueryPointerRequest(order binary.ByteOrder, requestBody []byte, seq ui
 	return req, nil
 }
 
+/*
+GetMotionEvents
+
+1     39                              opcode
+1                                     unused
+2     4                               request length
+4     WINDOW                          window
+4     TIMESTAMP                       start
+4     TIMESTAMP                       stop
+*/
 type GetMotionEventsRequest struct {
 	Window Window
 	Start  Timestamp
@@ -1173,7 +1591,7 @@ type GetMotionEventsRequest struct {
 func (GetMotionEventsRequest) OpCode() reqCode { return GetMotionEvents }
 
 func parseGetMotionEventsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetMotionEventsRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetMotionEvents)
 	}
 	req := &GetMotionEventsRequest{}
@@ -1183,6 +1601,17 @@ func parseGetMotionEventsRequest(order binary.ByteOrder, requestBody []byte, seq
 	return req, nil
 }
 
+/*
+TranslateCoordinates
+
+1     40                              opcode
+1                                     unused
+2     4                               request length
+4     WINDOW                          src-window
+4     WINDOW                          dst-window
+2     INT16                           src-x
+2     INT16                           src-y
+*/
 type TranslateCoordsRequest struct {
 	SrcWindow Window
 	DstWindow Window
@@ -1193,7 +1622,7 @@ type TranslateCoordsRequest struct {
 func (TranslateCoordsRequest) OpCode() reqCode { return TranslateCoords }
 
 func parseTranslateCoordsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*TranslateCoordsRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, TranslateCoords)
 	}
 	req := &TranslateCoordsRequest{}
@@ -1204,6 +1633,21 @@ func parseTranslateCoordsRequest(order binary.ByteOrder, requestBody []byte, seq
 	return req, nil
 }
 
+/*
+WarpPointer
+
+1     41                              opcode
+1                                     unused
+2     5                               request length
+4     WINDOW                          src-window
+4     WINDOW                          dst-window
+2     INT16                           src-x
+2     INT16                           src-y
+2     CARD16                          src-width
+2     CARD16                          src-height
+2     INT16                           dst-x
+2     INT16                           dst-y
+*/
 type WarpPointerRequest struct {
 	SrcWindow uint32
 	DstWindow uint32
@@ -1218,15 +1662,33 @@ type WarpPointerRequest struct {
 func (WarpPointerRequest) OpCode() reqCode { return WarpPointer }
 
 func parseWarpPointerRequest(order binary.ByteOrder, payload []byte, seq uint16) (*WarpPointerRequest, error) {
-	if len(payload) < 16 {
+	if len(payload) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, WarpPointer)
 	}
 	req := &WarpPointerRequest{}
-	req.DstX = int16(order.Uint16(payload[12:14]))
-	req.DstY = int16(order.Uint16(payload[14:16]))
+	req.SrcWindow = order.Uint32(payload[0:4])
+	req.DstWindow = order.Uint32(payload[4:8])
+	req.SrcX = int16(order.Uint16(payload[8:10]))
+	req.SrcY = int16(order.Uint16(payload[10:12]))
+	req.SrcWidth = order.Uint16(payload[12:14])
+	req.SrcHeight = order.Uint16(payload[14:16])
+	req.DstX = int16(order.Uint16(payload[16:18]))
+	req.DstY = int16(order.Uint16(payload[18:20]))
 	return req, nil
 }
 
+/*
+SetInputFocus
+
+1     42                              opcode
+1     { None, PointerRoot, Parent,    revert-to
+
+	FollowKeyboard }
+
+2     3                               request length
+4     WINDOW                          focus
+4     TIMESTAMP                       time
+*/
 type SetInputFocusRequest struct {
 	Focus    Window
 	RevertTo byte
@@ -1236,7 +1698,7 @@ type SetInputFocusRequest struct {
 func (SetInputFocusRequest) OpCode() reqCode { return SetInputFocus }
 
 func parseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetInputFocusRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetInputFocus)
 	}
 	req := &SetInputFocusRequest{}
@@ -1246,6 +1708,13 @@ func parseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq u
 	return req, nil
 }
 
+/*
+GetInputFocus
+
+1     43                              opcode
+1                                     unused
+2     1                               request length
+*/
 type GetInputFocusRequest struct{}
 
 func (GetInputFocusRequest) OpCode() reqCode { return GetInputFocus }
@@ -1254,6 +1723,13 @@ func parseGetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq u
 	return &GetInputFocusRequest{}, nil
 }
 
+/*
+QueryKeymap
+
+1     44                              opcode
+1                                     unused
+2     1                               request length
+*/
 type QueryKeymapRequest struct{}
 
 func (QueryKeymapRequest) OpCode() reqCode { return QueryKeymap }
@@ -1262,6 +1738,18 @@ func parseQueryKeymapRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return &QueryKeymapRequest{}, nil
 }
 
+/*
+OpenFont
+
+1     45                              opcode
+1                                     unused
+2     3+(n+p)/4                       request length
+4     FONT                            fid
+2     CARD16                          n
+2                                     unused
+n     STRING8                         name
+p                                     padding
+*/
 type OpenFontRequest struct {
 	Fid  Font
 	Name string
@@ -1275,14 +1763,23 @@ func parseOpenFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	}
 	req := &OpenFontRequest{}
 	req.Fid = Font(order.Uint32(requestBody[0:4]))
-	nameLen := order.Uint16(requestBody[4:6])
-	if len(requestBody) < 8+int(nameLen) {
+	nameLen := int(order.Uint16(requestBody[4:6]))
+	paddedLen := 8 + nameLen + padLen(8+nameLen)
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, OpenFont)
 	}
 	req.Name = string(requestBody[8 : 8+nameLen])
 	return req, nil
 }
 
+/*
+CloseFont
+
+1     46                              opcode
+1                                     unused
+2     2                               request length
+4     FONT                            font
+*/
 type CloseFontRequest struct {
 	Fid Font
 }
@@ -1290,7 +1787,7 @@ type CloseFontRequest struct {
 func (CloseFontRequest) OpCode() reqCode { return CloseFont }
 
 func parseCloseFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CloseFontRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CloseFont)
 	}
 	req := &CloseFontRequest{}
@@ -1298,6 +1795,14 @@ func parseCloseFontRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	return req, nil
 }
 
+/*
+QueryFont
+
+1     47                              opcode
+1                                     unused
+2     2                               request length
+4     FONTABLE                        font
+*/
 type QueryFontRequest struct {
 	Fid Font
 }
@@ -1305,7 +1810,7 @@ type QueryFontRequest struct {
 func (QueryFontRequest) OpCode() reqCode { return QueryFont }
 
 func parseQueryFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryFontRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryFont)
 	}
 	req := &QueryFontRequest{}
@@ -1313,6 +1818,15 @@ func parseQueryFontRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	return req, nil
 }
 
+/*
+QueryTextExtents
+
+1     48                              opcode
+1     BOOL                            oddLength
+2     2+2n/4                          request length
+4     FONTABLE                        font
+2n    LISTofCHAR2B                    string
+*/
 type QueryTextExtentsRequest struct {
 	Fid  Font
 	Text []uint16
@@ -1320,18 +1834,48 @@ type QueryTextExtentsRequest struct {
 
 func (QueryTextExtentsRequest) OpCode() reqCode { return QueryTextExtents }
 
-func parseQueryTextExtentsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryTextExtentsRequest, error) {
+func parseQueryTextExtentsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*QueryTextExtentsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTextExtents)
 	}
+	oddLength := data != 0
+	var n int
+	if oddLength {
+		if (len(requestBody)-4)%4 != 2 {
+			return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTextExtents)
+		}
+		n = (len(requestBody) - 4 - 2) / 2
+	} else {
+		if (len(requestBody)-4)%4 != 0 {
+			return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTextExtents)
+		}
+		n = (len(requestBody) - 4) / 2
+	}
+	if n%2 != 0 != oddLength {
+		// As per spec, the oddLength flag is just a hint. The true
+		// length is derived from the request length field, which we
+		// have already validated. We can ignore a mismatch here.
+	}
+
 	req := &QueryTextExtentsRequest{}
 	req.Fid = Font(order.Uint32(requestBody[0:4]))
-	for i := 4; i < len(requestBody); i += 2 {
-		req.Text = append(req.Text, order.Uint16(requestBody[i:i+2]))
+	for i := 0; i < n; i++ {
+		req.Text = append(req.Text, order.Uint16(requestBody[4+i*2:4+(i+1)*2]))
 	}
 	return req, nil
 }
 
+/*
+ListFonts
+
+1     49                              opcode
+1                                     unused
+2     2+(n+p)/4                       request length
+2     CARD16                          max-names
+2     CARD16                          n
+n     STRING8                         pattern
+p                                     padding
+*/
 type ListFontsRequest struct {
 	MaxNames uint16
 	Pattern  string
@@ -1345,14 +1889,26 @@ func parseListFontsRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	}
 	req := &ListFontsRequest{}
 	req.MaxNames = order.Uint16(requestBody[0:2])
-	nameLen := order.Uint16(requestBody[2:4])
-	if len(requestBody) < 4+int(nameLen) {
+	nameLen := int(order.Uint16(requestBody[2:4]))
+	paddedLen := 4 + nameLen + padLen(nameLen)
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFonts)
 	}
 	req.Pattern = string(requestBody[4 : 4+nameLen])
 	return req, nil
 }
 
+/*
+ListFontsWithInfo
+
+1     50                              opcode
+1                                     unused
+2     2+(n+p)/4                       request length
+2     CARD16                          max-names
+2     CARD16                          n
+n     STRING8                         pattern
+p                                     padding
+*/
 type ListFontsWithInfoRequest struct {
 	MaxNames uint16
 	Pattern  string
@@ -1366,14 +1922,26 @@ func parseListFontsWithInfoRequest(order binary.ByteOrder, requestBody []byte, s
 	}
 	req := &ListFontsWithInfoRequest{}
 	req.MaxNames = order.Uint16(requestBody[0:2])
-	nameLen := order.Uint16(requestBody[2:4])
-	if len(requestBody) < 4+int(nameLen) {
+	nameLen := int(order.Uint16(requestBody[2:4]))
+	paddedLen := 4 + nameLen + padLen(nameLen)
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFontsWithInfo)
 	}
 	req.Pattern = string(requestBody[4 : 4+nameLen])
 	return req, nil
 }
 
+/*
+SetFontPath
+
+1     51                              opcode
+1                                     unused
+2     2+(n+p)/4                       request length
+2     CARD16                          number of paths
+2                                     unused
+n                                     LISTofSTR
+p                                     padding
+*/
 type SetFontPathRequest struct {
 	NumPaths uint16
 	Paths    []string
@@ -1388,21 +1956,36 @@ func parseSetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	req := &SetFontPathRequest{}
 	req.NumPaths = order.Uint16(requestBody[0:2])
 	pathsData := requestBody[4:]
+	pathsLen := 0
+	tempPathsData := pathsData
 	for i := 0; i < int(req.NumPaths); i++ {
-		if len(pathsData) == 0 {
+		if len(tempPathsData) == 0 {
 			return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 		}
-		pathLen := int(pathsData[0])
-		pathsData = pathsData[1:]
-		if len(pathsData) < pathLen {
+		pathLen := int(tempPathsData[0])
+		tempPathsData = tempPathsData[1:]
+		pathsLen++
+		if len(tempPathsData) < pathLen {
 			return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 		}
-		req.Paths = append(req.Paths, string(pathsData[:pathLen]))
-		pathsData = pathsData[pathLen:]
+		req.Paths = append(req.Paths, string(tempPathsData[:pathLen]))
+		tempPathsData = tempPathsData[pathLen:]
+		pathsLen += pathLen
+	}
+	paddedLen := pathsLen + padLen(pathsLen)
+	if len(pathsData) != paddedLen {
+		return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 	}
 	return req, nil
 }
 
+/*
+GetFontPath
+
+1     52                              opcode
+1                                     unused
+2     1                               request length
+*/
 type GetFontPathRequest struct{}
 
 func (GetFontPathRequest) OpCode() reqCode { return GetFontPath }
@@ -1411,6 +1994,17 @@ func parseGetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return &GetFontPathRequest{}, nil
 }
 
+/*
+CreatePixmap
+
+1     53                              opcode
+1     DEPTH                           depth
+2     4                               request length
+4     PIXMAP                          pid
+4     DRAWABLE                        drawable
+2     CARD16                          width
+2     CARD16                          height
+*/
 type CreatePixmapRequest struct {
 	Pid      Pixmap
 	Drawable Drawable
@@ -1422,7 +2016,7 @@ type CreatePixmapRequest struct {
 func (CreatePixmapRequest) OpCode() reqCode { return CreatePixmap }
 
 func parseCreatePixmapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreatePixmapRequest, error) {
-	if len(payload) < 12 {
+	if len(payload) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreatePixmap)
 	}
 	req := &CreatePixmapRequest{}
@@ -1434,6 +2028,14 @@ func parseCreatePixmapRequest(order binary.ByteOrder, data byte, payload []byte,
 	return req, nil
 }
 
+/*
+FreePixmap
+
+1     54                              opcode
+1                                     unused
+2     2                               request length
+4     PIXMAP                          pixmap
+*/
 type FreePixmapRequest struct {
 	Pid Pixmap
 }
@@ -1441,7 +2043,7 @@ type FreePixmapRequest struct {
 func (FreePixmapRequest) OpCode() reqCode { return FreePixmap }
 
 func parseFreePixmapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreePixmapRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreePixmap)
 	}
 	req := &FreePixmapRequest{}
@@ -1449,6 +2051,17 @@ func parseFreePixmapRequest(order binary.ByteOrder, requestBody []byte, seq uint
 	return req, nil
 }
 
+/*
+CreateGC
+
+1     55                              opcode
+1                                     unused
+2     4+n                             request length
+4     GCONTEXT                        cid
+4     DRAWABLE                        drawable
+4     BITMASK                         value-mask
+4n    LISTofVALUE                     value-list
+*/
 type CreateGCRequest struct {
 	Cid       GContext
 	Drawable  Drawable
@@ -1474,6 +2087,16 @@ func parseCreateGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	return req, nil
 }
 
+/*
+ChangeGC
+
+1     56                              opcode
+1                                     unused
+2     3+n                             request length
+4     GCONTEXT                        gc
+4     BITMASK                         value-mask
+4n    LISTofVALUE                     value-list
+*/
 type ChangeGCRequest struct {
 	Gc        GContext
 	ValueMask uint32
@@ -1497,23 +2120,47 @@ func parseChangeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	return req, nil
 }
 
+/*
+CopyGC
+
+1     57                              opcode
+1                                     unused
+2     4                               request length
+4     GCONTEXT                        src-gc
+4     GCONTEXT                        dst-gc
+4     BITMASK                         value-mask
+*/
 type CopyGCRequest struct {
-	SrcGC GContext
-	DstGC GContext
+	SrcGC     GContext
+	DstGC     GContext
+	ValueMask uint32
 }
 
 func (CopyGCRequest) OpCode() reqCode { return CopyGC }
 
 func parseCopyGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyGCRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyGC)
 	}
 	req := &CopyGCRequest{}
 	req.SrcGC = GContext(order.Uint32(requestBody[0:4]))
 	req.DstGC = GContext(order.Uint32(requestBody[4:8]))
+	req.ValueMask = order.Uint32(requestBody[8:12])
 	return req, nil
 }
 
+/*
+SetDashes
+
+1     58                              opcode
+1                                     unused
+2     3+(n+p)/4                       request length
+4     GCONTEXT                        gc
+2     CARD16                          dash-offset
+2     CARD16                          n
+n     LISTofCARD8                     dashes
+p                                     padding
+*/
 type SetDashesRequest struct {
 	GC         GContext
 	DashOffset uint16
@@ -1529,14 +2176,29 @@ func parseSetDashesRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	req := &SetDashesRequest{}
 	req.GC = GContext(order.Uint32(requestBody[0:4]))
 	req.DashOffset = order.Uint16(requestBody[4:6])
-	nDashes := order.Uint16(requestBody[6:8])
-	if len(requestBody) < 8+int(nDashes) {
+	nDashes := int(order.Uint16(requestBody[6:8]))
+	paddedLen := 8 + nDashes + padLen(8+nDashes)
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetDashes)
 	}
 	req.Dashes = requestBody[8 : 8+nDashes]
 	return req, nil
 }
 
+/*
+SetClipRectangles
+
+1     59                              opcode
+1     { UnSorted, YSorted,            ordering
+
+	YXSorted, YXBanded }
+
+2     3+2n                            request length
+4     GCONTEXT                        gc
+2     INT16                           clip-x-origin
+2     INT16                           clip-y-origin
+8n    LISTofRECTANGLE                 rectangles
+*/
 type SetClipRectanglesRequest struct {
 	GC         GContext
 	ClippingX  int16
@@ -1548,7 +2210,7 @@ type SetClipRectanglesRequest struct {
 func (SetClipRectanglesRequest) OpCode() reqCode { return SetClipRectangles }
 
 func parseSetClipRectanglesRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetClipRectanglesRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) < 8 || len(requestBody)%8 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetClipRectangles)
 	}
 	req := &SetClipRectanglesRequest{}
@@ -1570,6 +2232,14 @@ func parseSetClipRectanglesRequest(order binary.ByteOrder, data byte, requestBod
 	return req, nil
 }
 
+/*
+FreeGC
+
+1     60                              opcode
+1                                     unused
+2     2                               request length
+4     GCONTEXT                        gc
+*/
 type FreeGCRequest struct {
 	GC GContext
 }
@@ -1577,7 +2247,7 @@ type FreeGCRequest struct {
 func (FreeGCRequest) OpCode() reqCode { return FreeGC }
 
 func parseFreeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeGCRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeGC)
 	}
 	req := &FreeGCRequest{}
@@ -1585,6 +2255,18 @@ func parseFreeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) 
 	return req, nil
 }
 
+/*
+ClearArea
+
+1     61                              opcode
+1     BOOL                            exposures
+2     4                               request length
+4     WINDOW                          window
+2     INT16                           x
+2     INT16                           y
+2     CARD16                          width
+2     CARD16                          height
+*/
 type ClearAreaRequest struct {
 	Exposures bool
 	Window    Window
@@ -1597,7 +2279,7 @@ type ClearAreaRequest struct {
 func (ClearAreaRequest) OpCode() reqCode { return ClearArea }
 
 func parseClearAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ClearAreaRequest, error) {
-	if len(requestBody) < 12 {
+	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ClearArea)
 	}
 	req := &ClearAreaRequest{}
@@ -1609,6 +2291,22 @@ func parseClearAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	return req, nil
 }
 
+/*
+CopyArea
+
+1     62                              opcode
+1                                     unused
+2     7                               request length
+4     DRAWABLE                        src-drawable
+4     DRAWABLE                        dst-drawable
+4     GCONTEXT                        gc
+2     INT16                           src-x
+2     INT16                           src-y
+2     INT16                           dst-x
+2     INT16                           dst-y
+2     CARD16                          width
+2     CARD16                          height
+*/
 type CopyAreaRequest struct {
 	SrcDrawable Drawable
 	DstDrawable Drawable
@@ -1624,7 +2322,7 @@ type CopyAreaRequest struct {
 func (CopyAreaRequest) OpCode() reqCode { return CopyArea }
 
 func parseCopyAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyAreaRequest, error) {
-	if len(requestBody) < 28 {
+	if len(requestBody) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyArea)
 	}
 	req := &CopyAreaRequest{}
@@ -1640,6 +2338,16 @@ func parseCopyAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	return req, nil
 }
 
+/*
+PolyPoint
+
+1     64                              opcode
+1     { Origin, Previous }            coordinate-mode
+2     3+n                             request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+4n    LISTofPOINT                     points
+*/
 type PolyPointRequest struct {
 	Drawable    Drawable
 	Gc          GContext
@@ -1649,7 +2357,7 @@ type PolyPointRequest struct {
 func (PolyPointRequest) OpCode() reqCode { return PolyPoint }
 
 func parsePolyPointRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyPointRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) < 8 || (len(requestBody)-8)%4 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyPoint)
 	}
 	req := &PolyPointRequest{}
@@ -1665,6 +2373,16 @@ func parsePolyPointRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	return req, nil
 }
 
+/*
+PolyLine
+
+1     65                              opcode
+1     { Origin, Previous }            coordinate-mode
+2     3+n                             request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+4n    LISTofPOINT                     points
+*/
 type PolyLineRequest struct {
 	Drawable    Drawable
 	Gc          GContext
@@ -1674,7 +2392,7 @@ type PolyLineRequest struct {
 func (PolyLineRequest) OpCode() reqCode { return PolyLine }
 
 func parsePolyLineRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyLineRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) < 8 || (len(requestBody)-8)%4 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyLine)
 	}
 	req := &PolyLineRequest{}
@@ -1690,6 +2408,16 @@ func parsePolyLineRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	return req, nil
 }
 
+/*
+PolySegment
+
+1     66                              opcode
+1                                     unused
+2     3+2n                            request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+8n    LISTofSEGMENT                   segments
+*/
 type PolySegmentRequest struct {
 	Drawable Drawable
 	Gc       GContext
@@ -1699,7 +2427,7 @@ type PolySegmentRequest struct {
 func (PolySegmentRequest) OpCode() reqCode { return PolySegment }
 
 func parsePolySegmentRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolySegmentRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) < 8 || (len(requestBody)-8)%8 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolySegment)
 	}
 	req := &PolySegmentRequest{}
@@ -1717,6 +2445,16 @@ func parsePolySegmentRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return req, nil
 }
 
+/*
+PolyRectangle
+
+1     67                              opcode
+1                                     unused
+2     3+2n                            request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+8n    LISTofRECTANGLE                 rectangles
+*/
 type PolyRectangleRequest struct {
 	Drawable   Drawable
 	Gc         GContext
@@ -1726,7 +2464,7 @@ type PolyRectangleRequest struct {
 func (PolyRectangleRequest) OpCode() reqCode { return PolyRectangle }
 
 func parsePolyRectangleRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyRectangleRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) < 8 || (len(requestBody)-8)%8 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyRectangle)
 	}
 	req := &PolyRectangleRequest{}
@@ -1744,6 +2482,16 @@ func parsePolyRectangleRequest(order binary.ByteOrder, requestBody []byte, seq u
 	return req, nil
 }
 
+/*
+PolyArc
+
+1     68                              opcode
+1                                     unused
+2     3+3n                            request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+12n   LISTofARC                       arcs
+*/
 type PolyArcRequest struct {
 	Drawable Drawable
 	Gc       GContext
@@ -1773,6 +2521,19 @@ func parsePolyArcRequest(order binary.ByteOrder, requestBody []byte, seq uint16)
 	return req, nil
 }
 
+/*
+FillPoly
+
+1     69                              opcode
+1                                     unused
+2     4+n                             request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+1     { Complex, Nonconvex, Convex }  shape
+1     { Origin, Previous }            coordinate-mode
+2                                     unused
+4n    LISTofPOINT                     points
+*/
 type FillPolyRequest struct {
 	Drawable    Drawable
 	Gc          GContext
@@ -1799,6 +2560,16 @@ func parseFillPolyRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	return req, nil
 }
 
+/*
+PolyFillRectangle
+
+1     70                              opcode
+1                                     unused
+2     3+2n                            request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+8n    LISTofRECTANGLE                 rectangles
+*/
 type PolyFillRectangleRequest struct {
 	Drawable   Drawable
 	Gc         GContext
@@ -1826,6 +2597,16 @@ func parsePolyFillRectangleRequest(order binary.ByteOrder, requestBody []byte, s
 	return req, nil
 }
 
+/*
+PolyFillArc
+
+1     71                              opcode
+1                                     unused
+2     3+3n                            request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+12n   LISTofARC                       arcs
+*/
 type PolyFillArcRequest struct {
 	Drawable Drawable
 	Gc       GContext
@@ -1855,6 +2636,24 @@ func parsePolyFillArcRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	return req, nil
 }
 
+/*
+PutImage
+
+1     72                              opcode
+1     { Bitmap, XYPixmap, ZPixmap }   format
+2     6+(n+p)/4                       request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+2     CARD16                          width
+2     CARD16                          height
+2     INT16                           dst-x
+2     INT16                           dst-y
+1     CARD8                           left-pad
+1     CARD8                           depth
+2                                     unused
+n     LISTofBYTE                      data
+p                                     padding
+*/
 type PutImageRequest struct {
 	Drawable Drawable
 	Gc       GContext
@@ -1884,30 +2683,23 @@ func parsePutImageRequest(order binary.ByteOrder, data byte, requestBody []byte,
 	req.DstY = int16(order.Uint16(requestBody[14:16]))
 	req.LeftPad = requestBody[16]
 	req.Depth = requestBody[17]
-	scanlinePad := func(widthInBits, padInBits int) int {
-		return (widthInBits + padInBits - 1) / padInBits * padInBits
-	}
-	const scanlinePadUnit = 32
-	var expectedDataLen int
-	switch req.Format {
-	case 0: // XYBitmap
-		bits := scanlinePad(int(req.Width), scanlinePadUnit)
-		expectedDataLen = (bits * int(req.Height)) / 8
-	case 1: // XYPixmap
-		bits := scanlinePad(int(req.Width), scanlinePadUnit)
-		expectedDataLen = (bits * int(req.Height) * int(req.Depth)) / 8
-	case 2: // ZPixmap
-		bits := scanlinePad(int(req.Width)*int(req.Depth), scanlinePadUnit)
-		expectedDataLen = (bits * int(req.Height)) / 8
-	}
-	paddedExpectedDataLen := (expectedDataLen + 3) &^ 3
-	if len(requestBody)-20 != paddedExpectedDataLen {
-		return nil, NewError(LengthErrorCode, seq, 0, 0, PutImage)
-	}
-	req.Data = requestBody[20 : 20+expectedDataLen]
+	req.Data = requestBody[20:]
 	return req, nil
 }
 
+/*
+GetImage
+
+1     73                              opcode
+1     { XYPixmap, ZPixmap }           format
+2     5                               request length
+4     DRAWABLE                        drawable
+2     INT16                           x
+2     INT16                           y
+2     CARD16                          width
+2     CARD16                          height
+4     CARD32                          plane-mask
+*/
 type GetImageRequest struct {
 	Drawable  Drawable
 	X         int16
@@ -1921,7 +2713,7 @@ type GetImageRequest struct {
 func (GetImageRequest) OpCode() reqCode { return GetImage }
 
 func parseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GetImageRequest, error) {
-	if len(requestBody) < 16 {
+	if len(requestBody) != 16 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetImage)
 	}
 	req := &GetImageRequest{}
@@ -1935,6 +2727,19 @@ func parseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte,
 	return req, nil
 }
 
+/*
+PolyText8
+
+1     74                              opcode
+1                                     unused
+2     4+(n+p)/4                       request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+2     INT16                           x
+2     INT16                           y
+n     LISTofTEXTITEM8                 items
+p                                     padding
+*/
 type PolyText8Request struct {
 	Drawable Drawable
 	GC       GContext
@@ -1985,6 +2790,19 @@ func parsePolyText8Request(order binary.ByteOrder, data []byte, seq uint16) (*Po
 	return &req, nil
 }
 
+/*
+PolyText16
+
+1     75                              opcode
+1                                     unused
+2     4+(n+p)/4                       request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+2     INT16                           x
+2     INT16                           y
+n     LISTofTEXTITEM16                items
+p                                     padding
+*/
 type PolyText16Request struct {
 	Drawable Drawable
 	GC       GContext
@@ -2039,6 +2857,19 @@ func parsePolyText16Request(order binary.ByteOrder, data []byte, seq uint16) (*P
 	return &req, nil
 }
 
+/*
+ImageText8
+
+1     76                              opcode
+1     n                               length of string
+2     4+(n+p)/4                       request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+2     INT16                           x
+2     INT16                           y
+n     STRING8                         string
+p                                     padding
+*/
 type ImageText8Request struct {
 	Drawable Drawable
 	Gc       GContext
@@ -2049,8 +2880,10 @@ type ImageText8Request struct {
 
 func (ImageText8Request) OpCode() reqCode { return ImageText8 }
 
-func parseImageText8Request(order binary.ByteOrder, requestBody []byte, seq uint16) (*ImageText8Request, error) {
-	if len(requestBody) < 12 {
+func parseImageText8Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText8Request, error) {
+	n := int(data)
+	paddedLen := 12 + n + padLen(n)
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ImageText8)
 	}
 	req := &ImageText8Request{}
@@ -2058,10 +2891,23 @@ func parseImageText8Request(order binary.ByteOrder, requestBody []byte, seq uint
 	req.Gc = GContext(order.Uint32(requestBody[4:8]))
 	req.X = int16(order.Uint16(requestBody[8:10]))
 	req.Y = int16(order.Uint16(requestBody[10:12]))
-	req.Text = requestBody[12:]
+	req.Text = requestBody[12 : 12+n]
 	return req, nil
 }
 
+/*
+ImageText16
+
+1     77                              opcode
+1     n                               length of string
+2     4+(2n+p)/4                      request length
+4     DRAWABLE                        drawable
+4     GCONTEXT                        gc
+2     INT16                           x
+2     INT16                           y
+2n    STRING16                        string
+p                                     padding
+*/
 type ImageText16Request struct {
 	Drawable Drawable
 	Gc       GContext
@@ -2072,8 +2918,10 @@ type ImageText16Request struct {
 
 func (ImageText16Request) OpCode() reqCode { return ImageText16 }
 
-func parseImageText16Request(order binary.ByteOrder, requestBody []byte, seq uint16) (*ImageText16Request, error) {
-	if len(requestBody) < 12 {
+func parseImageText16Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText16Request, error) {
+	n := int(data)
+	paddedLen := 12 + 2*n + padLen(12+2*n)
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ImageText16)
 	}
 	req := &ImageText16Request{}
@@ -2081,12 +2929,22 @@ func parseImageText16Request(order binary.ByteOrder, requestBody []byte, seq uin
 	req.Gc = GContext(order.Uint32(requestBody[4:8]))
 	req.X = int16(order.Uint16(requestBody[8:10]))
 	req.Y = int16(order.Uint16(requestBody[10:12]))
-	for i := 12; i < len(requestBody); i += 2 {
-		req.Text = append(req.Text, order.Uint16(requestBody[i:i+2]))
+	for i := 0; i < n; i++ {
+		req.Text = append(req.Text, order.Uint16(requestBody[12+i*2:12+(i+1)*2]))
 	}
 	return req, nil
 }
 
+/*
+CreateColormap
+
+1     78                              opcode
+1     { None, All }                   alloc
+2     4                               request length
+4     COLORMAP                        mid
+4     WINDOW                          window
+4     VISUALID                        visual
+*/
 type CreateColormapRequest struct {
 	Alloc  byte
 	Mid    Colormap
@@ -2097,7 +2955,7 @@ type CreateColormapRequest struct {
 func (CreateColormapRequest) OpCode() reqCode { return CreateColormap }
 
 func parseCreateColormapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreateColormapRequest, error) {
-	if len(payload) < 12 {
+	if len(payload) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateColormap)
 	}
 	req := &CreateColormapRequest{}
@@ -2108,6 +2966,14 @@ func parseCreateColormapRequest(order binary.ByteOrder, data byte, payload []byt
 	return req, nil
 }
 
+/*
+FreeColormap
+
+1     79                              opcode
+1                                     unused
+2     2                               request length
+4     COLORMAP                        cmap
+*/
 type FreeColormapRequest struct {
 	Cmap Colormap
 }
@@ -2115,7 +2981,7 @@ type FreeColormapRequest struct {
 func (FreeColormapRequest) OpCode() reqCode { return FreeColormap }
 
 func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeColormapRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeColormap)
 	}
 	req := &FreeColormapRequest{}
@@ -2123,6 +2989,25 @@ func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte, seq ui
 	return req, nil
 }
 
+/*
+	CopyColormapAndFree
+
+	1     80                              opcode
+	1                                     unused
+	2     3                               request length
+	4     COLORMAP                        mid
+	4     COLORMAP                        src-cmap
+*/
+// CopyColormapAndFree is not implemented.
+
+/*
+InstallColormap
+
+1     81                              opcode
+1                                     unused
+2     2                               request length
+4     COLORMAP                        cmap
+*/
 type InstallColormapRequest struct {
 	Cmap Colormap
 }
@@ -2130,7 +3015,7 @@ type InstallColormapRequest struct {
 func (InstallColormapRequest) OpCode() reqCode { return InstallColormap }
 
 func parseInstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*InstallColormapRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, InstallColormap)
 	}
 	req := &InstallColormapRequest{}
@@ -2138,6 +3023,14 @@ func parseInstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq
 	return req, nil
 }
 
+/*
+UninstallColormap
+
+1     82                              opcode
+1                                     unused
+2     2                               request length
+4     COLORMAP                        cmap
+*/
 type UninstallColormapRequest struct {
 	Cmap Colormap
 }
@@ -2145,7 +3038,7 @@ type UninstallColormapRequest struct {
 func (UninstallColormapRequest) OpCode() reqCode { return UninstallColormap }
 
 func parseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UninstallColormapRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UninstallColormap)
 	}
 	req := &UninstallColormapRequest{}
@@ -2153,6 +3046,14 @@ func parseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte, s
 	return req, nil
 }
 
+/*
+ListInstalledColormaps
+
+1     83                              opcode
+1                                     unused
+2     2                               request length
+4     WINDOW                          window
+*/
 type ListInstalledColormapsRequest struct {
 	Window Window
 }
@@ -2160,7 +3061,7 @@ type ListInstalledColormapsRequest struct {
 func (ListInstalledColormapsRequest) OpCode() reqCode { return ListInstalledColormaps }
 
 func parseListInstalledColormapsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListInstalledColormapsRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListInstalledColormaps)
 	}
 	req := &ListInstalledColormapsRequest{}
@@ -2168,6 +3069,18 @@ func parseListInstalledColormapsRequest(order binary.ByteOrder, requestBody []by
 	return req, nil
 }
 
+/*
+AllocColor
+
+1     84                              opcode
+1                                     unused
+2     4                               request length
+4     COLORMAP                        cmap
+2     CARD16                          red
+2     CARD16                          green
+2     CARD16                          blue
+2                                     unused
+*/
 type AllocColorRequest struct {
 	Cmap  Colormap
 	Red   uint16
@@ -2178,7 +3091,7 @@ type AllocColorRequest struct {
 func (AllocColorRequest) OpCode() reqCode { return AllocColor }
 
 func parseAllocColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocColorRequest, error) {
-	if len(payload) < 12 {
+	if len(payload) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColor)
 	}
 	req := &AllocColorRequest{}
@@ -2196,6 +3109,18 @@ type AllocNamedColorRequest struct {
 
 func (AllocNamedColorRequest) OpCode() reqCode { return AllocNamedColor }
 
+/*
+AllocNamedColor
+
+1     85                              opcode
+1                                     unused
+2     3+(n+p)/4                       request length
+4     COLORMAP                        cmap
+2     CARD16                          n
+2                                     unused
+n     STRING8                         name
+p                                     padding
+*/
 func parseAllocNamedColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocNamedColorRequest, error) {
 	if len(payload) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocNamedColor)
@@ -2203,7 +3128,8 @@ func parseAllocNamedColorRequest(order binary.ByteOrder, payload []byte, seq uin
 	req := &AllocNamedColorRequest{}
 	req.Cmap = Colormap(order.Uint32(payload[0:4]))
 	nameLen := order.Uint16(payload[4:6])
-	if len(payload) < 8+int(nameLen) {
+	paddedLen := 8 + int(nameLen) + padLen(8+int(nameLen))
+	if len(payload) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocNamedColor)
 	}
 	req.Name = payload[8 : 8+nameLen]
@@ -2259,6 +3185,15 @@ type StoreColorsRequest struct {
 
 func (StoreColorsRequest) OpCode() reqCode { return StoreColors }
 
+/*
+StoreColors
+
+1     89                              opcode
+1                                     unused
+2     2+3n                            request length
+4     COLORMAP                        cmap
+12n   LISTofCOLORITEM                 items
+*/
 func parseStoreColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*StoreColorsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, StoreColors)
@@ -2295,6 +3230,19 @@ type StoreNamedColorRequest struct {
 
 func (StoreNamedColorRequest) OpCode() reqCode { return StoreNamedColor }
 
+/*
+StoreNamedColor
+
+1     90                              opcode
+1     BITMASK                         flags
+2     4+(n+p)/4                       request length
+4     COLORMAP                        cmap
+4     CARD32                          pixel
+2     CARD16                          n
+2                                     unused
+n     STRING8                         name
+p                                     padding
+*/
 func parseStoreNamedColorRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*StoreNamedColorRequest, error) {
 	if len(requestBody) < 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, StoreNamedColor)
@@ -2318,6 +3266,15 @@ type QueryColorsRequest struct {
 
 func (QueryColorsRequest) OpCode() reqCode { return QueryColors }
 
+/*
+QueryColors
+
+1     91                              opcode
+1                                     unused
+2     2+n                             request length
+4     COLORMAP                        cmap
+4n    LISTofCARD32                    pixels
+*/
 func parseQueryColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryColorsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryColors)
@@ -2339,6 +3296,18 @@ type LookupColorRequest struct {
 
 func (LookupColorRequest) OpCode() reqCode { return LookupColor }
 
+/*
+LookupColor
+
+1     92                              opcode
+1                                     unused
+2     3+(n+p)/4                       request length
+4     COLORMAP                        cmap
+2     CARD16                          n
+2                                     unused
+n     STRING8                         name
+p                                     padding
+*/
 func parseLookupColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*LookupColorRequest, error) {
 	if len(payload) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, LookupColor)
@@ -2346,7 +3315,8 @@ func parseLookupColorRequest(order binary.ByteOrder, payload []byte, seq uint16)
 	req := &LookupColorRequest{}
 	req.Cmap = Colormap(order.Uint32(payload[0:4]))
 	nameLen := order.Uint16(payload[4:6])
-	if len(payload) < 8+int(nameLen) {
+	paddedLen := 8 + int(nameLen) + padLen(int(nameLen))
+	if len(payload) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, LookupColor)
 	}
 	req.Name = string(payload[8 : 8+nameLen])
@@ -2365,8 +3335,26 @@ type CreateGlyphCursorRequest struct {
 
 func (CreateGlyphCursorRequest) OpCode() reqCode { return CreateGlyphCursor }
 
+/*
+CreateGlyphCursor
+
+1     94                              opcode
+1                                     unused
+2     8                               request length
+4     CURSOR                          cid
+4     FONT                            source-font
+4     FONT                            mask-font
+2     CARD16                          source-char
+2     CARD16                          mask-char
+2     CARD16                          fore-red
+2     CARD16                          fore-green
+2     CARD16                          fore-blue
+2     CARD16                          back-red
+2     CARD16                          back-green
+2     CARD16                          back-blue
+*/
 func parseCreateGlyphCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CreateGlyphCursorRequest, error) {
-	if len(requestBody) < 28 {
+	if len(requestBody) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateGlyphCursor)
 	}
 	req := &CreateGlyphCursorRequest{}
@@ -2390,8 +3378,16 @@ type FreeCursorRequest struct {
 
 func (FreeCursorRequest) OpCode() reqCode { return FreeCursor }
 
+/*
+FreeCursor
+
+1     95                              opcode
+1                                     unused
+2     2                               request length
+4     CURSOR                          cursor
+*/
 func parseFreeCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeCursorRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeCursor)
 	}
 	req := &FreeCursorRequest{}
@@ -2407,8 +3403,22 @@ type RecolorCursorRequest struct {
 
 func (RecolorCursorRequest) OpCode() reqCode { return RecolorCursor }
 
+/*
+RecolorCursor
+
+1     96                              opcode
+1                                     unused
+2     5                               request length
+4     CURSOR                          cursor
+2     CARD16                          fore-red
+2     CARD16                          fore-green
+2     CARD16                          fore-blue
+2     CARD16                          back-red
+2     CARD16                          back-green
+2     CARD16                          back-blue
+*/
 func parseRecolorCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*RecolorCursorRequest, error) {
-	if len(requestBody) < 16 {
+	if len(requestBody) != 16 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, RecolorCursor)
 	}
 	req := &RecolorCursorRequest{}
@@ -2431,8 +3441,18 @@ type QueryBestSizeRequest struct {
 
 func (QueryBestSizeRequest) OpCode() reqCode { return QueryBestSize }
 
+/*
+QueryBestSize
+
+1     97                              opcode
+1     { Cursor, Tile, Stipple }       class
+2     3                               request length
+4     DRAWABLE                        drawable
+2     CARD16                          width
+2     CARD16                          height
+*/
 func parseQueryBestSizeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryBestSizeRequest, error) {
-	if len(requestBody) < 8 {
+	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryBestSize)
 	}
 	req := &QueryBestSizeRequest{}
@@ -2448,13 +3468,25 @@ type QueryExtensionRequest struct {
 
 func (QueryExtensionRequest) OpCode() reqCode { return QueryExtension }
 
+/*
+QueryExtension
+
+1     98                              opcode
+1                                     unused
+2     2+(n+p)/4                       request length
+2     CARD16                          n
+2                                     unused
+n     STRING8                         name
+p                                     padding
+*/
 func parseQueryExtensionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryExtensionRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryExtension)
 	}
 	req := &QueryExtensionRequest{}
 	nameLen := order.Uint16(requestBody[0:2])
-	if len(requestBody) < 4+int(nameLen) {
+	paddedLen := 4 + int(nameLen) + padLen(int(nameLen))
+	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryExtension)
 	}
 	req.Name = string(requestBody[4 : 4+nameLen])
@@ -2501,7 +3533,7 @@ type GetKeyboardMappingRequest struct {
 func (GetKeyboardMappingRequest) OpCode() reqCode { return GetKeyboardMapping }
 
 func parseGetKeyboardMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetKeyboardMappingRequest, error) {
-	if len(requestBody) < 2 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetKeyboardMapping)
 	}
 	req := &GetKeyboardMappingRequest{}
@@ -2577,7 +3609,7 @@ type SetScreenSaverRequest struct {
 func (SetScreenSaverRequest) OpCode() reqCode { return SetScreenSaver }
 
 func parseSetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetScreenSaverRequest, error) {
-	if len(requestBody) < 6 {
+	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetScreenSaver)
 	}
 	req := &SetScreenSaverRequest{}
@@ -2660,7 +3692,7 @@ type KillClientRequest struct {
 func (KillClientRequest) OpCode() reqCode { return KillClient }
 
 func parseKillClientRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*KillClientRequest, error) {
-	if len(requestBody) < 4 {
+	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, KillClient)
 	}
 	req := &KillClientRequest{}
@@ -2716,8 +3748,8 @@ func (SetModifierMappingRequest) OpCode() reqCode { return SetModifierMapping }
 func parseSetModifierMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetModifierMappingRequest, error) {
 	req := &SetModifierMappingRequest{}
 	req.KeyCodesPerModifier = data
-	expectedLen := 8 * int(req.KeyCodesPerModifier)
-	if len(requestBody) != expectedLen {
+	req.KeyCodes = make([]KeyCode, 0, 8*int(req.KeyCodesPerModifier))
+	if len(requestBody) != cap(req.KeyCodes) {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetModifierMapping)
 	}
 	for i := 0; i < len(requestBody); i++ {
@@ -3124,8 +4156,18 @@ type AllocColorCellsRequest struct {
 
 func (r *AllocColorCellsRequest) OpCode() reqCode { return AllocColorCells }
 
+/*
+AllocColorCells
+
+	1     86                              opcode
+	1     BOOL                            contiguous
+	2     3                               request length
+	4     COLORMAP                        cmap
+	2     CARD16                          colors
+	2     CARD16                          planes
+*/
 func parseAllocColorCellsRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorCellsRequest, error) {
-	if len(body) < 8 {
+	if len(body) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColorCells)
 	}
 	req := &AllocColorCellsRequest{}
@@ -3149,7 +4191,7 @@ type AllocColorPlanesRequest struct {
 func (r *AllocColorPlanesRequest) OpCode() reqCode { return AllocColorPlanes }
 
 func parseAllocColorPlanesRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorPlanesRequest, error) {
-	if len(body) < 12 {
+	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColorPlanes)
 	}
 	req := &AllocColorPlanesRequest{}
@@ -3180,7 +4222,7 @@ type CreateCursorRequest struct {
 func (r *CreateCursorRequest) OpCode() reqCode { return CreateCursor }
 
 func parseCreateCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (*CreateCursorRequest, error) {
-	if len(body) < 28 {
+	if len(body) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateCursor)
 	}
 	req := &CreateCursorRequest{}
@@ -3215,7 +4257,7 @@ type CopyPlaneRequest struct {
 func (r *CopyPlaneRequest) OpCode() reqCode { return CopyPlane }
 
 func parseCopyPlaneRequest(order binary.ByteOrder, body []byte, seq uint16) (*CopyPlaneRequest, error) {
-	if len(body) < 28 {
+	if len(body) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyPlane)
 	}
 	req := &CopyPlaneRequest{}
@@ -3253,7 +4295,7 @@ type ChangePointerControlRequest struct {
 func (r *ChangePointerControlRequest) OpCode() reqCode { return ChangePointerControl }
 
 func parseChangePointerControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangePointerControlRequest, error) {
-	if len(body) < 8 {
+	if len(body) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangePointerControl)
 	}
 	req := &ChangePointerControlRequest{}

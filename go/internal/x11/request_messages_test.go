@@ -14,6 +14,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestPadLen(t *testing.T) {
+	for _, tc := range []struct{ n, want int }{
+		{n: 0, want: 0},
+		{n: 1, want: 3},
+		{n: 2, want: 2},
+		{n: 3, want: 1},
+		{n: 4, want: 0},
+		{n: 5, want: 3},
+		{n: 6, want: 2},
+		{n: 7, want: 1},
+		{n: 8, want: 0},
+		{n: 9, want: 3},
+		{n: 10, want: 2},
+		{n: 11, want: 1},
+		{n: 12, want: 0},
+	} {
+		if got := padLen(tc.n); got != tc.want {
+			t.Errorf("padLen(%d) = %d, want %d", tc.n, got, tc.want)
+		}
+	}
+}
+
 func TestRequestParsing(t *testing.T) {
 	b, err := os.ReadFile("testdata/requests.json")
 	if err != nil {
@@ -186,15 +208,17 @@ func TestParseImageText8Request(t *testing.T) {
 	x := int16(10)
 	y := int16(20)
 	text := []byte("Hello")
+	pad := padLen(12 + len(text))
 
-	payload := make([]byte, 12) // drawable (4) + gc (4) + x (2) + y (2)
+	payload := make([]byte, 12+len(text)+pad)
 	binary.LittleEndian.PutUint32(payload[0:4], drawable)
 	binary.LittleEndian.PutUint32(payload[4:8], gc)
 	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
 	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-	payload = append(payload, text...)
+	copy(payload[12:], text)
+	t.Logf("payload: %v (%d) %q (%d)", payload, len(payload), text, pad)
 
-	p, err := parseImageText8Request(binary.LittleEndian, payload, 1)
+	p, err := parseImageText8Request(binary.LittleEndian, byte(len(text)), payload, 1)
 	assert.NoError(t, err, "parseImageText8Request should not return an error")
 
 	if p.Drawable != Drawable(drawable) {
@@ -221,19 +245,18 @@ func TestParseImageText16Request(t *testing.T) {
 	x := int16(10)
 	y := int16(20)
 	text := []uint16{0x0048, 0x0065, 0x006c, 0x006c, 0x006f} // "Hello"
+	pad := padLen(12 + 2*len(text))
 
-	payload := make([]byte, 12) // drawable (4) + gc (4) + x (2) + y (2)
+	payload := make([]byte, 12+2*len(text)+pad)
 	binary.LittleEndian.PutUint32(payload[0:4], drawable)
 	binary.LittleEndian.PutUint32(payload[4:8], gc)
 	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
 	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-	for _, r := range text {
-		buf := make([]byte, 2)
-		binary.LittleEndian.PutUint16(buf, r)
-		payload = append(payload, buf...)
+	for i, r := range text {
+		binary.LittleEndian.PutUint16(payload[12+2*i:14+2*i], r)
 	}
 
-	p, err := parseImageText16Request(binary.LittleEndian, payload, 1)
+	p, err := parseImageText16Request(binary.LittleEndian, byte(len(text)), payload, 1)
 	assert.NoError(t, err, "parseImageText16Request should not return an error")
 
 	assert.Equal(t, Drawable(drawable), p.Drawable, "drawable mismatch")
@@ -574,11 +597,10 @@ func TestParseDestroySubwindowsRequest(t *testing.T) {
 
 func TestParseChangeSaveSetRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 5)
+	reqBody := make([]byte, 4)
 	order.PutUint32(reqBody[0:4], 123)
-	reqBody[4] = 1
 
-	p, err := parseChangeSaveSetRequest(order, reqBody, 1)
+	p, err := parseChangeSaveSetRequest(order, 1, reqBody, 1)
 	assert.NoError(t, err, "parseChangeSaveSetRequest should not return an error")
 	assert.Equal(t, Window(123), p.Window, "Window should be parsed correctly")
 	assert.Equal(t, byte(1), p.Mode, "Mode should be parsed correctly")
@@ -835,15 +857,14 @@ func TestParseUngrabKeyboardRequest(t *testing.T) {
 
 func TestParseGrabKeyRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 13)
-	reqBody[0] = 1
-	order.PutUint32(reqBody[4:8], 123)
-	order.PutUint16(reqBody[8:10], 456)
-	reqBody[10] = 7
-	reqBody[11] = 1
-	reqBody[12] = 2
+	reqBody := make([]byte, 12)
+	order.PutUint32(reqBody[0:4], 123)
+	order.PutUint16(reqBody[4:6], 456)
+	reqBody[6] = 7
+	reqBody[7] = 1
+	reqBody[8] = 2
 
-	p, err := parseGrabKeyRequest(order, reqBody, 1)
+	p, err := parseGrabKeyRequest(order, 1, reqBody, 1)
 	assert.NoError(t, err, "parseGrabKeyRequest should not return an error")
 	assert.True(t, p.OwnerEvents, "OwnerEvents should be true")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
@@ -912,9 +933,9 @@ func TestParseTranslateCoordsRequest(t *testing.T) {
 
 func TestParseWarpPointerRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 16)
-	order.PutUint16(reqBody[12:14], 10)
-	order.PutUint16(reqBody[14:16], 20)
+	reqBody := make([]byte, 20)
+	order.PutUint16(reqBody[16:18], 10)
+	order.PutUint16(reqBody[18:20], 20)
 
 	p, err := parseWarpPointerRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseWarpPointerRequest should not return an error")
@@ -961,7 +982,7 @@ func TestParseQueryTextExtentsRequest(t *testing.T) {
 	order.PutUint16(reqBody[4:6], 0x0048)
 	order.PutUint16(reqBody[6:8], 0x0065)
 
-	p, err := parseQueryTextExtentsRequest(order, reqBody, 1)
+	p, err := parseQueryTextExtentsRequest(order, 0, reqBody, 1)
 	assert.NoError(t, err, "parseQueryTextExtentsRequest should not return an error")
 	assert.Equal(t, Font(123), p.Fid, "Fid should be parsed correctly")
 	assert.Equal(t, []uint16{0x0048, 0x0065}, p.Text, "Text should be parsed correctly")
@@ -1036,14 +1057,16 @@ func TestParseChangeGCRequest(t *testing.T) {
 
 func TestParseCopyGCRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 8)
+	reqBody := make([]byte, 12)
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint32(reqBody[4:8], 456)
+	order.PutUint32(reqBody[8:12], 0xffffffff)
 
 	p, err := parseCopyGCRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseCopyGCRequest should not return an error")
 	assert.Equal(t, GContext(123), p.SrcGC, "SrcGC should be parsed correctly")
 	assert.Equal(t, GContext(456), p.DstGC, "DstGC should be parsed correctly")
+	assert.Equal(t, uint32(0xffffffff), p.ValueMask, "ValueMask should be parsed correctly")
 }
 
 func TestParseClearAreaRequest(t *testing.T) {
@@ -1320,7 +1343,7 @@ func TestParseBellRequest(t *testing.T) {
 
 func TestParseSetDashesRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 10)
+	reqBody := make([]byte, 12)
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint16(reqBody[4:6], 456)
 	order.PutUint16(reqBody[6:8], 2)
@@ -1389,7 +1412,7 @@ func TestParseSetPointerMappingRequest(t *testing.T) {
 
 func TestParseGetKeyboardMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := []byte{10, 5}
+	reqBody := []byte{10, 5, 0, 0}
 
 	p, err := parseGetKeyboardMappingRequest(order, reqBody, 1)
 	assert.NoError(t, err, "parseGetKeyboardMappingRequest should not return an error")
@@ -1431,7 +1454,7 @@ func TestParseChangeKeyboardControlRequest(t *testing.T) {
 
 func TestParseSetScreenSaverRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 6)
+	reqBody := make([]byte, 8)
 	order.PutUint16(reqBody[0:2], 10)
 	order.PutUint16(reqBody[2:4], 20)
 	reqBody[4] = 1
