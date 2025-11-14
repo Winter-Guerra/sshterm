@@ -850,3 +850,64 @@ func TestKeyboardMappingRequests(t *testing.T) {
 		t.Errorf("ChangeKeyboardMapping: keymap was not updated. Expected %x, got %x", 0x0041, server.keymap[10])
 	}
 }
+
+func TestExtensionRequests(t *testing.T) {
+	server, _ := setupTestServer(t)
+	client := server.clients[1]
+
+	// 1. Test QueryExtension for a known extension (BIG-REQUESTS)
+	queryBigReq := &QueryExtensionRequest{Name: BigRequestsExtensionName}
+	reply := server.handleRequest(client, queryBigReq, 2)
+	if reply == nil {
+		t.Fatal("QueryExtension (BIG-REQUESTS): handleRequest returned a nil reply")
+	}
+	queryBigReply, ok := reply.(*queryExtensionReply)
+	if !ok {
+		t.Fatalf("QueryExtension (BIG-REQUESTS): expected *queryExtensionReply, got %T", reply)
+	}
+	if !queryBigReply.present || queryBigReply.majorOpcode != bigRequestsOpcode {
+		t.Errorf("QueryExtension (BIG-REQUESTS): incorrect reply. Got present=%t, opcode=%d", queryBigReply.present, queryBigReply.majorOpcode)
+	}
+
+	// 2. Test QueryExtension for the new XInput extension
+	queryXInputReq := &QueryExtensionRequest{Name: XInputExtensionName}
+	reply = server.handleRequest(client, queryXInputReq, 3)
+	if reply == nil {
+		t.Fatal("QueryExtension (XInput): handleRequest returned a nil reply")
+	}
+	queryXInputReply, ok := reply.(*queryExtensionReply)
+	if !ok {
+		t.Fatalf("QueryExtension (XInput): expected *queryExtensionReply, got %T", reply)
+	}
+	if !queryXInputReply.present || queryXInputReply.majorOpcode != xInputOpcode {
+		t.Errorf("QueryExtension (XInput): incorrect reply. Got present=%t, opcode=%d", queryXInputReply.present, queryXInputReply.majorOpcode)
+	}
+
+	// 3. Test ListExtensions
+	listReq := &ListExtensionsRequest{}
+	reply = server.handleRequest(client, listReq, 4)
+	if reply == nil {
+		t.Fatal("ListExtensions: handleRequest returned a nil reply")
+	}
+	listReply, ok := reply.(*listExtensionsReply)
+	if !ok {
+		t.Fatalf("ListExtensions: expected *listExtensionsReply, got %T", reply)
+	}
+	if len(listReply.names) != 2 || listReply.names[0] != BigRequestsExtensionName || listReply.names[1] != XInputExtensionName {
+		t.Errorf("ListExtensions: incorrect extension list. Got %v", listReply.names)
+	}
+
+	// 4. Test XListInputDevices
+	xinputReq := &XInputRequest{MinorOpcode: XListInputDevices}
+	reply = server.handleRequest(client, xinputReq, 5)
+	if reply == nil {
+		t.Fatal("XListInputDevices: handleRequest returned a nil reply")
+	}
+	listInputDevicesReply, ok := reply.(*ListInputDevicesReply)
+	if !ok {
+		t.Fatalf("XListInputDevices: expected *ListInputDevicesReply, got %T", reply)
+	}
+	if len(listInputDevicesReply.devices) != 0 {
+		t.Errorf("XListInputDevices: incorrect number of devices. Expected 0, got %d", len(listInputDevicesReply.devices))
+	}
+}

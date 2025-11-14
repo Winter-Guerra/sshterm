@@ -1337,11 +1337,12 @@ func (r *listExtensionsReply) encodeMessage(order binary.ByteOrder) []byte {
 		data = append(data, byte(len(name)))
 		data = append(data, name...)
 	}
-	reply := make([]byte, 32+len(data))
+	p := (4 - (len(data) % 4)) % 4
+	reply := make([]byte, 32+len(data)+p)
 	reply[0] = 1 // Reply type
 	reply[1] = r.nNames
 	order.PutUint16(reply[2:4], r.sequence)
-	order.PutUint32(reply[4:8], uint32((len(data)+3)/4))
+	order.PutUint32(reply[4:8], uint32((len(data)+p)/4))
 	copy(reply[32:], data)
 	return reply
 }

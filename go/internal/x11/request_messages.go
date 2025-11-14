@@ -48,6 +48,9 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 	if opcode == bigRequestsOpcode {
 		return parseEnableBigRequestsRequest(order, raw, seq)
 	}
+	if opcode == xInputOpcode {
+		return parseXInputRequest(order, data, body, seq)
+	}
 
 	switch opcode {
 	case CreateWindow:

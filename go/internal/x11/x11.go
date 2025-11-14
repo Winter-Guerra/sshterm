@@ -1921,7 +1921,8 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 	case *QueryExtensionRequest:
 		debugf("X11: QueryExtension name=%s", p.Name)
 
-		if p.Name == BigRequestsExtensionName {
+		switch p.Name {
+		case BigRequestsExtensionName:
 			return &queryExtensionReply{
 				sequence:    seq,
 				present:     true,
@@ -1929,21 +1930,33 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 				firstEvent:  0,
 				firstError:  0,
 			}
-		}
-
-		return &queryExtensionReply{
-			sequence:    seq,
-			present:     false,
-			majorOpcode: 0,
-			firstEvent:  0,
-			firstError:  0,
+		case XInputExtensionName:
+			return &queryExtensionReply{
+				sequence:    seq,
+				present:     true,
+				majorOpcode: xInputOpcode,
+				firstEvent:  0,
+				firstError:  0,
+			}
+		default:
+			return &queryExtensionReply{
+				sequence:    seq,
+				present:     false,
+				majorOpcode: 0,
+				firstEvent:  0,
+				firstError:  0,
+			}
 		}
 
 	case *ListExtensionsRequest:
-		debugf("X11: ListExtensionsRequest not implemented")
-		// TODO: Implement
+		extensions := []string{
+			BigRequestsExtensionName,
+			XInputExtensionName,
+		}
 		return &listExtensionsReply{
 			sequence: seq,
+			nNames:   byte(len(extensions)),
+			names:    extensions,
 		}
 
 	case *ChangeKeyboardMappingRequest:
@@ -2086,6 +2099,9 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 			sequence:         seq,
 			maxRequestLength: 0x100000,
 		}
+
+	case *XInputRequest:
+		return handleXInputRequest(client, p.MinorOpcode, p.Body, seq)
 
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())
