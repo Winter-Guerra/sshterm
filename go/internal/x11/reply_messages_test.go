@@ -184,7 +184,7 @@ func TestReplyMessages(t *testing.T) {
 		data = append(data, 4, 'e', 'x', 't', '1')
 		data = append(data, 4, 'e', 'x', 't', '2')
 
-		expected := make([]byte, 32+len(data))
+		expected := make([]byte, 32+len(data)+padLen(len(data)))
 		expected[0] = 1
 		expected[1] = 2
 		binary.LittleEndian.PutUint16(expected[2:4], 4)
