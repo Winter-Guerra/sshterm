@@ -30,8 +30,12 @@ func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
 		passiveGrabs:    make(map[xID][]*passiveGrab),
 		colormaps:       make(map[xID]*colormap), // Initialize colormaps
 		defaultColormap: 1,                       // Set a default colormap ID
+		keymap:          make(map[byte]uint32),
 	}
 	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]xColorItem)}
+	for k, v := range KeyCodeToKeysym {
+		server.keymap[k] = v
+	}
 
 	return server, clientBuffer
 }
@@ -821,4 +825,53 @@ func TestColormapRequests(t *testing.T) {
 			t.Errorf("CopyColormapAndFreeRequest: color not freed from source colormap")
 		}
 	})
+}
+
+func TestKeyboardMappingRequests(t *testing.T) {
+	server, clientBuffer := setupTestServer(t)
+	client := server.clients[1]
+
+	// 1. Test GetKeyboardMappingRequest
+	getReq := &GetKeyboardMappingRequest{FirstKeyCode: 10, Count: 2}
+	reply := server.handleRequest(client, getReq, 2)
+	if reply == nil {
+		t.Fatal("GetKeyboardMapping: handleRequest returned a nil reply")
+	}
+	encodedReply := reply.encodeMessage(client.byteOrder)
+	if _, err := clientBuffer.Write(encodedReply); err != nil {
+		t.Fatalf("GetKeyboardMapping: failed to write reply to buffer: %v", err)
+	}
+
+	var getHeader struct {
+		ReplyType         byte
+		KeySymsPerKeycode byte
+		Sequence          uint16
+		Length            uint32
+		Padding           [24]byte
+	}
+	if err := binary.Read(clientBuffer, binary.LittleEndian, &getHeader); err != nil {
+		t.Fatalf("GetKeyboardMapping: failed to read reply header: %v", err)
+	}
+	keySyms := make([]uint32, getHeader.Length)
+	if err := binary.Read(clientBuffer, binary.LittleEndian, &keySyms); err != nil {
+		t.Fatalf("GetKeyboardMapping: failed to read reply keysyms: %v", err)
+	}
+
+	expectedKeySyms := []uint32{0x0031, 0x0032} // XK_1, XK_2
+	if len(keySyms) != 2 || keySyms[0] != expectedKeySyms[0] || keySyms[1] != expectedKeySyms[1] {
+		t.Errorf("GetKeyboardMapping: incorrect keysyms returned. Expected %v, got %v", expectedKeySyms, keySyms)
+	}
+
+	// 2. Test ChangeKeyboardMappingRequest
+	changeReq := &ChangeKeyboardMappingRequest{
+		KeyCodeCount:      1,
+		FirstKeyCode:      10,
+		KeySymsPerKeyCode: 1,
+		KeySyms:           []uint32{0x0041}, // XK_A
+	}
+	server.handleRequest(client, changeReq, 3)
+
+	if server.keymap[10] != 0x0041 {
+		t.Errorf("ChangeKeyboardMapping: keymap was not updated. Expected %x, got %x", 0x0041, server.keymap[10])
+	}
 }

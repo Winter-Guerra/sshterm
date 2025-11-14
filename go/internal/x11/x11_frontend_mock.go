@@ -499,34 +499,6 @@ func (m *MockX11Frontend) GetPointerControl() (accelNumerator, accelDenominator,
 	return 1, 1, 1, nil
 }
 
-func (m *MockX11Frontend) GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error) {
-	keySyms := make([]uint32, count)
-	for i := 0; i < int(count); i++ {
-		keyCode := byte(firstKeyCode) + byte(i)
-		if sym, ok := keycodeToKeysym[keyCode]; ok {
-			keySyms[i] = sym
-		} else {
-			keySyms[i] = 0 // NoSymbol
-		}
-	}
-	return keySyms, nil
-}
-
-func (m *MockX11Frontend) ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32) {
-	if m.keymap == nil {
-		m.keymap = make(map[byte]uint32)
-	}
-	for i := 0; i < int(keyCodeCount); i++ {
-		for j := 0; j < int(keySymsPerKeyCode); j++ {
-			idx := i*int(keySymsPerKeyCode) + j
-			// In our simplified mock, we only store the first keysym for each keycode.
-			if j == 0 {
-				m.keymap[byte(firstKeyCode)+byte(i)] = keySyms[idx]
-			}
-		}
-	}
-}
-
 func (m *MockX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
 }
 

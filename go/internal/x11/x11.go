@@ -112,8 +112,6 @@ type X11FrontendAPI interface {
 	SetPointerMapping(pMap []byte) (byte, error)
 	GetPointerMapping() ([]byte, error)
 	GetPointerControl() (accelNumerator, accelDenominator, threshold uint16, err error)
-	GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error)
-	ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32)
 	ChangeKeyboardControl(valueMask uint32, values KeyboardControl)
 	GetKeyboardControl() (KeyboardControl, error)
 	SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte)
@@ -202,6 +200,7 @@ type x11Server struct {
 	serverGrabbed        bool
 	grabbingClientID     uint32
 	fontPath             []string
+	keymap               map[byte]uint32
 }
 
 type passiveGrab struct {
@@ -1948,10 +1947,27 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *ChangeKeyboardMappingRequest:
-		s.frontend.ChangeKeyboardMapping(p.KeyCodeCount, p.FirstKeyCode, p.KeySymsPerKeyCode, p.KeySyms)
+		keySymIndex := 0
+		for i := 0; i < int(p.KeyCodeCount); i++ {
+			keyCode := p.FirstKeyCode + KeyCode(i)
+			for j := 0; j < int(p.KeySymsPerKeyCode); j++ {
+				if j == 0 {
+					s.keymap[byte(keyCode)] = p.KeySyms[keySymIndex]
+				}
+				keySymIndex++
+			}
+		}
 
 	case *GetKeyboardMappingRequest:
-		keySyms, _ := s.frontend.GetKeyboardMapping(p.FirstKeyCode, p.Count)
+		keySyms := make([]uint32, 0, p.Count)
+		for i := 0; i < int(p.Count); i++ {
+			keyCode := p.FirstKeyCode + KeyCode(i)
+			keySym, ok := s.keymap[byte(keyCode)]
+			if !ok {
+				keySym = 0 // NoSymbol
+			}
+			keySyms = append(keySyms, keySym)
+		}
 		return &getKeyboardMappingReply{
 			sequence: seq,
 			keySyms:  keySyms,
@@ -2199,6 +2215,10 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					passiveGrabs:    make(map[xID][]*passiveGrab),
 					authProtocol:    authProtocol,
 					authCookie:      authCookie,
+					keymap:          make(map[byte]uint32),
+				}
+				for k, v := range KeyCodeToKeysym {
+					x11ServerInstance.keymap[k] = v
 				}
 				x11ServerInstance.frontend = newX11Frontend(logger, x11ServerInstance)
 			})

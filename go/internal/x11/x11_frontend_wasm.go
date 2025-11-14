@@ -2190,42 +2190,6 @@ func (w *wasmX11Frontend) GetPointerControl() (accelNumerator, accelDenominator,
 	return 1, 1, 1, nil
 }
 
-func (w *wasmX11Frontend) GetKeyboardMapping(firstKeyCode KeyCode, count byte) ([]uint32, error) {
-	debugf("X11: GetKeyboardMapping first=%d count=%d", firstKeyCode, count)
-	w.recordOperation(CanvasOperation{
-		Type: "getKeyboardMapping",
-		Args: []any{firstKeyCode, count},
-	})
-
-	keySyms := make([]uint32, count)
-	for i := 0; i < int(count); i++ {
-		keyCode := byte(firstKeyCode) + byte(i)
-		if sym, ok := keycodeToKeysym[keyCode]; ok {
-			keySyms[i] = sym
-		} else {
-			keySyms[i] = 0 // NoSymbol
-		}
-	}
-	return keySyms, nil
-}
-
-func (w *wasmX11Frontend) ChangeKeyboardMapping(keyCodeCount byte, firstKeyCode KeyCode, keySymsPerKeyCode byte, keySyms []uint32) {
-	debugf("X11: ChangeKeyboardMapping count=%d first=%d syms/key=%d", keyCodeCount, firstKeyCode, keySymsPerKeyCode)
-	w.recordOperation(CanvasOperation{
-		Type: "changeKeyboardMapping",
-		Args: []any{keyCodeCount, firstKeyCode, keySymsPerKeyCode, keySyms},
-	})
-	for i := 0; i < int(keyCodeCount); i++ {
-		for j := 0; j < int(keySymsPerKeyCode); j++ {
-			idx := i*int(keySymsPerKeyCode) + j
-			// In our simplified implementation, we only store the first keysym for each keycode.
-			if j == 0 {
-				keycodeToKeysym[byte(firstKeyCode)+byte(i)] = keySyms[idx]
-			}
-		}
-	}
-}
-
 func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
 	debugf("X11: ChangeKeyboardControl (not implemented)")
 	w.recordOperation(CanvasOperation{

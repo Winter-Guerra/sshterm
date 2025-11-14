@@ -968,19 +968,20 @@ func (r *getPointerMappingReply) encodeMessage(order binary.ByteOrder) []byte {
 
 // GetKeyboardMapping: 101
 type getKeyboardMappingReply struct {
-	sequence uint16
-	keySyms  []uint32
+	sequence          uint16
+	keySymsPerKeycode byte
+	keySyms           []uint32
 }
 
+func (r *getKeyboardMappingReply) OpCode() reqCode { return GetKeyboardMapping }
+
 func (r *getKeyboardMappingReply) encodeMessage(order binary.ByteOrder) []byte {
-	// The number of keysyms per keycode is implicitly 1 in our simplified implementation.
-	keysymsPerKeycode := 1
 	numKeysyms := len(r.keySyms)
-	length := uint32(numKeysyms * keysymsPerKeycode)
+	length := uint32(numKeysyms)
 
 	reply := make([]byte, 32+numKeysyms*4)
 	reply[0] = 1 // Reply type
-	reply[1] = byte(keysymsPerKeycode)
+	reply[1] = 1
 	order.PutUint16(reply[2:4], r.sequence)
 	order.PutUint32(reply[4:8], length)
 	// bytes 8-31 are unused

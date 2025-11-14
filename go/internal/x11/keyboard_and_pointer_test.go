@@ -32,6 +32,10 @@ func setupTestServerWithClient(t *testing.T) (*x11Server, *x11Client, *MockX11Fr
 		byteOrder:    binary.LittleEndian,
 		passiveGrabs: make(map[xID][]*passiveGrab),
 		selections:   make(map[xID]uint32),
+		keymap:       make(map[byte]uint32),
+	}
+	for k, v := range KeyCodeToKeysym {
+		server.keymap[k] = v
 	}
 
 	return server, client, mockFrontend, clientBuffer
@@ -97,7 +101,7 @@ func TestGetKeyboardMappingRequest(t *testing.T) {
 		t.Errorf("Expected reply length %d, got %d", expectedLength, length)
 	}
 
-	expectedKeysyms := []uint32{keycodeToKeysym[10], keycodeToKeysym[11], keycodeToKeysym[12]}
+	expectedKeysyms := []uint32{KeyCodeToKeysym[10], KeyCodeToKeysym[11], KeyCodeToKeysym[12]}
 	keysyms := make([]uint32, count)
 	for i := 0; i < int(count); i++ {
 		keysyms[i] = client.byteOrder.Uint32(replyBytes[32+i*4 : 32+(i+1)*4])
@@ -108,11 +112,11 @@ func TestGetKeyboardMappingRequest(t *testing.T) {
 func TestChangeKeyboardMappingRequest(t *testing.T) {
 	// Make a copy of the original keymap to restore it later
 	originalKeymap := make(map[byte]uint32)
-	for k, v := range keycodeToKeysym {
+	for k, v := range KeyCodeToKeysym {
 		originalKeymap[k] = v
 	}
 	t.Cleanup(func() {
-		keycodeToKeysym = originalKeymap
+		KeyCodeToKeysym = originalKeymap
 	})
 
 	server, client, _, clientBuffer := setupTestServerWithClient(t)
