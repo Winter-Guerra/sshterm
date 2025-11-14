@@ -3,6 +3,7 @@
 package x11
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,23 +29,36 @@ func TestSendMouseEvent_XInput_EventSent(t *testing.T) {
 	}
 	server.handleRequest(client, createReq, 2)
 
-	// 3. Send a mouse button press event
+	// 3. Select for XInput events on the window
+	selectReqBody := make([]byte, 12)
+	// window ID
+	binary.LittleEndian.PutUint32(selectReqBody[0:4], windowID.local)
+	// num_classes
+	binary.LittleEndian.PutUint16(selectReqBody[4:6], 1)
+	// class
+	mask := uint32(DeviceButtonPressMask | DeviceButtonReleaseMask)
+	deviceID := byte(2) // Virtual pointer
+	class := (mask << 8) | uint32(deviceID)
+	binary.LittleEndian.PutUint32(selectReqBody[8:12], class)
+
+	selectReq := &XInputRequest{MinorOpcode: XSelectExtensionEvent, Body: selectReqBody}
+	server.handleRequest(client, selectReq, 3)
+
+	// 4. Send a mouse button press event
 	server.SendMouseEvent(windowID, "mousedown", 10, 20, (0<<16)|1)
 
 	// 5. Verify that a DeviceButtonPressEvent was sent
 	require.NotEmpty(t, client.sentMessages, "Expected a button press event to be sent")
 	pressEvent, ok := client.sentMessages[0].(*DeviceButtonPressEvent)
 	require.True(t, ok, "Expected a DeviceButtonPressEvent")
-	assert.Equal(t, byte(2), pressEvent.DeviceID)
+	assert.Equal(t, deviceID, pressEvent.DeviceID)
 	assert.Equal(t, uint32(windowID.local), pressEvent.Event)
 
-	// 6. Send a mouse button release event
+	// 6. Send a mouse button release event and verify
 	server.SendMouseEvent(windowID, "mouseup", 10, 20, (0<<16)|1)
-
-	// 7. Verify that a DeviceButtonReleaseEvent was sent
 	require.Len(t, client.sentMessages, 2, "Expected a button release event to be sent")
 	releaseEvent, ok := client.sentMessages[1].(*DeviceButtonReleaseEvent)
 	require.True(t, ok, "Expected a DeviceButtonReleaseEvent")
-	assert.Equal(t, byte(2), releaseEvent.DeviceID)
+	assert.Equal(t, deviceID, releaseEvent.DeviceID)
 	assert.Equal(t, uint32(windowID.local), releaseEvent.Event)
 }

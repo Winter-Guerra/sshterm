@@ -125,7 +125,6 @@ type convertSelectionCall struct {
 
 // MockX11Frontend is a mock implementation of the X11FrontendAPI for testing.
 type MockX11Frontend struct {
-	changeWindowAttributes func(xid xID, valueMask uint32, values WindowAttributes)
 	CreateWindowCalls               []*window
 	ReparentWindowCalls             []*reparentWindowCall
 	DestroyWindowCalls              []xID
@@ -219,14 +218,7 @@ func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	// No internal state to clean up for windows in the mock.
 }
 
-func (m *MockX11Frontend) OnChangeWindowAttributes(f func(xid xID, valueMask uint32, values WindowAttributes)) {
-	m.changeWindowAttributes = f
-}
-
 func (m *MockX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes) {
-	if m.changeWindowAttributes != nil {
-		m.changeWindowAttributes(xid, valueMask, values)
-	}
 }
 
 func (m *MockX11Frontend) GetWindowAttributes(xid xID) WindowAttributes {

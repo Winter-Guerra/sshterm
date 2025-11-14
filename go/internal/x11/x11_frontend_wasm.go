@@ -3346,17 +3346,52 @@ func (w *wasmX11Frontend) watchWindowEvents(xid xID, values WindowAttributes) {
 		return
 	}
 
-	// XInput events
-	if values.EventMask&DeviceKeyPressMask != 0 {
+	// XInput keyboard events
+	if values.EventMask&(DeviceKeyPressMask|DeviceKeyReleaseMask) != 0 {
 		if _, ok := winInfo.xInputEvents["keydown"]; !ok {
 			fn := w.keyboardEventHandler(xid, "keydown")
 			winInfo.xInputEvents["keydown"] = fn
 			winInfo.canvas.Call("addEventListener", "keydown", fn)
 		}
+		if _, ok := winInfo.xInputEvents["keyup"]; !ok {
+			fn := w.keyboardEventHandler(xid, "keyup")
+			winInfo.xInputEvents["keyup"] = fn
+			winInfo.canvas.Call("addEventListener", "keyup", fn)
+		}
 	} else {
 		if fn, ok := winInfo.xInputEvents["keydown"]; ok {
 			winInfo.canvas.Call("removeEventListener", "keydown", fn)
 			delete(winInfo.xInputEvents, "keydown")
+		}
+		if fn, ok := winInfo.xInputEvents["keyup"]; ok {
+			winInfo.canvas.Call("removeEventListener", "keyup", fn)
+			delete(winInfo.xInputEvents, "keyup")
+		}
+	}
+
+	// XInput mouse events
+	if values.EventMask&DeviceButtonPressMask != 0 {
+		if _, ok := winInfo.xInputEvents["mousedown"]; !ok {
+			fn := w.mouseEventHandler(xid, "mousedown")
+			winInfo.xInputEvents["mousedown"] = fn
+			winInfo.canvas.Call("addEventListener", "mousedown", fn)
+		}
+	} else {
+		if fn, ok := winInfo.xInputEvents["mousedown"]; ok {
+			winInfo.canvas.Call("removeEventListener", "mousedown", fn)
+			delete(winInfo.xInputEvents, "mousedown")
+		}
+	}
+	if values.EventMask&DeviceButtonReleaseMask != 0 {
+		if _, ok := winInfo.xInputEvents["mouseup"]; !ok {
+			fn := w.mouseEventHandler(xid, "mouseup")
+			winInfo.xInputEvents["mouseup"] = fn
+			winInfo.canvas.Call("addEventListener", "mouseup", fn)
+		}
+	} else {
+		if fn, ok := winInfo.xInputEvents["mouseup"]; ok {
+			winInfo.canvas.Call("removeEventListener", "mouseup", fn)
+			delete(winInfo.xInputEvents, "mouseup")
 		}
 	}
 }

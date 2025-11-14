@@ -328,10 +328,24 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		}
 	}
 
-	// Send XInput events to all clients that have opened the virtual device.
-	for _, client := range s.clients {
-		if _, ok := client.openDevices[virtualPointer.header.DeviceID]; ok {
-			s.sendXInputMouseEvent(client, eventType, button, eventWindowID, x, y, state)
+	// Send XInput events.
+	var xiEventMask uint32
+	switch eventType {
+	case "mousedown":
+		xiEventMask = DeviceButtonPressMask
+	case "mouseup":
+		xiEventMask = DeviceButtonReleaseMask
+	}
+
+	if xiEventMask > 0 {
+		for _, client := range s.clients {
+			if deviceInfo, ok := client.openDevices[virtualPointer.header.DeviceID]; ok {
+				if mask, ok := deviceInfo.eventMasks[originalXID.local]; ok {
+					if mask&xiEventMask != 0 {
+						s.sendXInputMouseEvent(client, eventType, button, originalXID.local, x, y, state)
+					}
+				}
+			}
 		}
 	}
 }
@@ -512,8 +526,26 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 				s.sendCoreKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
 			}
 		}
-		if _, ok := client.openDevices[virtualKeyboard.header.DeviceID]; ok {
-			s.sendXInputKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
+	}
+
+	// Send XInput events.
+	var xiEventMask uint32
+	switch eventType {
+	case "keydown":
+		xiEventMask = DeviceKeyPressMask
+	case "keyup":
+		xiEventMask = DeviceKeyReleaseMask
+	}
+
+	if xiEventMask > 0 {
+		for _, client := range s.clients {
+			if deviceInfo, ok := client.openDevices[virtualKeyboard.header.DeviceID]; ok {
+				if mask, ok := deviceInfo.eventMasks[s.inputFocus.local]; ok {
+					if mask&xiEventMask != 0 {
+						s.sendXInputKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
+					}
+				}
+			}
 		}
 	}
 }
@@ -550,7 +582,8 @@ func (s *x11Server) sendCoreKeyboardEvent(client *x11Client, eventType string, k
 
 func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string, keycode byte, eventWindowID uint32, state uint16) {
 	var xiEvent messageEncoder
-	if eventType == "keydown" {
+	switch eventType {
+	case "keydown":
 		xiEvent = &DeviceKeyPressEvent{
 			sequence:   client.sequence - 1,
 			DeviceID:   virtualKeyboard.header.DeviceID,
@@ -566,7 +599,24 @@ func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string,
 			State:      state,
 			SameScreen: true,
 		}
+	case "keyup":
+		xiEvent = &DeviceKeyReleaseEvent{
+			sequence:   client.sequence - 1,
+			DeviceID:   virtualKeyboard.header.DeviceID,
+			Time:       0, // Timestamp
+			KeyCode:    keycode,
+			Root:       s.rootWindowID(),
+			Event:      eventWindowID,
+			Child:      0, // Or a child window ID if applicable
+			RootX:      s.pointerX,
+			RootY:      s.pointerY,
+			EventX:     s.pointerX,
+			EventY:     s.pointerY,
+			State:      state,
+			SameScreen: true,
+		}
 	}
+
 	if xiEvent != nil {
 		if err := client.send(xiEvent); err != nil {
 			debugf("X11: Failed to write XInput keyboard event: %v", err)
@@ -894,54 +944,6 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *ChangeWindowAttributesRequest:
 		xid := client.xID(uint32(p.Window))
-		if w, ok := s.windows[xid]; ok {
-			if p.ValueMask&CWBackPixmap != 0 {
-				w.attributes.BackgroundPixmap = p.Values.BackgroundPixmap
-			}
-			if p.ValueMask&CWBackPixel != 0 {
-				w.attributes.BackgroundPixel = p.Values.BackgroundPixel
-			}
-			if p.ValueMask&CWBorderPixmap != 0 {
-				w.attributes.BorderPixmap = p.Values.BorderPixmap
-			}
-			if p.ValueMask&CWBorderPixel != 0 {
-				w.attributes.BorderPixel = p.Values.BorderPixel
-			}
-			if p.ValueMask&CWBitGravity != 0 {
-				w.attributes.BitGravity = p.Values.BitGravity
-			}
-			if p.ValueMask&CWWinGravity != 0 {
-				w.attributes.WinGravity = p.Values.WinGravity
-			}
-			if p.ValueMask&CWBackingStore != 0 {
-				w.attributes.BackingStore = p.Values.BackingStore
-			}
-			if p.ValueMask&CWBackingPlanes != 0 {
-				w.attributes.BackingPlanes = p.Values.BackingPlanes
-			}
-			if p.ValueMask&CWBackingPixel != 0 {
-				w.attributes.BackingPixel = p.Values.BackingPixel
-			}
-			if p.ValueMask&CWOverrideRedirect != 0 {
-				w.attributes.OverrideRedirect = p.Values.OverrideRedirect
-			}
-			if p.ValueMask&CWSaveUnder != 0 {
-				w.attributes.SaveUnder = p.Values.SaveUnder
-			}
-			if p.ValueMask&CWEventMask != 0 {
-				w.attributes.EventMask = p.Values.EventMask
-			}
-			if p.ValueMask&CWDontPropagate != 0 {
-				w.attributes.DontPropagateMask = p.Values.DontPropagateMask
-			}
-			if p.ValueMask&CWColormap != 0 {
-				w.attributes.Colormap = p.Values.Colormap
-			}
-			if p.ValueMask&CWCursor != 0 {
-				w.attributes.Cursor = p.Values.Cursor
-				s.frontend.SetWindowCursor(xid, client.xID(uint32(p.Values.Cursor)))
-			}
-		}
 		if w, ok := s.windows[xid]; ok {
 			if p.ValueMask&CWBackPixmap != 0 {
 				w.attributes.BackgroundPixmap = p.Values.BackgroundPixmap

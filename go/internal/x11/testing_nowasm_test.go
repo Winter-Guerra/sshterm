@@ -40,5 +40,9 @@ func setupTestServerWithClient(t *testing.T) (*x11Server, *x11Client, *MockX11Fr
 		server.keymap[k] = v
 	}
 
+	t.Cleanup(func() {
+		x11ServerInstance = nil
+	})
+
 	return server, client, mockFrontend, clientBuffer
 }

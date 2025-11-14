@@ -14,9 +14,10 @@ const (
 
 // XInput minor opcodes
 const (
-	XListInputDevices = 2
-	XOpenDevice       = 3
-	XCloseDevice      = 4
+	XListInputDevices     = 2
+	XOpenDevice           = 3
+	XCloseDevice          = 4
+	XSelectExtensionEvent = 16
 )
 
 // XInput request types
@@ -130,6 +131,12 @@ type deviceHeader struct {
 	NumClasses byte
 	Use        byte // 0: IsXPointer, 1: IsXKeyboard, 2: IsXExtensionDevice
 	Name       string
+}
+
+type deviceInfo struct {
+	header     deviceHeader
+	classes    []InputClassInfo
+	eventMasks map[uint32]uint32 // window ID -> event mask
 }
 
 type InputClassInfo interface {
@@ -310,14 +317,26 @@ func handleXInputRequest(client *x11Client, minorOpcode byte, body []byte, seq u
 			return err.(messageEncoder)
 		}
 
+		var selectedDevice *deviceInfo
 		if req.DeviceID == virtualPointer.header.DeviceID {
-			client.openDevices[req.DeviceID] = virtualPointer
-			return &OpenDeviceReply{sequence: seq, classes: virtualPointer.classes}
+			selectedDevice = virtualPointer
 		} else if req.DeviceID == virtualKeyboard.header.DeviceID {
-			client.openDevices[req.DeviceID] = virtualKeyboard
-			return &OpenDeviceReply{sequence: seq, classes: virtualKeyboard.classes}
+			selectedDevice = virtualKeyboard
+		} else {
+			return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XOpenDevice)
 		}
-		return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XOpenDevice)
+
+		// Create a new deviceInfo instance for the client, so event masks are not shared.
+		newClasses := make([]InputClassInfo, len(selectedDevice.classes))
+		copy(newClasses, selectedDevice.classes)
+		newDeviceInfo := &deviceInfo{
+			header:     selectedDevice.header,
+			classes:    newClasses,
+			eventMasks: make(map[uint32]uint32),
+		}
+		client.openDevices[req.DeviceID] = newDeviceInfo
+		return &OpenDeviceReply{sequence: seq, classes: newDeviceInfo.classes}
+
 	case XCloseDevice:
 		req, err := parseCloseDeviceRequest(client.byteOrder, body, seq)
 		if err != nil {
@@ -325,6 +344,21 @@ func handleXInputRequest(client *x11Client, minorOpcode byte, body []byte, seq u
 		}
 		delete(client.openDevices, req.DeviceID)
 		return &CloseDeviceReply{sequence: seq}
+	case XSelectExtensionEvent:
+		windowID := client.byteOrder.Uint32(body[0:4])
+		numClasses := client.byteOrder.Uint16(body[4:6])
+		for i := 0; i < int(numClasses); i++ {
+			class := client.byteOrder.Uint32(body[8+i*4 : 12+i*4])
+			deviceID := byte(class & 0xFF)
+			mask := class >> 8
+			if dev, ok := client.openDevices[deviceID]; ok {
+				if dev.eventMasks == nil {
+					dev.eventMasks = make(map[uint32]uint32)
+				}
+				dev.eventMasks[windowID] = mask
+			}
+		}
+		return nil
 	default:
 		// TODO: Implement other XInput requests
 		return nil

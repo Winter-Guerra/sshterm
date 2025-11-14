@@ -155,6 +155,7 @@ const (
 	XI_DeviceButtonPress   = 1
 	XI_DeviceButtonRelease = 2
 	XI_DeviceKeyPress      = 3
+	XI_DeviceKeyRelease    = 4
 	XI_DeviceFocusIn       = 6
 	XI_DeviceStateNotify   = 9
 	XI_DeviceMappingNotify = 11
