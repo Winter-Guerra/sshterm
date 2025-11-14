@@ -29,6 +29,7 @@ type windowInfo struct {
 	blurEvent       js.Func
 	keyDownEvent    js.Func
 	keyUpEvent      js.Func
+	xInputEvents    map[string]js.Func
 	zIndex          int
 	properties      map[uint32]*property
 	backgroundPixel uint32
@@ -569,6 +570,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 		blurEvent:       blurEvent,
 		keyDownEvent:    keyDownEvent, // Store for removal
 		keyUpEvent:      keyUpEvent,   // Store for removal
+		xInputEvents:    make(map[string]js.Func),
 		zIndex:          100,
 		properties:      make(map[uint32]*property),
 		isTopLevel:      isTopLevel,
@@ -693,6 +695,9 @@ func (w *wasmX11Frontend) destroyWindow(wid xID, logit bool) {
 		winInfo.div.Call("remove")
 		// Release all js.Func objects to prevent memory leaks
 		for _, fn := range winInfo.mouseEvents {
+			fn.Release()
+		}
+		for _, fn := range winInfo.xInputEvents {
 			fn.Release()
 		}
 		winInfo.focusEvent.Release()
@@ -3335,6 +3340,27 @@ func (w *wasmX11Frontend) GetWindowAttributes(xid xID) WindowAttributes {
 	return WindowAttributes{}
 }
 
+func (w *wasmX11Frontend) watchWindowEvents(xid xID, values WindowAttributes) {
+	winInfo, ok := w.windows[xid]
+	if !ok {
+		return
+	}
+
+	// XInput events
+	if values.EventMask&DeviceKeyPressMask != 0 {
+		if _, ok := winInfo.xInputEvents["keydown"]; !ok {
+			fn := w.keyboardEventHandler(xid, "keydown")
+			winInfo.xInputEvents["keydown"] = fn
+			winInfo.canvas.Call("addEventListener", "keydown", fn)
+		}
+	} else {
+		if fn, ok := winInfo.xInputEvents["keydown"]; ok {
+			winInfo.canvas.Call("removeEventListener", "keydown", fn)
+			delete(winInfo.xInputEvents, "keydown")
+		}
+	}
+}
+
 func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes) {
 	debugf("X11: changeWindowAttributes id=%s valueMask=%d values=%+v", xid, valueMask, values)
 	if winInfo, ok := w.windows[xid]; ok {
@@ -3354,6 +3380,9 @@ func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, valu
 		}
 		if valueMask&CWCursor != 0 {
 			w.SetWindowCursor(xid, xID{client: xid.client, local: uint32(values.Cursor)})
+		}
+		if valueMask&CWEventMask != 0 {
+			w.watchWindowEvents(xid, values)
 		}
 	}
 	w.recordOperation(CanvasOperation{

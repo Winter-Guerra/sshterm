@@ -53,6 +53,42 @@ type ButtonPressEvent struct {
 	sameScreen     bool
 }
 
+type DeviceButtonReleaseEvent struct {
+	sequence   uint16
+	DeviceID   byte
+	Time       uint32
+	Button     byte
+	Root       uint32
+	Event      uint32
+	Child      uint32
+	RootX      int16
+	RootY      int16
+	EventX     int16
+	EventY     int16
+	State      uint16
+	SameScreen bool
+}
+
+func (e *DeviceButtonReleaseEvent) encodeMessage(order binary.ByteOrder) []byte {
+	buf := make([]byte, 32)
+	buf[0] = XI_DeviceButtonRelease
+	buf[1] = e.DeviceID
+	order.PutUint16(buf[2:4], e.sequence)
+	order.PutUint32(buf[4:8], e.Time)
+	order.PutUint32(buf[8:12], e.Root)
+	order.PutUint32(buf[12:16], e.Event)
+	order.PutUint32(buf[16:20], e.Child)
+	order.PutUint16(buf[20:22], uint16(e.RootX))
+	order.PutUint16(buf[22:24], uint16(e.RootY))
+	order.PutUint16(buf[24:26], uint16(e.EventX))
+	order.PutUint16(buf[26:28], uint16(e.EventY))
+	order.PutUint16(buf[28:30], e.State)
+	if e.SameScreen {
+		buf[30] = 1
+	}
+	return buf
+}
+
 func (e *ButtonPressEvent) encodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 4 // ButtonPress event code
@@ -349,4 +385,76 @@ type x11RawEvent struct {
 
 func (e *x11RawEvent) encodeMessage(order binary.ByteOrder) []byte {
 	return e.data
+}
+
+// DeviceKeyPressEvent is an XInput key press event.
+type DeviceKeyPressEvent struct {
+	DeviceID   byte
+	sequence   uint16
+	Time       uint32
+	Root       uint32
+	Event      uint32
+	Child      uint32
+	RootX      int16
+	RootY      int16
+	EventX     int16
+	EventY     int16
+	State      uint16
+	SameScreen bool
+	KeyCode    byte
+}
+
+func (e *DeviceKeyPressEvent) encodeMessage(order binary.ByteOrder) []byte {
+	buf := make([]byte, 32)
+	buf[0] = XI_DeviceKeyPress
+	buf[1] = e.DeviceID
+	order.PutUint16(buf[2:4], e.sequence)
+	order.PutUint32(buf[4:8], e.Time)
+	order.PutUint32(buf[8:12], e.Root)
+	order.PutUint32(buf[12:16], e.Event)
+	order.PutUint32(buf[16:20], e.Child)
+	order.PutUint16(buf[20:22], uint16(e.RootX))
+	order.PutUint16(buf[22:24], uint16(e.RootY))
+	order.PutUint16(buf[24:26], uint16(e.EventX))
+	order.PutUint16(buf[26:28], uint16(e.EventY))
+	order.PutUint16(buf[28:30], e.State)
+	buf[30] = boolToByte(e.SameScreen)
+	buf[31] = e.KeyCode
+	return buf
+}
+
+// DeviceButtonPressEvent is an XInput button press event.
+type DeviceButtonPressEvent struct {
+	DeviceID   byte
+	sequence   uint16
+	Time       uint32
+	Root       uint32
+	Event      uint32
+	Child      uint32
+	RootX      int16
+	RootY      int16
+	EventX     int16
+	EventY     int16
+	State      uint16
+	SameScreen bool
+	Button     byte
+}
+
+func (e *DeviceButtonPressEvent) encodeMessage(order binary.ByteOrder) []byte {
+	buf := make([]byte, 32)
+	buf[0] = XI_DeviceButtonPress
+	buf[1] = e.DeviceID
+	order.PutUint16(buf[2:4], e.sequence)
+	order.PutUint32(buf[4:8], e.Time)
+	order.PutUint32(buf[8:12], e.Root)
+	order.PutUint32(buf[12:16], e.Event)
+	order.PutUint32(buf[16:20], e.Child)
+	order.PutUint16(buf[20:22], uint16(e.RootX))
+	order.PutUint16(buf[22:24], uint16(e.RootY))
+	order.PutUint16(buf[24:26], uint16(e.EventX))
+	order.PutUint16(buf[26:28], uint16(e.EventY))
+	order.PutUint16(buf[28:30], e.State)
+	buf[30] = boolToByte(e.SameScreen)
+	buf[31] = e.Button
+	return buf
 }

@@ -166,41 +166,51 @@ type colormap struct {
 	pixels map[uint32]xColorItem
 }
 
+type DeviceButtonPressEventData struct {
+	Event uint32
+	RootX uint16
+	RootY uint16
+	EventX uint16
+	EventY uint16
+}
+
 type x11Server struct {
-	logger               Logger
-	byteOrder            binary.ByteOrder
-	frontend             X11FrontendAPI
-	windows              map[xID]*window
-	gcs                  map[xID]GC
-	pixmaps              map[xID]bool
-	cursors              map[xID]bool
-	selections           map[xID]uint32
-	colormaps            map[xID]*colormap
-	defaultColormap      uint32
-	installedColormap    xID
-	visualID             uint32
-	rootVisual           visualType
-	rootWindowWidth      uint16
-	rootWindowHeight     uint16
-	blackPixel           uint32
-	whitePixel           uint32
-	pointerX, pointerY   int16
-	clients              map[uint32]*x11Client
-	nextClientID         uint32
-	pointerGrabWindow    xID
-	keyboardGrabWindow   xID
-	pointerGrabTime      uint32
-	keyboardGrabTime     uint32
-	pointerGrabOwner     bool
-	keyboardGrabOwner    bool
-	pointerGrabEventMask uint16
-	passiveGrabs         map[xID][]*passiveGrab
-	authProtocol         string
-	authCookie           []byte
-	serverGrabbed        bool
-	grabbingClientID     uint32
-	fontPath             []string
-	keymap               map[byte]uint32
+	logger                Logger
+	byteOrder             binary.ByteOrder
+	frontend              X11FrontendAPI
+	windows               map[xID]*window
+	gcs                   map[xID]GC
+	pixmaps               map[xID]bool
+	cursors               map[xID]bool
+	selections            map[xID]uint32
+	colormaps             map[xID]*colormap
+	defaultColormap       uint32
+	installedColormap     xID
+	visualID              uint32
+	rootVisual            visualType
+	rootWindowWidth       uint16
+	rootWindowHeight      uint16
+	blackPixel            uint32
+	whitePixel            uint32
+	pointerX, pointerY    int16
+	clients               map[uint32]*x11Client
+	nextClientID          uint32
+	pointerGrabWindow     xID
+	keyboardGrabWindow    xID
+	pointerGrabTime       uint32
+	keyboardGrabTime      uint32
+	pointerGrabOwner      bool
+	keyboardGrabOwner     bool
+	pointerGrabEventMask  uint16
+	keyboardGrabEventMask uint32
+	inputFocus            xID
+	passiveGrabs          map[xID][]*passiveGrab
+	authProtocol          string
+	authCookie            []byte
+	serverGrabbed         bool
+	grabbingClientID      uint32
+	fontPath              []string
+	keymap                map[byte]uint32
 }
 
 type passiveGrab struct {
@@ -228,6 +238,10 @@ func (s *x11Server) GetWindowAttributes(xid xID) (WindowAttributes, bool) {
 		return WindowAttributes{}, false
 	}
 	return w.attributes, true
+}
+
+func NewWindowAttributes() WindowAttributes {
+	return WindowAttributes{}
 }
 
 func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32) {
@@ -269,30 +283,9 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		}
 	}
 
-	if grabActive {
-		if (uint32(s.pointerGrabEventMask) & eventMask) == 0 {
-			return
-		}
-	} else {
-		w, ok := s.windows[xid]
-		if !ok {
-			log.Printf("X11: Failed to write mount event: window not found")
-			return
-		}
-		if w.attributes.EventMask&eventMask == 0 {
-			return
-		}
-	}
-
-	client, ok := s.clients[xid.client]
-	if !ok {
-		log.Print("X11: Failed to write mount event: client not found")
+	if _, ok := s.windows[xid]; !ok {
+		log.Printf("X11: Failed to write mount event: window not found")
 		return
-	}
-
-	eventWindowID := originalXID.local
-	if grabActive && !s.pointerGrabOwner {
-		eventWindowID = s.pointerGrabWindow.local
 	}
 
 	// Unpack button and state from detail
@@ -313,6 +306,37 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		}
 	}
 
+	eventWindowID := originalXID.local
+	if grabActive && !s.pointerGrabOwner {
+		eventWindowID = s.pointerGrabWindow.local
+	}
+
+	// Dispatch events.
+	// The core event is subject to grabs, but XInput events are not.
+	if grabActive {
+		client, ok := s.clients[s.pointerGrabWindow.client]
+		if ok && (uint32(s.pointerGrabEventMask)&eventMask) != 0 {
+			s.sendCoreMouseEvent(client, eventType, button, eventWindowID, x, y, state)
+		}
+	} else {
+		// If no grab is active, send core events to clients that have selected for them.
+		for _, client := range s.clients {
+			w, ok := s.windows[client.xID(xid.local)]
+			if ok && w.attributes.EventMask&eventMask != 0 {
+				s.sendCoreMouseEvent(client, eventType, button, eventWindowID, x, y, state)
+			}
+		}
+	}
+
+	// Send XInput events to all clients that have opened the virtual device.
+	for _, client := range s.clients {
+		if _, ok := client.openDevices[virtualPointer.header.DeviceID]; ok {
+			s.sendXInputMouseEvent(client, eventType, button, eventWindowID, x, y, state)
+		}
+	}
+}
+
+func (s *x11Server) sendCoreMouseEvent(client *x11Client, eventType string, button byte, eventWindowID uint32, x, y int32, state uint16) {
 	var event messageEncoder
 	switch eventType {
 	case "mousedown":
@@ -364,58 +388,80 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		debugf("X11: Unknown mouse event type: %s", eventType)
 		return
 	}
-
 	if err := client.send(event); err != nil {
 		debugf("X11: Failed to write mouse event: %v", err)
 	}
 }
 
+func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, button byte, eventWindowID uint32, x, y int32, state uint16) {
+	var xiEvent messageEncoder
+	switch eventType {
+	case "mousedown":
+		xiEvent = &DeviceButtonPressEvent{
+			sequence:   client.sequence - 1,
+			DeviceID:   virtualPointer.header.DeviceID,
+			Time:       0, // Timestamp
+			Button:     button,
+			Root:       s.rootWindowID(),
+			Event:      eventWindowID,
+			Child:      0, // Or a child window ID if applicable
+			RootX:      int16(x),
+			RootY:      int16(y),
+			EventX:     int16(x),
+			EventY:     int16(y),
+			State:      state,
+			SameScreen: true,
+		}
+	case "mouseup":
+		xiEvent = &DeviceButtonReleaseEvent{
+			sequence:   client.sequence - 1,
+			DeviceID:   virtualPointer.header.DeviceID,
+			Time:       0, // Timestamp
+			Button:     button,
+			Root:       s.rootWindowID(),
+			Event:      eventWindowID,
+			Child:      0, // Or a child window ID if applicable
+			RootX:      int16(x),
+			RootY:      int16(y),
+			EventX:     int16(x),
+			EventY:     int16(y),
+			State:      state,
+			SameScreen: true,
+		}
+	}
+
+	if xiEvent != nil {
+		if err := client.send(xiEvent); err != nil {
+			debugf("X11: Failed to write XInput mouse event: %v", err)
+		}
+	}
+}
+
 func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, altKey, ctrlKey, shiftKey, metaKey bool) {
-	// Implement sending keyboard event to client
-	// This will involve constructing an X11 event packet and writing it to client.conn
 	debugf("X11: SendKeyboardEvent xid=%s type=%s code=%s alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
 
-	originalXID := xid
 	grabActive := s.keyboardGrabWindow.local != 0
 
-	if grabActive {
-		xid = s.keyboardGrabWindow
-	}
-
 	var eventMask uint32
-	if eventType == "keydown" {
+	switch eventType {
+	case "keydown":
 		eventMask = KeyPressMask
-	} else if eventType == "keyup" {
+	case "keyup":
 		eventMask = KeyReleaseMask
-	}
-
-	w, ok := s.windows[xid]
-	if !ok {
-		debugf("X11: SendKeyboardEvent unknown window %d", xid)
-		return
-	}
-	if !grabActive && w.attributes.EventMask&eventMask == 0 {
-		return
-	}
-
-	client, ok := s.clients[xid.client]
-	if !ok {
-		debugf("X11: SendKeyboardEvent unknown client %d", xid.client)
-		return
 	}
 
 	state := uint16(0)
 	if shiftKey {
-		state |= 1 // ShiftMask
+		state |= 1
 	}
 	if ctrlKey {
-		state |= 4 // ControlMask
+		state |= 4
 	}
 	if altKey {
-		state |= 8 // Mod1Mask (Alt key)
+		state |= 8
 	}
 	if metaKey {
-		state |= 64 // Mod4Mask (Meta key)
+		state |= 64
 	}
 
 	keycode, ok := jsCodeToX11Keycode[code]
@@ -423,24 +469,56 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 		keycode = jsCodeToX11Keycode["Unidentified"]
 	}
 
-	eventWindowID := originalXID.local
-	if grabActive && !s.keyboardGrabOwner {
-		eventWindowID = s.keyboardGrabWindow.local
-	}
-
+	// Handle passive grabs first
 	if !grabActive && eventType == "keydown" {
-		if grabs, ok := s.passiveGrabs[originalXID]; ok {
+		if grabs, ok := s.passiveGrabs[xid]; ok {
 			for _, grab := range grabs {
 				if grab.key == KeyCode(keycode) && (grab.modifiers == AnyModifier || grab.modifiers == state) {
-					s.keyboardGrabWindow = originalXID
+					s.keyboardGrabWindow = xid
 					s.keyboardGrabOwner = grab.owner
 					grabActive = true
-					break
+					// Since a grab was just activated, the event should be sent to the grabbing client.
+					if client, ok := s.clients[s.keyboardGrabWindow.client]; ok {
+						s.sendCoreKeyboardEvent(client, eventType, keycode, xid.local, state)
+					}
+					return // Stop further processing
 				}
 			}
 		}
 	}
 
+	if grabActive {
+		client, ok := s.clients[s.keyboardGrabWindow.client]
+		if !ok {
+			return
+		}
+
+		eventWindow := s.keyboardGrabWindow.local
+		if s.keyboardGrabOwner {
+			eventWindow = xid.local
+		}
+
+		// For active keyboard grabs, we don't check the event mask.
+		// KeyPress and KeyRelease events are always sent.
+		s.sendCoreKeyboardEvent(client, eventType, keycode, eventWindow, state)
+		// In a grab, no other clients get core events.
+		return
+	}
+
+	// No active grab, send to interested clients
+	for _, client := range s.clients {
+		if w, ok := s.windows[client.xID(s.inputFocus.local)]; ok {
+			if w.attributes.EventMask&eventMask != 0 {
+				s.sendCoreKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
+			}
+		}
+		if _, ok := client.openDevices[virtualKeyboard.header.DeviceID]; ok {
+			s.sendXInputKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
+		}
+	}
+}
+
+func (s *x11Server) sendCoreKeyboardEvent(client *x11Client, eventType string, keycode byte, eventWindowID uint32, state uint16) {
 	event := &keyEvent{
 		sequence:   client.sequence - 1,
 		detail:     keycode,
@@ -450,8 +528,8 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 		child:      0, // No child for now
 		rootX:      s.pointerX,
 		rootY:      s.pointerY,
-		eventX:     s.pointerX, // Assuming pointer is always in the window for now
-		eventY:     s.pointerY, // Assuming pointer is always in the window for now
+		eventX:     s.pointerX,
+		eventY:     s.pointerY,
 		state:      state,
 		sameScreen: true,
 	}
@@ -467,6 +545,32 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 
 	if err := client.send(event); err != nil {
 		debugf("X11: Failed to write keyboard event: %v", err)
+	}
+}
+
+func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string, keycode byte, eventWindowID uint32, state uint16) {
+	var xiEvent messageEncoder
+	if eventType == "keydown" {
+		xiEvent = &DeviceKeyPressEvent{
+			sequence:   client.sequence - 1,
+			DeviceID:   virtualKeyboard.header.DeviceID,
+			Time:       0, // Timestamp
+			KeyCode:    keycode,
+			Root:       s.rootWindowID(),
+			Event:      eventWindowID,
+			Child:      0, // Or a child window ID if applicable
+			RootX:      s.pointerX,
+			RootY:      s.pointerY,
+			EventX:     s.pointerX,
+			EventY:     s.pointerY,
+			State:      state,
+			SameScreen: true,
+		}
+	}
+	if xiEvent != nil {
+		if err := client.send(xiEvent); err != nil {
+			debugf("X11: Failed to write XInput keyboard event: %v", err)
+		}
 	}
 }
 
@@ -790,6 +894,54 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *ChangeWindowAttributesRequest:
 		xid := client.xID(uint32(p.Window))
+		if w, ok := s.windows[xid]; ok {
+			if p.ValueMask&CWBackPixmap != 0 {
+				w.attributes.BackgroundPixmap = p.Values.BackgroundPixmap
+			}
+			if p.ValueMask&CWBackPixel != 0 {
+				w.attributes.BackgroundPixel = p.Values.BackgroundPixel
+			}
+			if p.ValueMask&CWBorderPixmap != 0 {
+				w.attributes.BorderPixmap = p.Values.BorderPixmap
+			}
+			if p.ValueMask&CWBorderPixel != 0 {
+				w.attributes.BorderPixel = p.Values.BorderPixel
+			}
+			if p.ValueMask&CWBitGravity != 0 {
+				w.attributes.BitGravity = p.Values.BitGravity
+			}
+			if p.ValueMask&CWWinGravity != 0 {
+				w.attributes.WinGravity = p.Values.WinGravity
+			}
+			if p.ValueMask&CWBackingStore != 0 {
+				w.attributes.BackingStore = p.Values.BackingStore
+			}
+			if p.ValueMask&CWBackingPlanes != 0 {
+				w.attributes.BackingPlanes = p.Values.BackingPlanes
+			}
+			if p.ValueMask&CWBackingPixel != 0 {
+				w.attributes.BackingPixel = p.Values.BackingPixel
+			}
+			if p.ValueMask&CWOverrideRedirect != 0 {
+				w.attributes.OverrideRedirect = p.Values.OverrideRedirect
+			}
+			if p.ValueMask&CWSaveUnder != 0 {
+				w.attributes.SaveUnder = p.Values.SaveUnder
+			}
+			if p.ValueMask&CWEventMask != 0 {
+				w.attributes.EventMask = p.Values.EventMask
+			}
+			if p.ValueMask&CWDontPropagate != 0 {
+				w.attributes.DontPropagateMask = p.Values.DontPropagateMask
+			}
+			if p.ValueMask&CWColormap != 0 {
+				w.attributes.Colormap = p.Values.Colormap
+			}
+			if p.ValueMask&CWCursor != 0 {
+				w.attributes.Cursor = p.Values.Cursor
+				s.frontend.SetWindowCursor(xid, client.xID(uint32(p.Values.Cursor)))
+			}
+		}
 		if w, ok := s.windows[xid]; ok {
 			if p.ValueMask&CWBackPixmap != 0 {
 				w.attributes.BackgroundPixmap = p.Values.BackgroundPixmap
@@ -1299,6 +1451,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 
 	case *SetInputFocusRequest:
 		xid := client.xID(uint32(p.Focus))
+		s.inputFocus = xid
 		s.frontend.SetInputFocus(xid, p.RevertTo)
 
 	case *GetInputFocusRequest:
@@ -2240,11 +2393,12 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 			})
 
 			client := &x11Client{
-				id:        x11ServerInstance.nextClientID,
-				conn:      channel,
-				sequence:  0,
-				byteOrder: binary.LittleEndian, // Default, will be updated in handshake
-				saveSet:   make(map[uint32]bool),
+				id:          x11ServerInstance.nextClientID,
+				conn:        channel,
+				sequence:    0,
+				byteOrder:   binary.LittleEndian, // Default, will be updated in handshake
+				saveSet:     make(map[uint32]bool),
+				openDevices: make(map[byte]*deviceInfo),
 			}
 			x11ServerInstance.clients[client.id] = client
 			x11ServerInstance.nextClientID++

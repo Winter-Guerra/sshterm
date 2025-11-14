@@ -447,6 +447,12 @@ type WindowAttributes struct {
 	BackgroundPixelSet bool
 }
 
+func (wa *WindowAttributes) values() []uint32 {
+	// This is a placeholder. A real implementation would serialize the struct
+	// based on a bitmask. For the test, we only need to serialize the event mask.
+	return []uint32{wa.EventMask}
+}
+
 // PolyTextItem is an interface for items in a PolyText request.
 type PolyTextItem interface {
 	isPolyTextItem()

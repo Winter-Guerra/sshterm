@@ -24,6 +24,11 @@ func (e *x11Error) encodeMessage(order binary.ByteOrder) []byte {
 	return e.data
 }
 
+type deviceInfo struct {
+	header      deviceHeader
+	classes     []InputClassInfo
+	deviceState uint16
+}
 type x11Client struct {
 	id                 uint32
 	conn               io.ReadWriteCloser
@@ -32,6 +37,7 @@ type x11Client struct {
 	sentMessages       []messageEncoder
 	bigRequestsEnabled bool
 	saveSet            map[uint32]bool
+	openDevices        map[byte]*deviceInfo
 }
 
 func (c *x11Client) xID(local uint32) xID {

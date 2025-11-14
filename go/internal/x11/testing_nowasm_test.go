@@ -15,10 +15,11 @@ func setupTestServerWithClient(t *testing.T) (*x11Server, *x11Client, *MockX11Fr
 	mockConn := &testConn{r: &bytes.Buffer{}, w: clientBuffer}
 
 	client := &x11Client{
-		id:        1,
-		conn:      mockConn,
-		byteOrder: binary.LittleEndian,
-		sequence:  0, // Will be incremented to 1 by readRequest
+		id:          1,
+		conn:        mockConn,
+		byteOrder:   binary.LittleEndian,
+		sequence:    0, // Will be incremented to 1 by readRequest
+		openDevices: make(map[byte]*deviceInfo),
 	}
 
 	mockFrontend := &MockX11Frontend{}

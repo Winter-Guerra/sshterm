@@ -15,6 +15,8 @@ const (
 // XInput minor opcodes
 const (
 	XListInputDevices = 2
+	XOpenDevice       = 3
+	XCloseDevice      = 4
 )
 
 // XInput request types
@@ -45,12 +47,77 @@ func parseListInputDevicesRequest(order binary.ByteOrder, body []byte, seq uint1
 	return &ListInputDevicesRequest{}, nil
 }
 
+// OpenDevice request
+type OpenDeviceRequest struct {
+	DeviceID byte
+}
+
+func parseOpenDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*OpenDeviceRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, xInputOpcode, XOpenDevice)
+	}
+	return &OpenDeviceRequest{
+		DeviceID: body[0],
+	}, nil
+}
+
+// OpenDevice reply
+type OpenDeviceReply struct {
+	sequence uint16
+	classes  []InputClassInfo
+}
+
+func (r *OpenDeviceReply) encodeMessage(order binary.ByteOrder) []byte {
+	classesBuf := new(bytes.Buffer)
+	for _, class := range r.classes {
+		classesBuf.Write(class.encode(order))
+	}
+	classesBytes := classesBuf.Bytes()
+
+	reply := make([]byte, 32+len(classesBytes))
+	reply[0] = 1 // Reply
+	reply[1] = byte(len(r.classes))
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], uint32((len(classesBytes)+3)/4)) // length
+	copy(reply[32:], classesBytes)
+	return reply
+}
+
+// CloseDevice request
+type CloseDeviceRequest struct {
+	DeviceID byte
+}
+
+func parseCloseDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*CloseDeviceRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, xInputOpcode, XCloseDevice)
+	}
+	return &CloseDeviceRequest{
+		DeviceID: body[0],
+	}, nil
+}
+
+// CloseDevice reply
+type CloseDeviceReply struct {
+	sequence uint16
+}
+
+func (r *CloseDeviceReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	reply[1] = 0
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0) // length
+	return reply
+}
+
 // ListInputDevices reply
 // This is a complex, variable-length reply.
 
 type ListInputDevicesReply struct {
 	sequence uint16
 	devices  []DeviceInfo
+	NDevices byte
 }
 
 type DeviceInfo interface {
@@ -137,12 +204,7 @@ func (c *ValuatorClassInfo) encode(order binary.ByteOrder) []byte {
 	return buf.Bytes()
 }
 
-type deviceImpl struct {
-	header  deviceHeader
-	classes []InputClassInfo
-}
-
-func (d *deviceImpl) encode(order binary.ByteOrder) []byte {
+func (d *deviceInfo) encode(order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
 	nameBytes := []byte(d.header.Name)
 	nameLen := len(nameBytes)
@@ -196,13 +258,73 @@ func (r *ListInputDevicesReply) encodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+var virtualPointer = &deviceInfo{
+	header: deviceHeader{
+		DeviceID:   2,
+		DeviceType: 0,
+		NumClasses: 2,
+		Use:        0, // IsXPointer
+		Name:       "Virtual Pointer",
+	},
+	classes: []InputClassInfo{
+		&ButtonClassInfo{NumButtons: 5},
+		&ValuatorClassInfo{
+			NumAxes:    2,
+			Mode:       0, // Relative
+			MotionSize: 0,
+			Axes: []ValuatorAxisInfo{
+				{Min: 0, Max: 65535, Resolution: 1},
+				{Min: 0, Max: 65535, Resolution: 1},
+			},
+		},
+	},
+}
+
+var virtualKeyboard = &deviceInfo{
+	header: deviceHeader{
+		DeviceID:   3,
+		DeviceType: 0,
+		NumClasses: 1,
+		Use:        1, // IsXKeyboard
+		Name:       "Virtual Keyboard",
+	},
+	classes: []InputClassInfo{
+		&KeyClassInfo{
+			NumKeys:    248,
+			MinKeycode: 8,
+			MaxKeycode: 255,
+		},
+	},
+}
+
 func handleXInputRequest(client *x11Client, minorOpcode byte, body []byte, seq uint16) (reply messageEncoder) {
 	switch minorOpcode {
 	case XListInputDevices:
 		return &ListInputDevicesReply{
 			sequence: seq,
-			devices:  []DeviceInfo{},
+			devices:  []DeviceInfo{virtualPointer, virtualKeyboard},
 		}
+	case XOpenDevice:
+		req, err := parseOpenDeviceRequest(client.byteOrder, body, seq)
+		if err != nil {
+			return err.(messageEncoder)
+		}
+
+		if req.DeviceID == virtualPointer.header.DeviceID {
+			client.openDevices[req.DeviceID] = virtualPointer
+			return &OpenDeviceReply{sequence: seq, classes: virtualPointer.classes}
+		} else if req.DeviceID == virtualKeyboard.header.DeviceID {
+			client.openDevices[req.DeviceID] = virtualKeyboard
+			return &OpenDeviceReply{sequence: seq, classes: virtualKeyboard.classes}
+		}
+		return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XOpenDevice)
+	case XCloseDevice:
+		req, err := parseCloseDeviceRequest(client.byteOrder, body, seq)
+		if err != nil {
+			return err.(messageEncoder)
+		}
+		delete(client.openDevices, req.DeviceID)
+		return &CloseDeviceReply{sequence: seq}
 	default:
 		// TODO: Implement other XInput requests
 		return nil

@@ -446,6 +446,7 @@ func TestSendKeyboardEvent_EventMask_Sent(t *testing.T) {
 	}
 
 	// Send a key press event
+	server.handleRequest(client, &SetInputFocusRequest{Focus: 10}, 0)
 	server.SendKeyboardEvent(windowID, "keydown", "KeyA", false, false, false, false)
 
 	if len(client.sentMessages) == 0 {
@@ -907,7 +908,7 @@ func TestExtensionRequests(t *testing.T) {
 	if !ok {
 		t.Fatalf("XListInputDevices: expected *ListInputDevicesReply, got %T", reply)
 	}
-	if len(listInputDevicesReply.devices) != 0 {
-		t.Errorf("XListInputDevices: incorrect number of devices. Expected 0, got %d", len(listInputDevicesReply.devices))
+	if len(listInputDevicesReply.devices) != 2 {
+		t.Errorf("XListInputDevices: incorrect number of devices. Expected 2, got %d", len(listInputDevicesReply.devices))
 	}
 }

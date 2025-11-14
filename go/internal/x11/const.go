@@ -152,6 +152,15 @@ const (
 )
 
 const (
+	XI_DeviceButtonPress   = 1
+	XI_DeviceButtonRelease = 2
+	XI_DeviceKeyPress      = 3
+	XI_DeviceFocusIn       = 6
+	XI_DeviceStateNotify   = 9
+	XI_DeviceMappingNotify = 11
+)
+
+const (
 	CWBackPixmap       = 1 << 0
 	CWBackPixel        = 1 << 1
 	CWBorderPixmap     = 1 << 2
@@ -215,6 +224,14 @@ const (
 	PropertyChangeMask       = 1 << 22
 	ColormapChangeMask       = 1 << 23
 	OwnerGrabButtonMask      = 1 << 24
+)
+
+// XInput event masks
+const (
+	DeviceKeyPressMask      = 1 << 0
+	DeviceKeyReleaseMask    = 1 << 1
+	DeviceButtonPressMask   = 1 << 2
+	DeviceButtonReleaseMask = 1 << 3
 )
 
 const (
