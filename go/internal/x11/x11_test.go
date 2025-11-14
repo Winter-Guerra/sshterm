@@ -11,32 +11,7 @@ import (
 // setupTestServer creates a new x11Server with a mock frontend and a single mock client.
 // It returns the server instance and a buffer that captures all data sent to the mock client.
 func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
-	clientBuffer := &bytes.Buffer{}
-	mockConn := &testConn{r: &bytes.Buffer{}, w: clientBuffer}
-
-	client := &x11Client{
-		id:        1,
-		conn:      mockConn,
-		byteOrder: binary.LittleEndian,
-		sequence:  1, // Start sequence at 1
-	}
-
-	server := &x11Server{
-		logger:          &testLogger{t: t},
-		windows:         make(map[xID]*window),
-		clients:         map[uint32]*x11Client{1: client},
-		frontend:        &MockX11Frontend{},
-		byteOrder:       binary.LittleEndian,
-		passiveGrabs:    make(map[xID][]*passiveGrab),
-		colormaps:       make(map[xID]*colormap), // Initialize colormaps
-		defaultColormap: 1,                       // Set a default colormap ID
-		keymap:          make(map[byte]uint32),
-	}
-	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]xColorItem)}
-	for k, v := range KeyCodeToKeysym {
-		server.keymap[k] = v
-	}
-
+	server, _, _, clientBuffer := setupTestServerWithClient(t)
 	return server, clientBuffer
 }
 
