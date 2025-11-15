@@ -167,9 +167,9 @@ type colormap struct {
 }
 
 type DeviceButtonPressEventData struct {
-	Event uint32
-	RootX uint16
-	RootY uint16
+	Event  uint32
+	RootX  uint16
+	RootY  uint16
 	EventX uint16
 	EventY uint16
 }
@@ -2299,7 +2299,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *XInputRequest:
-		return handleXInputRequest(s, client, p.MinorOpcode, p.Body, seq)
+		return s.handleXInputRequest(client, p.MinorOpcode, p.Body, seq)
 
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())

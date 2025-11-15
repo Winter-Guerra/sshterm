@@ -116,14 +116,14 @@ func (r *CloseDeviceReply) encodeMessage(order binary.ByteOrder) []byte {
 
 // GrabDevice request
 type GrabDeviceRequest struct {
-	DeviceID      byte
-	GrabWindow    uint32
-	Time          uint32
-	OwnerEvents   bool
-	ThisDeviceMode byte
+	DeviceID        byte
+	GrabWindow      uint32
+	Time            uint32
+	OwnerEvents     bool
+	ThisDeviceMode  byte
 	OtherDeviceMode byte
-	NumClasses    uint16
-	Classes       []uint32
+	NumClasses      uint16
+	Classes         []uint32
 }
 
 func parseGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceRequest, error) {
@@ -139,14 +139,14 @@ func parseGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*G
 		classes[i] = order.Uint32(body[16+i*4 : 20+i*4])
 	}
 	return &GrabDeviceRequest{
-		GrabWindow:    order.Uint32(body[0:4]),
-		Time:          order.Uint32(body[4:8]),
-		OwnerEvents:   body[10] != 0,
-		ThisDeviceMode: body[12],
+		GrabWindow:      order.Uint32(body[0:4]),
+		Time:            order.Uint32(body[4:8]),
+		OwnerEvents:     body[10] != 0,
+		ThisDeviceMode:  body[12],
 		OtherDeviceMode: body[13],
-		DeviceID:      body[11],
-		NumClasses:    numClasses,
-		Classes:       classes,
+		DeviceID:        body[11],
+		NumClasses:      numClasses,
+		Classes:         classes,
 	}, nil
 }
 
@@ -373,7 +373,7 @@ var virtualKeyboard = &deviceInfo{
 	},
 }
 
-func handleXInputRequest(s *x11Server, client *x11Client, minorOpcode byte, body []byte, seq uint16) (reply messageEncoder) {
+func (s *x11Server) handleXInputRequest(client *x11Client, minorOpcode byte, body []byte, seq uint16) (reply messageEncoder) {
 	switch minorOpcode {
 	case XListInputDevices:
 		return &ListInputDevicesReply{
