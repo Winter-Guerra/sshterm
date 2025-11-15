@@ -3,6 +3,7 @@
 package x11
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -52,4 +53,128 @@ func TestXCloseDevice(t *testing.T) {
 
 	_, ok = client.openDevices[3]
 	assert.False(t, ok, "Device 3 should be closed")
+}
+
+func TestXGrabDevice(t *testing.T) {
+	s, client, _, _ := setupTestServerWithClient(t)
+	// Create a window to grab
+	createWindowReq := &CreateWindowRequest{
+		Drawable: 1,
+		Parent:   0,
+		Width:    100,
+		Height:   100,
+	}
+	s.handleRequest(client, createWindowReq, 1)
+
+	// Open the virtual pointer device
+	openReqBody := []byte{2, 0, 0, 0}
+	openReq := &XInputRequest{MinorOpcode: XOpenDevice, Body: openReqBody}
+	s.handleRequest(client, openReq, 2)
+
+	// Grab the device
+	grabReqBody := make([]byte, 20)
+	client.byteOrder.PutUint32(grabReqBody[0:4], 1) // grab_window
+	grabReqBody[11] = 2                             // device_id
+	client.byteOrder.PutUint16(grabReqBody[14:16], 1) // num_classes
+	client.byteOrder.PutUint32(grabReqBody[16:20], 0) // classes
+
+	grabReq := &XInputRequest{MinorOpcode: XGrabDevice, Body: grabReqBody}
+	reply := s.handleRequest(client, grabReq, 3)
+	require.NotNil(t, reply)
+
+	grabReply, ok := reply.(*GrabDeviceReply)
+	require.True(t, ok)
+	assert.Equal(t, byte(GrabSuccess), grabReply.Status)
+
+	_, grabExists := s.deviceGrabs[2]
+	assert.True(t, grabExists, "Device 2 should be grabbed")
+
+	// Attempt to grab again
+	reply = s.handleRequest(client, grabReq, 4)
+	require.NotNil(t, reply)
+
+	grabReply, ok = reply.(*GrabDeviceReply)
+	require.True(t, ok)
+	assert.Equal(t, byte(AlreadyGrabbed), grabReply.Status)
+
+	// Ungrab the device
+	ungrabReqBody := make([]byte, 8)
+	client.byteOrder.PutUint32(ungrabReqBody[0:4], 0) // time
+	ungrabReqBody[5] = 2                              // device_id
+	ungrabReq := &XInputRequest{MinorOpcode: XUngrabDevice, Body: ungrabReqBody}
+	s.handleRequest(client, ungrabReq, 5)
+
+	_, grabExists = s.deviceGrabs[2]
+	assert.False(t, grabExists, "Device 2 should be ungrabbed")
+}
+
+func TestXGrabDeviceEventRedirection(t *testing.T) {
+	s, client1, _, client1Buffer := setupTestServerWithClient(t)
+
+	// Create a window
+	createWindowReq := &CreateWindowRequest{
+		Drawable: 1,
+		Parent:   0,
+		Width:    100,
+		Height:   100,
+	}
+	s.handleRequest(client1, createWindowReq, 1)
+
+	// Create a second client
+	client2Buffer := &bytes.Buffer{}
+	conn2 := &testConn{r: &bytes.Buffer{}, w: client2Buffer}
+	client2 := &x11Client{
+		id:          s.nextClientID,
+		conn:        conn2,
+		sequence:    0,
+		byteOrder:   s.byteOrder,
+		saveSet:     make(map[uint32]bool),
+		openDevices: make(map[byte]*deviceInfo),
+	}
+	s.clients[client2.id] = client2
+	s.nextClientID++
+	client2.openDevices = make(map[byte]*deviceInfo)
+
+	// Client 1 opens the pointer
+	openReqBody := []byte{2, 0, 0, 0} // device 2 (pointer)
+	openReq := &XInputRequest{MinorOpcode: XOpenDevice, Body: openReqBody}
+	s.handleRequest(client1, openReq, 2)
+
+	// Client 2 opens the pointer and selects for button press events
+	s.handleRequest(client2, openReq, 1)
+
+	selectEventReqBody := make([]byte, 12)
+	client2.byteOrder.PutUint32(selectEventReqBody[0:4], 1) // window
+	client2.byteOrder.PutUint16(selectEventReqBody[4:6], 1) // num_events
+	mask := uint32(DeviceButtonPressMask) << 8
+	mask |= uint32(2)
+	client2.byteOrder.PutUint32(selectEventReqBody[8:12], mask) // event_mask | device_id
+	selectEventReq := &XInputRequest{MinorOpcode: XSelectExtensionEvent, Body: selectEventReqBody}
+	s.handleRequest(client2, selectEventReq, 2)
+
+	// Client 2 grabs the device
+	grabReqBody := make([]byte, 20)
+	client2.byteOrder.PutUint32(grabReqBody[0:4], 1)       // grab_window
+	grabReqBody[11] = 2                                     // device_id
+	client2.byteOrder.PutUint16(grabReqBody[14:16], 1)     // num_classes
+	client2.byteOrder.PutUint32(grabReqBody[16:20], DeviceButtonPressMask)
+
+	grabReq := &XInputRequest{MinorOpcode: XGrabDevice, Body: grabReqBody}
+	s.handleRequest(client2, grabReq, 3)
+
+	// Send a mouse event
+	s.SendMouseEvent(client1.xID(1), "mousedown", 10, 10, (0<<16)|1) // button 1
+
+	// Check that only client 2 received the event
+	assert.Zero(t, client1Buffer.Len(), "Client 1 should not have received any messages")
+
+	require.NotZero(t, client2Buffer.Len(), "Client 2 should have received a message")
+	var eventHeader [32]byte
+	_, err := client2Buffer.Read(eventHeader[:])
+	require.NoError(t, err)
+
+	// Basic validation of the event
+	assert.Equal(t, byte(xInputOpcode), eventHeader[0], "Opcode should match XInput extension")
+	assert.Equal(t, byte(DeviceButtonPress), eventHeader[1], "Sub-opcode should be DeviceButtonPress")
+	assert.Equal(t, byte(2), eventHeader[30], "Device ID should be 2")
 }

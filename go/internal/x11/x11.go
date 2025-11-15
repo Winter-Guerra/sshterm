@@ -205,6 +205,7 @@ type x11Server struct {
 	keyboardGrabEventMask uint32
 	inputFocus            xID
 	passiveGrabs          map[xID][]*passiveGrab
+	deviceGrabs           map[byte]*deviceGrab // device id -> grab info
 	authProtocol          string
 	authCookie            []byte
 	serverGrabbed         bool
@@ -220,6 +221,13 @@ type passiveGrab struct {
 	owner     bool
 	eventMask uint16
 	cursor    xID
+}
+
+type deviceGrab struct {
+	window      xID
+	ownerEvents bool
+	eventMask   []uint32
+	time        uint32
 }
 
 func (s *x11Server) SetRootWindowSize(width, height uint16) {
@@ -248,6 +256,11 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	debugf("X11: SendMouseEvent xid=%s type=%s x=%d y=%d detail=%d", xid, eventType, x, y, detail)
 
 	originalXID := xid
+	if _, ok := s.windows[originalXID]; !ok {
+		log.Printf("X11: Failed to write mouse event: window not found")
+		return
+	}
+
 	grabActive := s.pointerGrabWindow.local != 0
 
 	if grabActive {
@@ -281,11 +294,6 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		if state&uint16(ButtonPressMask|ButtonReleaseMask) != 0 {
 			eventMask |= ButtonMotionMask
 		}
-	}
-
-	if _, ok := s.windows[xid]; !ok {
-		log.Printf("X11: Failed to write mount event: window not found")
-		return
 	}
 
 	// Unpack button and state from detail
@@ -328,7 +336,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		}
 	}
 
-	// Send XInput events.
+	// Send XInput events, respecting device grabs.
 	var xiEventMask uint32
 	switch eventType {
 	case "mousedown":
@@ -338,11 +346,26 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	}
 
 	if xiEventMask > 0 {
-		for _, client := range s.clients {
-			if deviceInfo, ok := client.openDevices[virtualPointer.header.DeviceID]; ok {
-				if mask, ok := deviceInfo.eventMasks[originalXID.local]; ok {
-					if mask&xiEventMask != 0 {
-						s.sendXInputMouseEvent(client, eventType, button, originalXID.local, x, y, state)
+		if grab, ok := s.deviceGrabs[virtualPointer.header.DeviceID]; ok {
+			// A device grab is active. Send event only to the grabbing client.
+			grabbingClient, clientExists := s.clients[grab.window.client]
+			if clientExists {
+				if deviceInfo, ok := grabbingClient.openDevices[virtualPointer.header.DeviceID]; ok {
+					if mask, ok := deviceInfo.eventMasks[originalXID.local]; ok {
+						if mask&xiEventMask != 0 {
+							s.sendXInputMouseEvent(grabbingClient, eventType, virtualPointer.header.DeviceID, button, originalXID.local, x, y, state)
+						}
+					}
+				}
+			}
+		} else {
+			// No device grab, send to all interested clients.
+			for _, client := range s.clients {
+				if deviceInfo, ok := client.openDevices[virtualPointer.header.DeviceID]; ok {
+					if mask, ok := deviceInfo.eventMasks[originalXID.local]; ok {
+						if mask&xiEventMask != 0 {
+							s.sendXInputMouseEvent(client, eventType, virtualPointer.header.DeviceID, button, originalXID.local, x, y, state)
+						}
 					}
 				}
 			}
@@ -407,13 +430,13 @@ func (s *x11Server) sendCoreMouseEvent(client *x11Client, eventType string, butt
 	}
 }
 
-func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, button byte, eventWindowID uint32, x, y int32, state uint16) {
+func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, deviceID, button byte, eventWindowID uint32, x, y int32, state uint16) {
 	var xiEvent messageEncoder
 	switch eventType {
 	case "mousedown":
 		xiEvent = &DeviceButtonPressEvent{
 			sequence:   client.sequence - 1,
-			DeviceID:   virtualPointer.header.DeviceID,
+			DeviceID:   deviceID,
 			Time:       0, // Timestamp
 			Button:     button,
 			Root:       s.rootWindowID(),
@@ -429,7 +452,7 @@ func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, bu
 	case "mouseup":
 		xiEvent = &DeviceButtonReleaseEvent{
 			sequence:   client.sequence - 1,
-			DeviceID:   virtualPointer.header.DeviceID,
+			DeviceID:   deviceID,
 			Time:       0, // Timestamp
 			Button:     button,
 			Root:       s.rootWindowID(),
@@ -454,16 +477,6 @@ func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, bu
 func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, altKey, ctrlKey, shiftKey, metaKey bool) {
 	debugf("X11: SendKeyboardEvent xid=%s type=%s code=%s alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
 
-	grabActive := s.keyboardGrabWindow.local != 0
-
-	var eventMask uint32
-	switch eventType {
-	case "keydown":
-		eventMask = KeyPressMask
-	case "keyup":
-		eventMask = KeyReleaseMask
-	}
-
 	state := uint16(0)
 	if shiftKey {
 		state |= 1
@@ -483,6 +496,40 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 		keycode = jsCodeToX11Keycode["Unidentified"]
 	}
 
+	// Handle device grabs first
+	if grab, ok := s.deviceGrabs[virtualKeyboard.header.DeviceID]; ok {
+		grabbingClient, clientExists := s.clients[grab.window.client]
+		if clientExists {
+			var xiEventMask uint32
+			switch eventType {
+			case "keydown":
+				xiEventMask = DeviceKeyPressMask
+			case "keyup":
+				xiEventMask = DeviceKeyReleaseMask
+			}
+			var grabMask uint32
+			for _, m := range grab.eventMask {
+				grabMask |= m
+			}
+			if grabMask&xiEventMask != 0 {
+				s.sendXInputKeyboardEvent(grabbingClient, eventType, keycode, s.inputFocus.local, state)
+			}
+		}
+		// If a device grab is active, core events might be suppressed depending on grab parameters.
+		// For simplicity, we suppress them.
+		return
+	}
+
+	grabActive := s.keyboardGrabWindow.local != 0
+
+	var eventMask uint32
+	switch eventType {
+	case "keydown":
+		eventMask = KeyPressMask
+	case "keyup":
+		eventMask = KeyReleaseMask
+	}
+
 	// Handle passive grabs first
 	if !grabActive && eventType == "keydown" {
 		if grabs, ok := s.passiveGrabs[xid]; ok {
@@ -491,11 +538,10 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 					s.keyboardGrabWindow = xid
 					s.keyboardGrabOwner = grab.owner
 					grabActive = true
-					// Since a grab was just activated, the event should be sent to the grabbing client.
 					if client, ok := s.clients[s.keyboardGrabWindow.client]; ok {
 						s.sendCoreKeyboardEvent(client, eventType, keycode, xid.local, state)
 					}
-					return // Stop further processing
+					return
 				}
 			}
 		}
@@ -512,10 +558,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 			eventWindow = xid.local
 		}
 
-		// For active keyboard grabs, we don't check the event mask.
-		// KeyPress and KeyRelease events are always sent.
 		s.sendCoreKeyboardEvent(client, eventType, keycode, eventWindow, state)
-		// In a grab, no other clients get core events.
 		return
 	}
 
@@ -2256,7 +2299,7 @@ func (s *x11Server) handleRequest(client *x11Client, req request, seq uint16) (r
 		}
 
 	case *XInputRequest:
-		return handleXInputRequest(client, p.MinorOpcode, p.Body, seq)
+		return handleXInputRequest(s, client, p.MinorOpcode, p.Body, seq)
 
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())
@@ -2384,6 +2427,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					clients:         make(map[uint32]*x11Client),
 					nextClientID:    1,
 					passiveGrabs:    make(map[xID][]*passiveGrab),
+					deviceGrabs:     make(map[byte]*deviceGrab),
 					authProtocol:    authProtocol,
 					authCookie:      authCookie,
 					keymap:          make(map[byte]uint32),

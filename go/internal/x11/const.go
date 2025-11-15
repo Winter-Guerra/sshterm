@@ -151,6 +151,14 @@ const (
 	ColormapNotifyCode byte = 13
 )
 
+// XInput event types
+const (
+	DeviceButtonPress   = 2
+	DeviceButtonRelease = 3
+	DeviceKeyPress      = 4
+	DeviceKeyRelease    = 5
+)
+
 const (
 	XI_DeviceButtonPress   = 1
 	XI_DeviceButtonRelease = 2

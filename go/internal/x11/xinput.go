@@ -18,6 +18,8 @@ const (
 	XOpenDevice           = 3
 	XCloseDevice          = 4
 	XSelectExtensionEvent = 16
+	XGrabDevice           = 26
+	XUngrabDevice         = 27
 )
 
 // XInput request types
@@ -110,6 +112,73 @@ func (r *CloseDeviceReply) encodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.sequence)
 	order.PutUint32(reply[4:8], 0) // length
 	return reply
+}
+
+// GrabDevice request
+type GrabDeviceRequest struct {
+	DeviceID      byte
+	GrabWindow    uint32
+	Time          uint32
+	OwnerEvents   bool
+	ThisDeviceMode byte
+	OtherDeviceMode byte
+	NumClasses    uint16
+	Classes       []uint32
+}
+
+func parseGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceRequest, error) {
+	if len(body) < 16 {
+		return nil, NewError(LengthErrorCode, seq, 0, xInputOpcode, XGrabDevice)
+	}
+	numClasses := order.Uint16(body[14:16])
+	if len(body) != 16+int(numClasses)*4 {
+		return nil, NewError(LengthErrorCode, seq, 0, xInputOpcode, XGrabDevice)
+	}
+	classes := make([]uint32, numClasses)
+	for i := 0; i < int(numClasses); i++ {
+		classes[i] = order.Uint32(body[16+i*4 : 20+i*4])
+	}
+	return &GrabDeviceRequest{
+		GrabWindow:    order.Uint32(body[0:4]),
+		Time:          order.Uint32(body[4:8]),
+		OwnerEvents:   body[10] != 0,
+		ThisDeviceMode: body[12],
+		OtherDeviceMode: body[13],
+		DeviceID:      body[11],
+		NumClasses:    numClasses,
+		Classes:       classes,
+	}, nil
+}
+
+// GrabDevice reply
+type GrabDeviceReply struct {
+	sequence uint16
+	Status   byte
+}
+
+func (r *GrabDeviceReply) encodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	reply[1] = r.Status
+	order.PutUint16(reply[2:4], r.sequence)
+	order.PutUint32(reply[4:8], 0) // length
+	return reply
+}
+
+// UngrabDevice request
+type UngrabDeviceRequest struct {
+	DeviceID byte
+	Time     uint32
+}
+
+func parseUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceRequest, error) {
+	if len(body) != 8 {
+		return nil, NewError(LengthErrorCode, seq, 0, xInputOpcode, XUngrabDevice)
+	}
+	return &UngrabDeviceRequest{
+		Time:     order.Uint32(body[0:4]),
+		DeviceID: body[5],
+	}, nil
 }
 
 // ListInputDevices reply
@@ -304,7 +373,7 @@ var virtualKeyboard = &deviceInfo{
 	},
 }
 
-func handleXInputRequest(client *x11Client, minorOpcode byte, body []byte, seq uint16) (reply messageEncoder) {
+func handleXInputRequest(s *x11Server, client *x11Client, minorOpcode byte, body []byte, seq uint16) (reply messageEncoder) {
 	switch minorOpcode {
 	case XListInputDevices:
 		return &ListInputDevicesReply{
@@ -356,6 +425,35 @@ func handleXInputRequest(client *x11Client, minorOpcode byte, body []byte, seq u
 					dev.eventMasks = make(map[uint32]uint32)
 				}
 				dev.eventMasks[windowID] = mask
+			}
+		}
+		return nil
+	case XGrabDevice:
+		req, err := parseGrabDeviceRequest(client.byteOrder, body, seq)
+		if err != nil {
+			return err.(messageEncoder)
+		}
+		if _, ok := s.deviceGrabs[req.DeviceID]; ok {
+			return &GrabDeviceReply{sequence: seq, Status: AlreadyGrabbed}
+		}
+		grab := &deviceGrab{
+			window:      client.xID(req.GrabWindow),
+			ownerEvents: req.OwnerEvents,
+			eventMask:   req.Classes,
+			time:        req.Time,
+		}
+		s.deviceGrabs[req.DeviceID] = grab
+		return &GrabDeviceReply{sequence: seq, Status: GrabSuccess}
+	case XUngrabDevice:
+		req, err := parseUngrabDeviceRequest(client.byteOrder, body, seq)
+		if err != nil {
+			return err.(messageEncoder)
+		}
+		if grab, ok := s.deviceGrabs[req.DeviceID]; ok {
+			// In a real server, we'd check the grabbing client ID.
+			// Here we assume any client can ungrab.
+			if grab.window.client == client.id {
+				delete(s.deviceGrabs, req.DeviceID)
 			}
 		}
 		return nil
