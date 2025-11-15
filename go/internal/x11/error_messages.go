@@ -143,6 +143,11 @@ type ImplementationError struct {
 	baseError
 }
 
+// DeviceError: 20
+type DeviceError struct {
+	baseError
+}
+
 func NewError(code byte, seq uint16, badValue uint32, minorOp byte, majorOp reqCode) Error {
 	base := baseError{
 		code:     code,
@@ -186,6 +191,8 @@ func NewError(code byte, seq uint16, badValue uint32, minorOp byte, majorOp reqC
 		return &LengthError{base}
 	case 17:
 		return &ImplementationError{base}
+	case DeviceErrorCode:
+		return &DeviceError{base}
 	default:
 		return &GenericError{
 			seq:      seq,

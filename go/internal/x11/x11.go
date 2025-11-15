@@ -144,15 +144,16 @@ type CanvasOperation struct {
 }
 
 type window struct {
-	xid           xID
-	parent        uint32
-	x, y          int16
-	width, height uint16
-	mapped        bool
-	depth         byte
-	children      []uint32
-	attributes    WindowAttributes
-	colormap      xID
+	xid                       xID
+	parent                    uint32
+	x, y                      int16
+	width, height             uint16
+	mapped                    bool
+	depth                     byte
+	children                  []uint32
+	attributes                WindowAttributes
+	colormap                  xID
+	dontPropagateDeviceEvents map[uint32]bool
 }
 
 func (w *window) mapState() byte {
@@ -435,10 +436,10 @@ func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, de
 	switch eventType {
 	case "mousedown":
 		xiEvent = &DeviceButtonPressEvent{
-			sequence:   client.sequence - 1,
+			Sequence:   client.sequence - 1,
 			DeviceID:   deviceID,
 			Time:       0, // Timestamp
-			Button:     button,
+			Detail:     button,
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
 			Child:      0, // Or a child window ID if applicable

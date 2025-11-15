@@ -145,6 +145,7 @@ const (
 	NameErrorCode           byte = 15
 	LengthErrorCode         byte = 16
 	ImplementationErrorCode byte = 17
+	DeviceErrorCode         byte = 20
 )
 
 const (

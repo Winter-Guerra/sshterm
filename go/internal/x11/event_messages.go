@@ -461,7 +461,7 @@ func (e *DeviceKeyReleaseEvent) encodeMessage(order binary.ByteOrder) []byte {
 // DeviceButtonPressEvent is an XInput button press event.
 type DeviceButtonPressEvent struct {
 	DeviceID   byte
-	sequence   uint16
+	Sequence   uint16
 	Time       uint32
 	Root       uint32
 	Event      uint32
@@ -472,14 +472,18 @@ type DeviceButtonPressEvent struct {
 	EventY     int16
 	State      uint16
 	SameScreen bool
-	Button     byte
+	Detail     byte // Button
+}
+
+func (e *DeviceButtonPressEvent) SetSequence(seq uint16) {
+	e.Sequence = seq
 }
 
 func (e *DeviceButtonPressEvent) encodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = xInputOpcode
 	buf[1] = DeviceButtonPress
-	order.PutUint16(buf[2:4], e.sequence)
+	order.PutUint16(buf[2:4], e.Sequence)
 	order.PutUint32(buf[4:8], e.Time)
 	order.PutUint32(buf[8:12], e.Root)
 	order.PutUint32(buf[12:16], e.Event)
@@ -490,6 +494,6 @@ func (e *DeviceButtonPressEvent) encodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(buf[26:28], uint16(e.EventY))
 	order.PutUint16(buf[28:30], e.State)
 	buf[30] = e.DeviceID
-	buf[31] = e.Button
+	buf[31] = e.Detail
 	return buf
 }
