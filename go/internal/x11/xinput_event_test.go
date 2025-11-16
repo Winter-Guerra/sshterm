@@ -11,7 +11,7 @@ import (
 )
 
 func TestSendMouseEvent_XInput_EventSent(t *testing.T) {
-	server, client, _, _ := setupTestServerWithClient(t)
+	server, client, _, clientBuffer := setupTestServerWithClient(t)
 	windowID := client.xID(10)
 
 	// 1. Open the virtual pointer device
@@ -48,16 +48,18 @@ func TestSendMouseEvent_XInput_EventSent(t *testing.T) {
 	server.SendMouseEvent(windowID, "mousedown", 10, 20, (0<<16)|1)
 
 	// 5. Verify that a DeviceButtonPressEvent was sent
-	require.NotEmpty(t, client.sentMessages, "Expected a button press event to be sent")
-	pressEvent, ok := client.sentMessages[0].(*DeviceButtonPressEvent)
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	require.NotEmpty(t, messages, "Expected a button press event to be sent")
+	pressEvent, ok := messages[0].(*DeviceButtonPressEvent)
 	require.True(t, ok, "Expected a DeviceButtonPressEvent")
 	assert.Equal(t, deviceID, pressEvent.DeviceID)
 	assert.Equal(t, uint32(windowID.local), pressEvent.Event)
 
 	// 6. Send a mouse button release event and verify
 	server.SendMouseEvent(windowID, "mouseup", 10, 20, (0<<16)|1)
-	require.Len(t, client.sentMessages, 2, "Expected a button release event to be sent")
-	releaseEvent, ok := client.sentMessages[1].(*DeviceButtonReleaseEvent)
+	messages = drainMessages(t, clientBuffer, client.byteOrder)
+	require.Len(t, messages, 1, "Expected a button release event to be sent")
+	releaseEvent, ok := messages[0].(*DeviceButtonReleaseEvent)
 	require.True(t, ok, "Expected a DeviceButtonReleaseEvent")
 	assert.Equal(t, deviceID, releaseEvent.DeviceID)
 	assert.Equal(t, uint32(windowID.local), releaseEvent.Event)

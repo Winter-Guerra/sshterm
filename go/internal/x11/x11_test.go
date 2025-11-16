@@ -16,7 +16,7 @@ func setupTestServer(t *testing.T) (*x11Server, *bytes.Buffer) {
 }
 
 func TestSendMouseEvent_EventMask_Sent(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	windowID := xID{client: 1, local: 10}
@@ -28,13 +28,14 @@ func TestSendMouseEvent_EventMask_Sent(t *testing.T) {
 	// Send a button press event
 	server.SendMouseEvent(windowID, "mousedown", 10, 20, (1<<16)|1)
 
-	if len(client.sentMessages) == 0 {
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) == 0 {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 }
 
 func TestSendMouseEvent_EventMask_Blocked(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	windowID := xID{client: 1, local: 10}
@@ -46,8 +47,9 @@ func TestSendMouseEvent_EventMask_Blocked(t *testing.T) {
 	// Send a button press event
 	server.SendMouseEvent(windowID, "mousedown", 10, 20, (1<<16)|1)
 
-	if len(client.sentMessages) != 0 {
-		t.Fatalf("Expected event to be blocked by event mask, but %d messages were sent", len(client.sentMessages))
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) != 0 {
+		t.Fatalf("Expected event to be blocked by event mask, but %d messages were sent", len(messages))
 	}
 }
 
@@ -246,7 +248,7 @@ func TestUngrabKeyRequest_AnyModifier(t *testing.T) {
 }
 
 func TestSendMouseEvent_ActivePointerGrab_Redirected(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	originalWindowID := xID{client: 1, local: 10}
@@ -269,19 +271,20 @@ func TestSendMouseEvent_ActivePointerGrab_Redirected(t *testing.T) {
 	// Send a button press event to the original window
 	server.SendMouseEvent(originalWindowID, "mousedown", 10, 20, (1<<16)|1)
 
-	if len(client.sentMessages) == 0 {
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) == 0 {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 
 	// Verify the event was sent to the grab window
-	event := client.sentMessages[0].(*ButtonPressEvent)
+	event := messages[0].(*ButtonPressEvent)
 	if event.event != grabWindowID.local {
 		t.Errorf("Expected event to be redirected to window %d, but it was sent to %d", grabWindowID.local, event.event)
 	}
 }
 
 func TestSendMouseEvent_ActivePointerGrab_OwnerEventsTrue(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	originalWindowID := xID{client: 1, local: 10}
@@ -304,18 +307,19 @@ func TestSendMouseEvent_ActivePointerGrab_OwnerEventsTrue(t *testing.T) {
 	// Send a button press event to the original window
 	server.SendMouseEvent(originalWindowID, "mousedown", 10, 20, (1<<16)|1)
 
-	if len(client.sentMessages) == 0 {
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) == 0 {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 
-	event := client.sentMessages[0].(*ButtonPressEvent)
+	event := messages[0].(*ButtonPressEvent)
 	if event.event != originalWindowID.local {
 		t.Errorf("Expected event to be sent to original window %d, but it was sent to %d", originalWindowID.local, event.event)
 	}
 }
 
 func TestSendMouseEvent_ActivePointerGrab_MaskBlocked(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	originalWindowID := xID{client: 1, local: 10}
@@ -331,8 +335,9 @@ func TestSendMouseEvent_ActivePointerGrab_MaskBlocked(t *testing.T) {
 	// Send a button press event
 	server.SendMouseEvent(originalWindowID, "mousedown", 10, 20, (1<<16)|1)
 
-	if len(client.sentMessages) != 0 {
-		t.Fatalf("Expected event to be blocked by grab event mask, but %d messages were sent", len(client.sentMessages))
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) != 0 {
+		t.Fatalf("Expected event to be blocked by grab event mask, but %d messages were sent", len(messages))
 	}
 }
 
@@ -369,7 +374,7 @@ func TestSendMouseEvent_PassiveGrab_Activates(t *testing.T) {
 }
 
 func TestSendKeyboardEvent_ActiveKeyboardGrab_Redirected(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	originalWindowID := xID{client: 1, local: 10}
@@ -391,19 +396,20 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_Redirected(t *testing.T) {
 	// Send a key press event to the original window
 	server.SendKeyboardEvent(originalWindowID, "keydown", "KeyA", false, false, false, false)
 
-	if len(client.sentMessages) == 0 {
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) == 0 {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 
 	// Verify the event was sent to the grab window
-	event := client.sentMessages[0].(*keyEvent)
+	event := messages[0].(*keyEvent)
 	if event.event != grabWindowID.local {
 		t.Errorf("Expected event to be redirected to window %d, but it was sent to %d", grabWindowID.local, event.event)
 	}
 }
 
 func TestSendKeyboardEvent_ActiveKeyboardGrab_OwnerEventsTrue(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	originalWindowID := xID{client: 1, local: 10}
@@ -425,18 +431,19 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_OwnerEventsTrue(t *testing.T) {
 	// Send a key press event to the original window
 	server.SendKeyboardEvent(originalWindowID, "keydown", "KeyA", false, false, false, false)
 
-	if len(client.sentMessages) == 0 {
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) == 0 {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 
-	event := client.sentMessages[0].(*keyEvent)
+	event := messages[0].(*keyEvent)
 	if event.event != originalWindowID.local {
 		t.Errorf("Expected event to be sent to original window %d, but it was sent to %d", originalWindowID.local, event.event)
 	}
 }
 
 func TestSendKeyboardEvent_EventMask_Sent(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	windowID := xID{client: 1, local: 10}
@@ -449,7 +456,8 @@ func TestSendKeyboardEvent_EventMask_Sent(t *testing.T) {
 	server.handleRequest(client, &SetInputFocusRequest{Focus: 10}, 0)
 	server.SendKeyboardEvent(windowID, "keydown", "KeyA", false, false, false, false)
 
-	if len(client.sentMessages) == 0 {
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) == 0 {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 }
@@ -539,7 +547,7 @@ func TestWindowHierarchyRequests(t *testing.T) {
 }
 
 func TestSendKeyboardEvent_EventMask_Blocked(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	windowID := xID{client: 1, local: 10}
@@ -551,8 +559,9 @@ func TestSendKeyboardEvent_EventMask_Blocked(t *testing.T) {
 	// Send a key press event
 	server.SendKeyboardEvent(windowID, "keydown", "KeyA", false, false, false, false)
 
-	if len(client.sentMessages) != 0 {
-		t.Fatalf("Expected event to be blocked by event mask, but %d messages were sent", len(client.sentMessages))
+	messages := drainMessages(t, clientBuffer, client.byteOrder)
+	if len(messages) != 0 {
+		t.Fatalf("Expected event to be blocked by event mask, but %d messages were sent", len(messages))
 	}
 }
 

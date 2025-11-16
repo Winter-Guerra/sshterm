@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"testing"
 )
 
 // messageEncoder is an interface for types that can encode themselves into a byte slice.
@@ -29,7 +28,6 @@ type x11Client struct {
 	conn               io.ReadWriteCloser
 	sequence           uint16
 	byteOrder          binary.ByteOrder
-	sentMessages       []messageEncoder
 	bigRequestsEnabled bool
 	saveSet            map[uint32]bool
 	openDevices        map[byte]*deviceInfo
@@ -52,11 +50,6 @@ func (c *x11Client) sendError(err XError) messageEncoder {
 
 // send sends a message to the client.
 func (c *x11Client) send(m messageEncoder) error {
-	// For testing, we can append the message to a slice.
-	if testing.Testing() {
-		c.sentMessages = append(c.sentMessages, m)
-		return nil
-	}
 	encodedMsg := m.encodeMessage(c.byteOrder)
 	debugf("X11DEBUG: client.send(%#v) encoded: %x", m, encodedMsg)
 	if _, err := c.conn.Write(encodedMsg); err != nil {

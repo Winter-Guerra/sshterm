@@ -3,6 +3,7 @@
 package x11
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -300,7 +301,7 @@ func TestXChangeCoreDevices(t *testing.T) {
 }
 
 func TestXSendExtensionEvent(t *testing.T) {
-	s, client1, _, _ := setupTestServerWithClient(t)
+	s, client1, _, client1Buffer := setupTestServerWithClient(t)
 
 	// Create a window
 	createWindowReq := &CreateWindowRequest{
@@ -326,12 +327,11 @@ func TestXSendExtensionEvent(t *testing.T) {
 
 	// Create a second client to send the event
 	client2 := &x11Client{
-		id:           s.nextClientID,
-		sequence:     0,
-		byteOrder:    s.byteOrder,
-		saveSet:      make(map[uint32]bool),
-		openDevices:  make(map[byte]*deviceInfo),
-		sentMessages: make([]messageEncoder, 0),
+		id:          s.nextClientID,
+		sequence:    0,
+		byteOrder:   s.byteOrder,
+		saveSet:     make(map[uint32]bool),
+		openDevices: make(map[byte]*deviceInfo),
 	}
 	s.clients[client2.id] = client2
 	s.nextClientID++
@@ -341,29 +341,27 @@ func TestXSendExtensionEvent(t *testing.T) {
 		DeviceID: 2,
 		Detail:   1, // Button 1
 	}
-	eventBytes := make([]byte, 32)
-	eventBytes[0] = byte(xInputOpcode)
-	eventBytes[1] = byte(DeviceButtonPress)
-	eventBytes[31] = event.Detail
+	eventBytes := event.encodeMessage(client2.byteOrder)
 
-	sendEventReqBody := make([]byte, 12+32+4)
+	sendEventReqBody := make([]byte, 12+len(eventBytes)+4)
 	client2.byteOrder.PutUint32(sendEventReqBody[0:4], 1)  // destination
 	sendEventReqBody[4] = 2                                // device_id
 	sendEventReqBody[5] = 1                                // propagate
 	client2.byteOrder.PutUint16(sendEventReqBody[8:10], 1) // num_classes
 	sendEventReqBody[10] = 1                               // num_events
-	copy(sendEventReqBody[12:12+32], eventBytes)
-	client2.byteOrder.PutUint32(sendEventReqBody[12+32:12+32+4], class)
+	copy(sendEventReqBody[12:12+len(eventBytes)], eventBytes)
+	client2.byteOrder.PutUint32(sendEventReqBody[12+len(eventBytes):12+len(eventBytes)+4], class)
 	sendEventReq := &XInputRequest{MinorOpcode: XSendExtensionEvent, Body: sendEventReqBody}
 	s.handleRequest(client2, sendEventReq, 1)
 
 	// Check that client 1 received the event
-	require.Len(t, client1.sentMessages, 1, "Client 1 should have received a message")
-	rawEvent, ok := client1.sentMessages[0].(*x11RawEvent)
-	require.True(t, ok, "Expected a raw event")
-	assert.Equal(t, byte(xInputOpcode), rawEvent.data[0], "Opcode should be XInputExtension")
-	assert.Equal(t, byte(DeviceButtonPress), rawEvent.data[1], "Sub-opcode should be DeviceButtonPress")
-	assert.Equal(t, byte(1), rawEvent.data[31], "Button should be 1")
+	messages := drainMessages(t, client1Buffer, client1.byteOrder)
+	require.Len(t, messages, 1, "Client 1 should have received a message")
+	buttonPressEvent, ok := messages[0].(*DeviceButtonPressEvent)
+	require.True(t, ok, "Expected a *DeviceButtonPressEvent")
+	assert.Equal(t, byte(xInputOpcode), buttonPressEvent.encodeMessage(client1.byteOrder)[0], "Opcode should be XInputExtension")
+	assert.Equal(t, byte(DeviceButtonPress), buttonPressEvent.encodeMessage(client1.byteOrder)[1], "Sub-opcode should be DeviceButtonPress")
+	assert.Equal(t, byte(1), buttonPressEvent.Detail, "Button should be 1")
 }
 
 func TestXGrabDevice(t *testing.T) {
@@ -432,8 +430,11 @@ func TestXGrabDeviceEventRedirection(t *testing.T) {
 	s.handleRequest(client1, createWindowReq, 1)
 
 	// Create a second client
+	client2Buffer := &bytes.Buffer{}
+	mockConn2 := &testConn{r: &bytes.Buffer{}, w: client2Buffer}
 	client2 := &x11Client{
 		id:          s.nextClientID,
+		conn:        mockConn2,
 		sequence:    0,
 		byteOrder:   s.byteOrder,
 		saveSet:     make(map[uint32]bool),
@@ -476,8 +477,9 @@ func TestXGrabDeviceEventRedirection(t *testing.T) {
 	// Check that only client 2 received the event
 	assert.Zero(t, client1Buffer.Len(), "Client 1 should not have received any messages")
 
-	require.Len(t, client2.sentMessages, 1, "Client 2 should have received a message")
-	buttonPressEvent, ok := client2.sentMessages[0].(*DeviceButtonPressEvent)
+	messages := drainMessages(t, client2Buffer, client2.byteOrder)
+	require.Len(t, messages, 1, "Client 2 should have received a message")
+	buttonPressEvent, ok := messages[0].(*DeviceButtonPressEvent)
 	require.True(t, ok, "Client 2 should have received a *DeviceButtonPressEvent")
 
 	// Basic validation of the event
