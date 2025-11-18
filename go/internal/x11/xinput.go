@@ -333,7 +333,6 @@ func (s *x11Server) handleXInputRequest(client *x11Client, minorOpcode byte, bod
 		return nil
 
 	default:
-		// TODO: Implement other XInput requests
-		return nil
+		return wire.NewError(wire.RequestErrorCode, seq, uint32(minorOpcode), minorOpcode, wire.XInputOpcode)
 	}
 }
