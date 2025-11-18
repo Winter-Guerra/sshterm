@@ -1,6 +1,6 @@
 //go:build x11
 
-package x11
+package wire
 
 // Window is a 32-bit value representing a window.
 type Window uint32
@@ -61,8 +61,8 @@ type Host struct {
 	Data   []byte
 }
 
-// xColorItem defines a color item.
-type xColorItem struct {
+// XColorItem defines a color item.
+type XColorItem struct {
 	Pixel    uint32
 	Red      uint16
 	Green    uint16
@@ -70,3 +70,6 @@ type xColorItem struct {
 	Flags    byte
 	ClientID uint32
 }
+
+// XID is a generic X resource identifier.
+type XID uint32

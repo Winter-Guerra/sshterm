@@ -1,6 +1,6 @@
 //go:build x11
 
-package x11
+package wire
 
 // GC attribute masks
 const (

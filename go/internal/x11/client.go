@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
 
 // messageEncoder is an interface for types that can encode themselves into a byte slice.
@@ -37,7 +39,7 @@ func (c *x11Client) xID(local uint32) xID {
 	return xID{c.id, local}
 }
 
-func (c *x11Client) sendError(err XError) messageEncoder {
+func (c *x11Client) sendError(err wire.Error) messageEncoder {
 	reply := make([]byte, 32)
 	reply[0] = 0 // Error code
 	reply[1] = err.Code()

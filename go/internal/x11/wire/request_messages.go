@@ -1,6 +1,6 @@
 //go:build x11
 
-package x11
+package wire
 
 import (
 	"encoding/binary"
@@ -12,22 +12,22 @@ var (
 	errParseError = errors.New("x11: request parsing error")
 )
 
-type request interface {
-	OpCode() reqCode
+type Request interface {
+	OpCode() ReqCode
 }
 
 func padLen(n int) int {
 	return (4 - n%4) % 4
 }
 
-func parseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEnabled bool) (request, error) {
+func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEnabled bool) (Request, error) {
 	var reqHeader [4]byte
 	if n := copy(reqHeader[:], raw); n != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, 0)
 	}
 
 	length := uint32(order.Uint16(reqHeader[2:4]))
-	opcode := reqCode(reqHeader[0])
+	opcode := ReqCode(reqHeader[0])
 	bodyOffset := 4
 	if bigRequestsEnabled && length == 0 {
 		if len(raw) < 8 {
@@ -38,383 +38,384 @@ func parseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 	}
 
 	if uint64(length)*4 != uint64(len(raw)) {
-		debugf("X11: parseRequest(%x...) length=%d, %d != %d", reqHeader, length, 4*length, len(raw))
+		debugf("X11: ParseRequest(%x...) length=%d, %d != %d", reqHeader, length, 4*length, len(raw))
 		return nil, NewError(LengthErrorCode, seq, 0, 0, opcode)
 	}
 
 	data := reqHeader[1]
 	body := raw[bodyOffset:]
 
-	if opcode == bigRequestsOpcode {
-		return parseEnableBigRequestsRequest(order, raw, seq)
-	}
-	if opcode == xInputOpcode {
-		return parseXInputRequest(order, data, body, seq)
-	}
+	// TODO: Move big_requests.go and xinput.go to the wire package.
+	// if opcode == BigRequestsOpcode {
+	// 	return ParseEnableBigRequestsRequest(order, raw, seq)
+	// }
+	// if opcode == XInputOpcode {
+	// 	return ParseXInputRequest(order, data, body, seq)
+	// }
 
 	switch opcode {
 	case CreateWindow:
-		return parseCreateWindowRequest(order, data, body, seq)
+		return ParseCreateWindowRequest(order, data, body, seq)
 
 	case ChangeWindowAttributes:
-		return parseChangeWindowAttributesRequest(order, body, seq)
+		return ParseChangeWindowAttributesRequest(order, body, seq)
 
 	case GetWindowAttributes:
-		return parseGetWindowAttributesRequest(order, body, seq)
+		return ParseGetWindowAttributesRequest(order, body, seq)
 
 	case DestroyWindow:
-		return parseDestroyWindowRequest(order, body, seq)
+		return ParseDestroyWindowRequest(order, body, seq)
 
 	case DestroySubwindows:
-		return parseDestroySubwindowsRequest(order, body, seq)
+		return ParseDestroySubwindowsRequest(order, body, seq)
 
 	case ChangeSaveSet:
-		return parseChangeSaveSetRequest(order, data, body, seq)
+		return ParseChangeSaveSetRequest(order, data, body, seq)
 
 	case ReparentWindow:
-		return parseReparentWindowRequest(order, body, seq)
+		return ParseReparentWindowRequest(order, body, seq)
 
 	case MapWindow:
-		return parseMapWindowRequest(order, body, seq)
+		return ParseMapWindowRequest(order, body, seq)
 
 	case MapSubwindows:
-		return parseMapSubwindowsRequest(order, body, seq)
+		return ParseMapSubwindowsRequest(order, body, seq)
 
 	case UnmapWindow:
-		return parseUnmapWindowRequest(order, body, seq)
+		return ParseUnmapWindowRequest(order, body, seq)
 
 	case UnmapSubwindows:
-		return parseUnmapSubwindowsRequest(order, body, seq)
+		return ParseUnmapSubwindowsRequest(order, body, seq)
 
 	case ConfigureWindow:
-		return parseConfigureWindowRequest(order, body, seq)
+		return ParseConfigureWindowRequest(order, body, seq)
 
 	case CirculateWindow:
-		return parseCirculateWindowRequest(order, data, body, seq)
+		return ParseCirculateWindowRequest(order, data, body, seq)
 
 	case GetGeometry:
-		return parseGetGeometryRequest(order, body, seq)
+		return ParseGetGeometryRequest(order, body, seq)
 
 	case QueryTree:
-		return parseQueryTreeRequest(order, body, seq)
+		return ParseQueryTreeRequest(order, body, seq)
 
 	case InternAtom:
-		return parseInternAtomRequest(order, data, body, seq)
+		return ParseInternAtomRequest(order, data, body, seq)
 
 	case GetAtomName:
-		return parseGetAtomNameRequest(order, body, seq)
+		return ParseGetAtomNameRequest(order, body, seq)
 
 	case ChangeProperty:
-		return parseChangePropertyRequest(order, body, seq)
+		return ParseChangePropertyRequest(order, body, seq)
 
 	case DeleteProperty:
-		return parseDeletePropertyRequest(order, body, seq)
+		return ParseDeletePropertyRequest(order, body, seq)
 
 	case GetProperty:
-		return parseGetPropertyRequest(order, body, seq)
+		return ParseGetPropertyRequest(order, body, seq)
 
 	case ListProperties:
-		return parseListPropertiesRequest(order, body, seq)
+		return ParseListPropertiesRequest(order, body, seq)
 
 	case SetSelectionOwner:
-		return parseSetSelectionOwnerRequest(order, body, seq)
+		return ParseSetSelectionOwnerRequest(order, body, seq)
 
 	case GetSelectionOwner:
-		return parseGetSelectionOwnerRequest(order, body, seq)
+		return ParseGetSelectionOwnerRequest(order, body, seq)
 
 	case ConvertSelection:
-		return parseConvertSelectionRequest(order, body, seq)
+		return ParseConvertSelectionRequest(order, body, seq)
 
 	case SendEvent:
-		return parseSendEventRequest(order, body, seq)
+		return ParseSendEventRequest(order, body, seq)
 
 	case GrabPointer:
-		return parseGrabPointerRequest(order, body, seq)
+		return ParseGrabPointerRequest(order, body, seq)
 
 	case UngrabPointer:
-		return parseUngrabPointerRequest(order, body, seq)
+		return ParseUngrabPointerRequest(order, body, seq)
 
 	case GrabButton:
-		return parseGrabButtonRequest(order, data, body, seq)
+		return ParseGrabButtonRequest(order, data, body, seq)
 
 	case UngrabButton:
-		return parseUngrabButtonRequest(order, data, body, seq)
+		return ParseUngrabButtonRequest(order, data, body, seq)
 
 	case ChangeActivePointerGrab:
-		return parseChangeActivePointerGrabRequest(order, body, seq)
+		return ParseChangeActivePointerGrabRequest(order, body, seq)
 
 	case GrabKeyboard:
-		return parseGrabKeyboardRequest(order, body, seq)
+		return ParseGrabKeyboardRequest(order, body, seq)
 
 	case UngrabKeyboard:
-		return parseUngrabKeyboardRequest(order, body, seq)
+		return ParseUngrabKeyboardRequest(order, body, seq)
 
 	case GrabKey:
-		return parseGrabKeyRequest(order, data, body, seq)
+		return ParseGrabKeyRequest(order, data, body, seq)
 
 	case UngrabKey:
-		return parseUngrabKeyRequest(order, body, seq)
+		return ParseUngrabKeyRequest(order, body, seq)
 
 	case AllowEvents:
-		return parseAllowEventsRequest(order, data, body, seq)
+		return ParseAllowEventsRequest(order, data, body, seq)
 
 	case GrabServer:
-		return parseGrabServerRequest(order, body, seq)
+		return ParseGrabServerRequest(order, body, seq)
 
 	case UngrabServer:
-		return parseUngrabServerRequest(order, body, seq)
+		return ParseUngrabServerRequest(order, body, seq)
 
 	case QueryPointer:
-		return parseQueryPointerRequest(order, body, seq)
+		return ParseQueryPointerRequest(order, body, seq)
 
 	case GetMotionEvents:
-		return parseGetMotionEventsRequest(order, body, seq)
+		return ParseGetMotionEventsRequest(order, body, seq)
 
 	case TranslateCoords:
-		return parseTranslateCoordsRequest(order, body, seq)
+		return ParseTranslateCoordsRequest(order, body, seq)
 
 	case WarpPointer:
-		return parseWarpPointerRequest(order, body, seq)
+		return ParseWarpPointerRequest(order, body, seq)
 
 	case SetInputFocus:
-		return parseSetInputFocusRequest(order, body, seq)
+		return ParseSetInputFocusRequest(order, body, seq)
 
 	case GetInputFocus:
-		return parseGetInputFocusRequest(order, body, seq)
+		return ParseGetInputFocusRequest(order, body, seq)
 
 	case QueryKeymap:
-		return parseQueryKeymapRequest(order, body, seq)
+		return ParseQueryKeymapRequest(order, body, seq)
 
 	case OpenFont:
-		return parseOpenFontRequest(order, body, seq)
+		return ParseOpenFontRequest(order, body, seq)
 
 	case CloseFont:
-		return parseCloseFontRequest(order, body, seq)
+		return ParseCloseFontRequest(order, body, seq)
 
 	case QueryFont:
-		return parseQueryFontRequest(order, body, seq)
+		return ParseQueryFontRequest(order, body, seq)
 
 	case QueryTextExtents:
-		return parseQueryTextExtentsRequest(order, data, body, seq)
+		return ParseQueryTextExtentsRequest(order, data, body, seq)
 
 	case ListFonts:
-		return parseListFontsRequest(order, body, seq)
+		return ParseListFontsRequest(order, body, seq)
 
 	case ListFontsWithInfo:
-		return parseListFontsWithInfoRequest(order, body, seq)
+		return ParseListFontsWithInfoRequest(order, body, seq)
 
 	case SetFontPath:
-		return parseSetFontPathRequest(order, body, seq)
+		return ParseSetFontPathRequest(order, body, seq)
 
 	case GetFontPath:
-		return parseGetFontPathRequest(order, body, seq)
+		return ParseGetFontPathRequest(order, body, seq)
 
 	case CreatePixmap:
-		return parseCreatePixmapRequest(order, data, body, seq)
+		return ParseCreatePixmapRequest(order, data, body, seq)
 
 	case FreePixmap:
-		return parseFreePixmapRequest(order, body, seq)
+		return ParseFreePixmapRequest(order, body, seq)
 
 	case CreateGC:
-		return parseCreateGCRequest(order, body, seq)
+		return ParseCreateGCRequest(order, body, seq)
 
 	case ChangeGC:
-		return parseChangeGCRequest(order, body, seq)
+		return ParseChangeGCRequest(order, body, seq)
 
 	case CopyGC:
-		return parseCopyGCRequest(order, body, seq)
+		return ParseCopyGCRequest(order, body, seq)
 
 	case SetDashes:
-		return parseSetDashesRequest(order, body, seq)
+		return ParseSetDashesRequest(order, body, seq)
 
 	case SetClipRectangles:
-		return parseSetClipRectanglesRequest(order, data, body, seq)
+		return ParseSetClipRectanglesRequest(order, data, body, seq)
 
 	case FreeGC:
-		return parseFreeGCRequest(order, body, seq)
+		return ParseFreeGCRequest(order, body, seq)
 
 	case ClearArea:
-		return parseClearAreaRequest(order, body, seq)
+		return ParseClearAreaRequest(order, body, seq)
 
 	case CopyArea:
-		return parseCopyAreaRequest(order, body, seq)
+		return ParseCopyAreaRequest(order, body, seq)
 
 	case PolyPoint:
-		return parsePolyPointRequest(order, body, seq)
+		return ParsePolyPointRequest(order, body, seq)
 
 	case PolyLine:
-		return parsePolyLineRequest(order, body, seq)
+		return ParsePolyLineRequest(order, body, seq)
 
 	case PolySegment:
-		return parsePolySegmentRequest(order, body, seq)
+		return ParsePolySegmentRequest(order, body, seq)
 
 	case PolyRectangle:
-		return parsePolyRectangleRequest(order, body, seq)
+		return ParsePolyRectangleRequest(order, body, seq)
 
 	case PolyArc:
-		return parsePolyArcRequest(order, body, seq)
+		return ParsePolyArcRequest(order, body, seq)
 
 	case FillPoly:
-		return parseFillPolyRequest(order, body, seq)
+		return ParseFillPolyRequest(order, body, seq)
 
 	case PolyFillRectangle:
-		return parsePolyFillRectangleRequest(order, body, seq)
+		return ParsePolyFillRectangleRequest(order, body, seq)
 
 	case PolyFillArc:
-		return parsePolyFillArcRequest(order, body, seq)
+		return ParsePolyFillArcRequest(order, body, seq)
 
 	case PutImage:
-		return parsePutImageRequest(order, data, body, seq)
+		return ParsePutImageRequest(order, data, body, seq)
 
 	case GetImage:
-		return parseGetImageRequest(order, data, body, seq)
+		return ParseGetImageRequest(order, data, body, seq)
 
 	case PolyText8:
-		return parsePolyText8Request(order, body, seq)
+		return ParsePolyText8Request(order, body, seq)
 
 	case PolyText16:
-		return parsePolyText16Request(order, body, seq)
+		return ParsePolyText16Request(order, body, seq)
 
 	case ImageText8:
-		return parseImageText8Request(order, data, body, seq)
+		return ParseImageText8Request(order, data, body, seq)
 
 	case ImageText16:
-		return parseImageText16Request(order, data, body, seq)
+		return ParseImageText16Request(order, data, body, seq)
 
 	case CreateColormap:
-		return parseCreateColormapRequest(order, data, body, seq)
+		return ParseCreateColormapRequest(order, data, body, seq)
 
 	case FreeColormap:
-		return parseFreeColormapRequest(order, body, seq)
+		return ParseFreeColormapRequest(order, body, seq)
 
 	case CopyColormapAndFree:
-		return parseCopyColormapAndFreeRequest(order, body, seq)
+		return ParseCopyColormapAndFreeRequest(order, body, seq)
 
 	case InstallColormap:
-		return parseInstallColormapRequest(order, body, seq)
+		return ParseInstallColormapRequest(order, body, seq)
 
 	case UninstallColormap:
-		return parseUninstallColormapRequest(order, body, seq)
+		return ParseUninstallColormapRequest(order, body, seq)
 
 	case ListInstalledColormaps:
-		return parseListInstalledColormapsRequest(order, body, seq)
+		return ParseListInstalledColormapsRequest(order, body, seq)
 
 	case AllocColor:
-		return parseAllocColorRequest(order, body, seq)
+		return ParseAllocColorRequest(order, body, seq)
 
 	case AllocNamedColor:
-		return parseAllocNamedColorRequest(order, body, seq)
+		return ParseAllocNamedColorRequest(order, body, seq)
 
 	case FreeColors:
-		return parseFreeColorsRequest(order, body, seq)
+		return ParseFreeColorsRequest(order, body, seq)
 
 	case StoreColors:
-		return parseStoreColorsRequest(order, body, seq)
+		return ParseStoreColorsRequest(order, body, seq)
 
 	case StoreNamedColor:
-		return parseStoreNamedColorRequest(order, data, body, seq)
+		return ParseStoreNamedColorRequest(order, data, body, seq)
 
 	case QueryColors:
-		return parseQueryColorsRequest(order, body, seq)
+		return ParseQueryColorsRequest(order, body, seq)
 
 	case LookupColor:
-		return parseLookupColorRequest(order, body, seq)
+		return ParseLookupColorRequest(order, body, seq)
 
 	case CreateGlyphCursor:
-		return parseCreateGlyphCursorRequest(order, body, seq)
+		return ParseCreateGlyphCursorRequest(order, body, seq)
 
 	case FreeCursor:
-		return parseFreeCursorRequest(order, body, seq)
+		return ParseFreeCursorRequest(order, body, seq)
 
 	case RecolorCursor:
-		return parseRecolorCursorRequest(order, body, seq)
+		return ParseRecolorCursorRequest(order, body, seq)
 
 	case QueryBestSize:
-		return parseQueryBestSizeRequest(order, body, seq)
+		return ParseQueryBestSizeRequest(order, body, seq)
 
 	case QueryExtension:
-		return parseQueryExtensionRequest(order, body, seq)
+		return ParseQueryExtensionRequest(order, body, seq)
 
 	case Bell:
 		if len(body) != 0 {
 			return nil, NewError(LengthErrorCode, seq, 0, 0, Bell)
 		}
-		return parseBellRequest(data, seq)
+		return ParseBellRequest(data, seq)
 
 	case SetPointerMapping:
-		return parseSetPointerMappingRequest(order, data, body, seq)
+		return ParseSetPointerMappingRequest(order, data, body, seq)
 
 	case GetPointerMapping:
-		return parseGetPointerMappingRequest(order, body, seq)
+		return ParseGetPointerMappingRequest(order, body, seq)
 
 	case GetKeyboardMapping:
-		return parseGetKeyboardMappingRequest(order, body, seq)
+		return ParseGetKeyboardMappingRequest(order, body, seq)
 
 	case ChangeKeyboardMapping:
-		return parseChangeKeyboardMappingRequest(order, data, body, seq)
+		return ParseChangeKeyboardMappingRequest(order, data, body, seq)
 
 	case ChangeKeyboardControl:
-		return parseChangeKeyboardControlRequest(order, body, seq)
+		return ParseChangeKeyboardControlRequest(order, body, seq)
 
 	case GetKeyboardControl:
-		return parseGetKeyboardControlRequest(order, body, seq)
+		return ParseGetKeyboardControlRequest(order, body, seq)
 
 	case SetScreenSaver:
-		return parseSetScreenSaverRequest(order, body, seq)
+		return ParseSetScreenSaverRequest(order, body, seq)
 
 	case GetScreenSaver:
-		return parseGetScreenSaverRequest(order, body, seq)
+		return ParseGetScreenSaverRequest(order, body, seq)
 
 	case ChangeHosts:
-		return parseChangeHostsRequest(order, data, body, seq)
+		return ParseChangeHostsRequest(order, data, body, seq)
 
 	case ListHosts:
-		return parseListHostsRequest(order, body, seq)
+		return ParseListHostsRequest(order, body, seq)
 
 	case SetAccessControl:
-		return parseSetAccessControlRequest(order, data, body, seq)
+		return ParseSetAccessControlRequest(order, data, body, seq)
 
 	case SetCloseDownMode:
-		return parseSetCloseDownModeRequest(order, data, body, seq)
+		return ParseSetCloseDownModeRequest(order, data, body, seq)
 
 	case KillClient:
-		return parseKillClientRequest(order, body, seq)
+		return ParseKillClientRequest(order, body, seq)
 
 	case RotateProperties:
-		return parseRotatePropertiesRequest(order, body, seq)
+		return ParseRotatePropertiesRequest(order, body, seq)
 
 	case ForceScreenSaver:
-		return parseForceScreenSaverRequest(order, data, body, seq)
+		return ParseForceScreenSaverRequest(order, data, body, seq)
 
 	case SetModifierMapping:
-		return parseSetModifierMappingRequest(order, data, body, seq)
+		return ParseSetModifierMappingRequest(order, data, body, seq)
 
 	case GetModifierMapping:
-		return parseGetModifierMappingRequest(order, body, seq)
+		return ParseGetModifierMappingRequest(order, body, seq)
 
 	case NoOperation:
-		return parseNoOperationRequest(order, body, seq)
+		return ParseNoOperationRequest(order, body, seq)
 
 	case AllocColorCells:
-		return parseAllocColorCellsRequest(order, data, body, seq)
+		return ParseAllocColorCellsRequest(order, data, body, seq)
 
 	case AllocColorPlanes:
-		return parseAllocColorPlanesRequest(order, data, body, seq)
+		return ParseAllocColorPlanesRequest(order, data, body, seq)
 
 	case CreateCursor:
-		return parseCreateCursorRequest(order, body, seq)
+		return ParseCreateCursorRequest(order, body, seq)
 
 	case CopyPlane:
-		return parseCopyPlaneRequest(order, body, seq)
+		return ParseCopyPlaneRequest(order, body, seq)
 
 	case ListExtensions:
-		return parseListExtensionsRequest(order, raw, seq)
+		return ParseListExtensionsRequest(order, raw, seq)
 
 	case ChangePointerControl:
-		return parseChangePointerControlRequest(order, body, seq)
+		return ParseChangePointerControlRequest(order, body, seq)
 
 	case GetPointerControl:
-		return parseGetPointerControlRequest(order, body, seq)
+		return ParseGetPointerControlRequest(order, body, seq)
 
 	default:
 		return nil, fmt.Errorf("x11: unhandled opcode %d", opcode)
@@ -519,9 +520,9 @@ type CreateWindowRequest struct {
 	Values      WindowAttributes
 }
 
-func (CreateWindowRequest) OpCode() reqCode { return CreateWindow }
+func (CreateWindowRequest) OpCode() ReqCode { return CreateWindow }
 
-func parseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CreateWindowRequest, error) {
+func ParseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CreateWindowRequest, error) {
 	if len(requestBody) < 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateWindow)
 	}
@@ -564,9 +565,9 @@ type ChangeWindowAttributesRequest struct {
 	Values    WindowAttributes
 }
 
-func (ChangeWindowAttributesRequest) OpCode() reqCode { return ChangeWindowAttributes }
+func (ChangeWindowAttributesRequest) OpCode() ReqCode { return ChangeWindowAttributes }
 
-func parseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeWindowAttributesRequest, error) {
+func ParseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeWindowAttributesRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeWindowAttributes)
 	}
@@ -588,7 +589,7 @@ type GetWindowAttributesRequest struct {
 	Window Window
 }
 
-func (GetWindowAttributesRequest) OpCode() reqCode { return GetWindowAttributes }
+func (GetWindowAttributesRequest) OpCode() ReqCode { return GetWindowAttributes }
 
 /*
 GetWindowAttributes
@@ -598,7 +599,7 @@ GetWindowAttributes
 2     2                               request length
 4     WINDOW                          window
 */
-func parseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetWindowAttributesRequest, error) {
+func ParseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetWindowAttributesRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetWindowAttributes)
 	}
@@ -611,7 +612,7 @@ type DestroyWindowRequest struct {
 	Window Window
 }
 
-func (DestroyWindowRequest) OpCode() reqCode { return DestroyWindow }
+func (DestroyWindowRequest) OpCode() ReqCode { return DestroyWindow }
 
 /*
 DestroyWindow
@@ -621,7 +622,7 @@ DestroyWindow
 2     2                               request length
 4     WINDOW                          window
 */
-func parseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroyWindowRequest, error) {
+func ParseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroyWindowRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, DestroyWindow)
 	}
@@ -634,7 +635,7 @@ type DestroySubwindowsRequest struct {
 	Window Window
 }
 
-func (DestroySubwindowsRequest) OpCode() reqCode { return DestroySubwindows }
+func (DestroySubwindowsRequest) OpCode() ReqCode { return DestroySubwindows }
 
 /*
 DestroySubwindows
@@ -644,7 +645,7 @@ DestroySubwindows
 2     2                               request length
 4     WINDOW                          window
 */
-func parseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroySubwindowsRequest, error) {
+func ParseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroySubwindowsRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, DestroySubwindows)
 	}
@@ -658,7 +659,7 @@ type ChangeSaveSetRequest struct {
 	Mode   byte
 }
 
-func (ChangeSaveSetRequest) OpCode() reqCode { return ChangeSaveSet }
+func (ChangeSaveSetRequest) OpCode() ReqCode { return ChangeSaveSet }
 
 /*
 ChangeSaveSet
@@ -668,7 +669,7 @@ ChangeSaveSet
 2     2                               request length
 4     WINDOW                          window
 */
-func parseChangeSaveSetRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeSaveSetRequest, error) {
+func ParseChangeSaveSetRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeSaveSetRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeSaveSet)
 	}
@@ -685,7 +686,7 @@ type ReparentWindowRequest struct {
 	Y      int16
 }
 
-func (ReparentWindowRequest) OpCode() reqCode { return ReparentWindow }
+func (ReparentWindowRequest) OpCode() ReqCode { return ReparentWindow }
 
 /*
 ReparentWindow
@@ -698,7 +699,7 @@ ReparentWindow
 2     INT16                           x
 2     INT16                           y
 */
-func parseReparentWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ReparentWindowRequest, error) {
+func ParseReparentWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ReparentWindowRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ReparentWindow)
 	}
@@ -714,7 +715,7 @@ type MapWindowRequest struct {
 	Window Window
 }
 
-func (MapWindowRequest) OpCode() reqCode { return MapWindow }
+func (MapWindowRequest) OpCode() ReqCode { return MapWindow }
 
 /*
 MapWindow
@@ -724,7 +725,7 @@ MapWindow
 2     2                               request length
 4     WINDOW                          window
 */
-func parseMapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapWindowRequest, error) {
+func ParseMapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapWindowRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, MapWindow)
 	}
@@ -737,7 +738,7 @@ type MapSubwindowsRequest struct {
 	Window Window
 }
 
-func (MapSubwindowsRequest) OpCode() reqCode { return MapSubwindows }
+func (MapSubwindowsRequest) OpCode() ReqCode { return MapSubwindows }
 
 /*
 MapSubwindows
@@ -747,7 +748,7 @@ MapSubwindows
 2     2                               request length
 4     WINDOW                          window
 */
-func parseMapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapSubwindowsRequest, error) {
+func ParseMapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapSubwindowsRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, MapSubwindows)
 	}
@@ -760,7 +761,7 @@ type UnmapWindowRequest struct {
 	Window Window
 }
 
-func (UnmapWindowRequest) OpCode() reqCode { return UnmapWindow }
+func (UnmapWindowRequest) OpCode() ReqCode { return UnmapWindow }
 
 /*
 UnmapWindow
@@ -770,7 +771,7 @@ UnmapWindow
 2     2                               request length
 4     WINDOW                          window
 */
-func parseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapWindowRequest, error) {
+func ParseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapWindowRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UnmapWindow)
 	}
@@ -783,7 +784,7 @@ type UnmapSubwindowsRequest struct {
 	Window Window
 }
 
-func (UnmapSubwindowsRequest) OpCode() reqCode { return UnmapSubwindows }
+func (UnmapSubwindowsRequest) OpCode() ReqCode { return UnmapSubwindows }
 
 /*
 UnmapSubwindows
@@ -793,7 +794,7 @@ UnmapSubwindows
 2     2                               request length
 4     WINDOW                          window
 */
-func parseUnmapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapSubwindowsRequest, error) {
+func ParseUnmapSubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UnmapSubwindowsRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UnmapSubwindows)
 	}
@@ -808,7 +809,7 @@ type ConfigureWindowRequest struct {
 	Values    []uint32
 }
 
-func (ConfigureWindowRequest) OpCode() reqCode { return ConfigureWindow }
+func (ConfigureWindowRequest) OpCode() ReqCode { return ConfigureWindow }
 
 /*
 ConfigureWindow
@@ -821,7 +822,7 @@ ConfigureWindow
 2                                     unused
 4n    LISTofVALUE                     value-list
 */
-func parseConfigureWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConfigureWindowRequest, error) {
+func ParseConfigureWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConfigureWindowRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ConfigureWindow)
 	}
@@ -859,9 +860,9 @@ type CirculateWindowRequest struct {
 	Direction byte
 }
 
-func (CirculateWindowRequest) OpCode() reqCode { return CirculateWindow }
+func (CirculateWindowRequest) OpCode() ReqCode { return CirculateWindow }
 
-func parseCirculateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CirculateWindowRequest, error) {
+func ParseCirculateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CirculateWindowRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CirculateWindow)
 	}
@@ -883,9 +884,9 @@ type GetGeometryRequest struct {
 	Drawable Drawable
 }
 
-func (GetGeometryRequest) OpCode() reqCode { return GetGeometry }
+func (GetGeometryRequest) OpCode() ReqCode { return GetGeometry }
 
-func parseGetGeometryRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetGeometryRequest, error) {
+func ParseGetGeometryRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetGeometryRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetGeometry)
 	}
@@ -906,9 +907,9 @@ type QueryTreeRequest struct {
 	Window Window
 }
 
-func (QueryTreeRequest) OpCode() reqCode { return QueryTree }
+func (QueryTreeRequest) OpCode() ReqCode { return QueryTree }
 
-func parseQueryTreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryTreeRequest, error) {
+func ParseQueryTreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryTreeRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTree)
 	}
@@ -922,7 +923,7 @@ type InternAtomRequest struct {
 	OnlyIfExists bool
 }
 
-func (InternAtomRequest) OpCode() reqCode { return InternAtom }
+func (InternAtomRequest) OpCode() ReqCode { return InternAtom }
 
 /*
 InternAtom
@@ -935,7 +936,7 @@ InternAtom
 n     STRING8                         name
 p                                     padding
 */
-func parseInternAtomRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*InternAtomRequest, error) {
+func ParseInternAtomRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*InternAtomRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, InternAtom)
 	}
@@ -962,9 +963,9 @@ type GetAtomNameRequest struct {
 	Atom Atom
 }
 
-func (GetAtomNameRequest) OpCode() reqCode { return GetAtomName }
+func (GetAtomNameRequest) OpCode() ReqCode { return GetAtomName }
 
-func parseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetAtomNameRequest, error) {
+func ParseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetAtomNameRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetAtomName)
 	}
@@ -999,9 +1000,9 @@ type ChangePropertyRequest struct {
 	Data     []byte
 }
 
-func (ChangePropertyRequest) OpCode() reqCode { return ChangeProperty }
+func (ChangePropertyRequest) OpCode() ReqCode { return ChangeProperty }
 
-func parseChangePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangePropertyRequest, error) {
+func ParseChangePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangePropertyRequest, error) {
 	if len(requestBody) < 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeProperty)
 	}
@@ -1032,9 +1033,9 @@ type DeletePropertyRequest struct {
 	Property Atom
 }
 
-func (DeletePropertyRequest) OpCode() reqCode { return DeleteProperty }
+func (DeletePropertyRequest) OpCode() ReqCode { return DeleteProperty }
 
-func parseDeletePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DeletePropertyRequest, error) {
+func ParseDeletePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DeletePropertyRequest, error) {
 	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, DeleteProperty)
 	}
@@ -1065,9 +1066,9 @@ type GetPropertyRequest struct {
 	Length   uint32
 }
 
-func (GetPropertyRequest) OpCode() reqCode { return GetProperty }
+func (GetPropertyRequest) OpCode() ReqCode { return GetProperty }
 
-func parseGetPropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPropertyRequest, error) {
+func ParseGetPropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPropertyRequest, error) {
 	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetProperty)
 	}
@@ -1092,9 +1093,9 @@ type ListPropertiesRequest struct {
 	Window Window
 }
 
-func (ListPropertiesRequest) OpCode() reqCode { return ListProperties }
+func (ListPropertiesRequest) OpCode() ReqCode { return ListProperties }
 
-func parseListPropertiesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListPropertiesRequest, error) {
+func ParseListPropertiesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListPropertiesRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListProperties)
 	}
@@ -1119,9 +1120,9 @@ type SetSelectionOwnerRequest struct {
 	Time      Timestamp
 }
 
-func (SetSelectionOwnerRequest) OpCode() reqCode { return SetSelectionOwner }
+func (SetSelectionOwnerRequest) OpCode() ReqCode { return SetSelectionOwner }
 
-func parseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetSelectionOwnerRequest, error) {
+func ParseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetSelectionOwnerRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetSelectionOwner)
 	}
@@ -1144,9 +1145,9 @@ type GetSelectionOwnerRequest struct {
 	Selection Atom
 }
 
-func (GetSelectionOwnerRequest) OpCode() reqCode { return GetSelectionOwner }
+func (GetSelectionOwnerRequest) OpCode() ReqCode { return GetSelectionOwner }
 
-func parseGetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetSelectionOwnerRequest, error) {
+func ParseGetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetSelectionOwnerRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetSelectionOwner)
 	}
@@ -1175,9 +1176,9 @@ type ConvertSelectionRequest struct {
 	Time      Timestamp
 }
 
-func (ConvertSelectionRequest) OpCode() reqCode { return ConvertSelection }
+func (ConvertSelectionRequest) OpCode() ReqCode { return ConvertSelection }
 
-func parseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConvertSelectionRequest, error) {
+func ParseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConvertSelectionRequest, error) {
 	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ConvertSelection)
 	}
@@ -1207,9 +1208,9 @@ type SendEventRequest struct {
 	EventData   []byte
 }
 
-func (SendEventRequest) OpCode() reqCode { return SendEvent }
+func (SendEventRequest) OpCode() ReqCode { return SendEvent }
 
-func parseSendEventRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SendEventRequest, error) {
+func ParseSendEventRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SendEventRequest, error) {
 	if len(requestBody) != 44 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SendEvent)
 	}
@@ -1245,9 +1246,9 @@ type GrabPointerRequest struct {
 	Time         Timestamp
 }
 
-func (GrabPointerRequest) OpCode() reqCode { return GrabPointer }
+func (GrabPointerRequest) OpCode() ReqCode { return GrabPointer }
 
-func parseGrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabPointerRequest, error) {
+func ParseGrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabPointerRequest, error) {
 	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabPointer)
 	}
@@ -1274,9 +1275,9 @@ type UngrabPointerRequest struct {
 	Time Timestamp
 }
 
-func (UngrabPointerRequest) OpCode() reqCode { return UngrabPointer }
+func (UngrabPointerRequest) OpCode() ReqCode { return UngrabPointer }
 
-func parseUngrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabPointerRequest, error) {
+func ParseUngrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabPointerRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabPointer)
 	}
@@ -1313,9 +1314,9 @@ type GrabButtonRequest struct {
 	Modifiers    uint16
 }
 
-func (GrabButtonRequest) OpCode() reqCode { return GrabButton }
+func (GrabButtonRequest) OpCode() ReqCode { return GrabButton }
 
-func parseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabButtonRequest, error) {
+func ParseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabButtonRequest, error) {
 	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabButton)
 	}
@@ -1348,9 +1349,9 @@ type UngrabButtonRequest struct {
 	Modifiers  uint16
 }
 
-func (UngrabButtonRequest) OpCode() reqCode { return UngrabButton }
+func (UngrabButtonRequest) OpCode() ReqCode { return UngrabButton }
 
-func parseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*UngrabButtonRequest, error) {
+func ParseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*UngrabButtonRequest, error) {
 	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabButton)
 	}
@@ -1378,9 +1379,9 @@ type ChangeActivePointerGrabRequest struct {
 	EventMask uint16
 }
 
-func (ChangeActivePointerGrabRequest) OpCode() reqCode { return ChangeActivePointerGrab }
+func (ChangeActivePointerGrabRequest) OpCode() ReqCode { return ChangeActivePointerGrab }
 
-func parseChangeActivePointerGrabRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeActivePointerGrabRequest, error) {
+func ParseChangeActivePointerGrabRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeActivePointerGrabRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeActivePointerGrab)
 	}
@@ -3985,7 +3986,7 @@ func parseGetModifierMappingRequest(order binary.ByteOrder, requestBody []byte, 
 	return &GetModifierMappingRequest{}, nil
 }
 
-func parseKeyboardControl(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (KeyboardControl, int, error) {
+func ParseKeyboardControl(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (KeyboardControl, int, error) {
 	kc := KeyboardControl{}
 	offset := 0
 	if valueMask&KBKeyClickPercent != 0 {
@@ -4068,7 +4069,7 @@ func min(a, b int) int {
 	}
 	return b
 }
-func parseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (GC, int, error) {
+func ParseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (GC, int, error) {
 	// http://www.x.org/releases/X11R7.6/doc/xproto/x11protocol.html#requests:CreateGC
 	gc := GC{
 		Function:          FunctionCopy,

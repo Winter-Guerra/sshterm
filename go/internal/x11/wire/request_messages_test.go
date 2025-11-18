@@ -1,6 +1,6 @@
 //go:build x11 && !wasm
 
-package x11
+package wire
 
 import (
 	"bytes"

@@ -1,6 +1,6 @@
 //go:build x11
 
-package x11
+package wire
 
 import (
 	"encoding/binary"
@@ -23,8 +23,8 @@ type Error interface {
 	MinorOp() byte
 	// MajorOp returns the major opcode of the request that caused the error.
 	MajorOp() byte
-	// encodeMessage encodes the error message into a byte slice.
-	encodeMessage(order binary.ByteOrder) []byte
+	// EncodeMessage encodes the error message into a byte slice.
+	EncodeMessage(order binary.ByteOrder) []byte
 
 	error
 }
@@ -34,7 +34,7 @@ type baseError struct {
 	seq      uint16
 	badValue uint32
 	minorOp  byte
-	majorOp  reqCode
+	majorOp  ReqCode
 	code     byte
 }
 
@@ -47,7 +47,7 @@ func (e baseError) Error() string {
 	return fmt.Sprintf("X11 error: %d", e.code)
 }
 
-func (e *baseError) encodeMessage(order binary.ByteOrder) []byte {
+func (e *baseError) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 0 // Error type
 	reply[1] = e.Code()
@@ -148,7 +148,7 @@ type DeviceError struct {
 	baseError
 }
 
-func NewError(code byte, seq uint16, badValue uint32, minorOp byte, majorOp reqCode) Error {
+func NewError(code byte, seq uint16, badValue uint32, minorOp byte, majorOp ReqCode) Error {
 	base := baseError{
 		code:     code,
 		seq:      seq,
@@ -209,7 +209,7 @@ type GenericError struct {
 	seq      uint16
 	badValue uint32
 	minorOp  byte
-	majorOp  reqCode
+	majorOp  ReqCode
 	code     byte
 }
 
@@ -222,7 +222,7 @@ func (e GenericError) Error() string {
 	return fmt.Sprintf("unknown X11 error: %d", e.code)
 }
 
-func (e *GenericError) encodeMessage(order binary.ByteOrder) []byte {
+func (e *GenericError) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 0 // Error type
 	reply[1] = e.Code()

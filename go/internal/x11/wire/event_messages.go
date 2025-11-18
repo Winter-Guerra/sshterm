@@ -1,6 +1,6 @@
 //go:build x11
 
-package x11
+package wire
 
 import (
 	"encoding/binary"
@@ -71,7 +71,7 @@ type DeviceButtonReleaseEvent struct {
 
 func (e *DeviceButtonReleaseEvent) encodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
-	buf[0] = xInputOpcode
+	buf[0] = byte(XInputOpcode)
 	buf[1] = DeviceButtonRelease
 	order.PutUint16(buf[2:4], e.sequence)
 	order.PutUint32(buf[4:8], e.Time)
@@ -405,7 +405,7 @@ type DeviceKeyPressEvent struct {
 
 func (e *DeviceKeyPressEvent) encodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
-	buf[0] = xInputOpcode
+	buf[0] = byte(XInputOpcode)
 	buf[1] = DeviceKeyPress
 	order.PutUint16(buf[2:4], e.sequence)
 	order.PutUint32(buf[4:8], e.Time)
@@ -441,7 +441,7 @@ type DeviceKeyReleaseEvent struct {
 
 func (e *DeviceKeyReleaseEvent) encodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
-	buf[0] = xInputOpcode
+	buf[0] = byte(XInputOpcode)
 	buf[1] = DeviceKeyRelease
 	order.PutUint16(buf[2:4], e.sequence)
 	order.PutUint32(buf[4:8], e.Time)
@@ -481,7 +481,7 @@ func (e *DeviceButtonPressEvent) SetSequence(seq uint16) {
 
 func (e *DeviceButtonPressEvent) encodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
-	buf[0] = xInputOpcode
+	buf[0] = byte(XInputOpcode)
 	buf[1] = DeviceButtonPress
 	order.PutUint16(buf[2:4], e.Sequence)
 	order.PutUint32(buf[4:8], e.Time)

@@ -2,6 +2,8 @@
 
 package x11
 
+import "github.com/c2FmZQ/sshterm/internal/x11/wire"
+
 type propertyChange struct {
 	id                 xID
 	property, typeAtom uint32
@@ -135,8 +137,8 @@ type MockX11Frontend struct {
 	ConvertSelectionCalls           []*convertSelectionCall
 	ConfigureWindowCalls            []*configureWindowCall
 	CirculateWindowCalls            []*circulateWindowCall
-	CreatedGCs                      map[xID]GC
-	ChangedGCs                      map[xID]GC
+	CreatedGCs                      map[xID]wire.GC
+	ChangedGCs                      map[xID]wire.GC
 	ChangedProperties               []*propertyChange
 	PutImageCalls                   []*putImageCall
 	PolyLineCalls                   []*polyLineCall
@@ -177,7 +179,7 @@ type MockX11Frontend struct {
 	SetInputFocusCalls              []setInputFocusCall
 	SetPointerMappingCalls          [][]byte
 	keymap                          map[byte]uint32
-	modifierMap                     []KeyCode
+	modifierMap                     []wire.KeyCode
 }
 
 type setInputFocusCall struct {
@@ -203,27 +205,27 @@ type polyText8Call struct {
 	drawable xID
 	gcID     xID
 	x, y     int32
-	items    []PolyTextItem
+	items    []wire.PolyTextItem
 }
 
 type polyText16Call struct {
 	drawable xID
 	gcID     xID
 	x, y     int32
-	items    []PolyTextItem
+	items    []wire.PolyTextItem
 }
 
-func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values WindowAttributes) {
+func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values wire.WindowAttributes) {
 	// For mock, we can just log the call or do nothing.
 	// No internal state to clean up for windows in the mock.
 }
 
-func (m *MockX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes) {
+func (m *MockX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values wire.WindowAttributes) {
 }
 
-func (m *MockX11Frontend) GetWindowAttributes(xid xID) WindowAttributes {
+func (m *MockX11Frontend) GetWindowAttributes(xid xID) wire.WindowAttributes {
 	// Not implemented for mock
-	return WindowAttributes{}
+	return wire.WindowAttributes{}
 }
 
 func (m *MockX11Frontend) DestroyWindow(xid xID) {
@@ -319,11 +321,11 @@ func (m *MockX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	m.ImageText16Calls = append(m.ImageText16Calls, &imageText16Call{drawable, gcID, x, y, text})
 }
 
-func (m *MockX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
+func (m *MockX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []wire.PolyTextItem) {
 	m.PolyText8Calls = append(m.PolyText8Calls, &polyText8Call{drawable, gcID, x, y, items})
 }
 
-func (m *MockX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
+func (m *MockX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []wire.PolyTextItem) {
 	m.PolyText16Calls = append(m.PolyText16Calls, &polyText16Call{drawable, gcID, x, y, items})
 }
 
@@ -388,7 +390,7 @@ func (m *MockX11Frontend) GetProperty(window xID, property uint32, longOffset, l
 	return m.GetPropertyReturn, m.GetPropertyTypeReturn, m.GetPropertyFormatReturn, m.GetPropertyBytesAfterReturn
 }
 
-func (m *MockX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []xCharInfo) {
+func (m *MockX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo) {
 	// Dummy implementation for mock
 	return
 }
@@ -428,16 +430,16 @@ func (m *MockX11Frontend) GetAtomName(atom uint32) string {
 	return m.GetAtomNameReturn
 }
 
-func (m *MockX11Frontend) CreateGC(id xID, valueMask uint32, values GC) {
+func (m *MockX11Frontend) CreateGC(id xID, valueMask uint32, values wire.GC) {
 	if m.CreatedGCs == nil {
-		m.CreatedGCs = make(map[xID]GC)
+		m.CreatedGCs = make(map[xID]wire.GC)
 	}
 	m.CreatedGCs[id] = values
 }
 
-func (m *MockX11Frontend) ChangeGC(id xID, valueMask uint32, gc GC) {
+func (m *MockX11Frontend) ChangeGC(id xID, valueMask uint32, gc wire.GC) {
 	if m.ChangedGCs == nil {
-		m.ChangedGCs = make(map[xID]GC)
+		m.ChangedGCs = make(map[xID]wire.GC)
 	}
 	m.ChangedGCs[id] = gc
 }
@@ -479,7 +481,7 @@ func (m *MockX11Frontend) SendConfigureAndExposeEvent(windowID xID, x, y int16, 
 func (m *MockX11Frontend) SetDashes(gc xID, dashOffset uint16, dashes []byte) {
 }
 
-func (m *MockX11Frontend) SetClipRectangles(gc xID, clippingX, clippingY int16, rectangles []Rectangle, ordering byte) {
+func (m *MockX11Frontend) SetClipRectangles(gc xID, clippingX, clippingY int16, rectangles []wire.Rectangle, ordering byte) {
 }
 
 func (m *MockX11Frontend) RecolorCursor(cursor xID, foreColor, backColor [3]uint16) {
@@ -498,11 +500,11 @@ func (m *MockX11Frontend) GetPointerControl() (accelNumerator, accelDenominator,
 	return 1, 1, 1, nil
 }
 
-func (m *MockX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
+func (m *MockX11Frontend) ChangeKeyboardControl(valueMask uint32, values wire.KeyboardControl) {
 }
 
-func (m *MockX11Frontend) GetKeyboardControl() (KeyboardControl, error) {
-	return KeyboardControl{}, nil
+func (m *MockX11Frontend) GetKeyboardControl() (wire.KeyboardControl, error) {
+	return wire.KeyboardControl{}, nil
 }
 
 func (m *MockX11Frontend) SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte) {
@@ -512,10 +514,10 @@ func (m *MockX11Frontend) GetScreenSaver() (timeout, interval int16, preferBlank
 	return 0, 0, 0, 0, nil
 }
 
-func (m *MockX11Frontend) ChangeHosts(mode byte, host Host) {
+func (m *MockX11Frontend) ChangeHosts(mode byte, host wire.Host) {
 }
 
-func (m *MockX11Frontend) ListHosts() ([]Host, error) {
+func (m *MockX11Frontend) ListHosts() ([]wire.Host, error) {
 	return nil, nil
 }
 
@@ -528,20 +530,20 @@ func (m *MockX11Frontend) SetCloseDownMode(mode byte) {
 func (m *MockX11Frontend) KillClient(resource uint32) {
 }
 
-func (m *MockX11Frontend) RotateProperties(window xID, delta int16, atoms []Atom) {
+func (m *MockX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) {
 }
 
 func (m *MockX11Frontend) ForceScreenSaver(mode byte) {
 }
 
-func (m *MockX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error) {
+func (m *MockX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []wire.KeyCode) (byte, error) {
 	m.modifierMap = keyCodes
 	return 0, nil
 }
 
-func (m *MockX11Frontend) GetModifierMapping() ([]KeyCode, error) {
+func (m *MockX11Frontend) GetModifierMapping() ([]wire.KeyCode, error) {
 	if m.modifierMap == nil {
-		return make([]KeyCode, 8), nil
+		return make([]wire.KeyCode, 8), nil
 	}
 	return m.modifierMap, nil
 }

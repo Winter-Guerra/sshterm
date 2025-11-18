@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+
+	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
 
 // setupTestServerWithClient creates a new x11Server with a mock frontend and a single mock client.
@@ -38,8 +40,8 @@ func setupTestServerWithClient(t *testing.T) (*x11Server, *x11Client, *MockX11Fr
 		colormaps:       make(map[xID]*colormap),
 		defaultColormap: 1,
 	}
-	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]xColorItem)}
-	for k, v := range KeyCodeToKeysym {
+	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
+	for k, v := range wire.KeyCodeToKeysym {
 		server.keymap[k] = v
 	}
 

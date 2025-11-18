@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+
+	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
 
 // setupTestServer creates a new x11Server with a mock frontend and a single mock client.
@@ -22,7 +24,7 @@ func TestSendMouseEvent_EventMask_Sent(t *testing.T) {
 	windowID := xID{client: 1, local: 10}
 	server.windows[windowID] = &window{
 		xid:        windowID,
-		attributes: WindowAttributes{EventMask: ButtonPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
 	}
 
 	// Send a button press event
@@ -41,7 +43,7 @@ func TestSendMouseEvent_EventMask_Blocked(t *testing.T) {
 	windowID := xID{client: 1, local: 10}
 	server.windows[windowID] = &window{
 		xid:        windowID,
-		attributes: WindowAttributes{EventMask: PointerMotionMask}, // Does not include ButtonPressMask
+		attributes: wire.WindowAttributes{EventMask: wire.PointerMotionMask}, // Does not include ButtonPressMask
 	}
 
 	// Send a button press event
@@ -61,25 +63,25 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	windowID := xID{client: 1, local: 10}
 	server.windows[windowID] = &window{
 		xid: windowID,
-		attributes: WindowAttributes{
-			Class:            InputOutput,
-			BitGravity:       NorthWestGravity,
-			WinGravity:       NorthWestGravity,
-			BackingStore:     NotUseful,
+		attributes: wire.WindowAttributes{
+			Class:            wire.InputOutput,
+			BitGravity:       wire.NorthWestGravity,
+			WinGravity:       wire.NorthWestGravity,
+			BackingStore:     wire.NotUseful,
 			BackingPlanes:    0,
 			BackingPixel:     0,
 			SaveUnder:        false,
 			MapIsInstalled:   false,
-			MapState:         IsUnmapped,
+			MapState:         wire.IsUnmapped,
 			OverrideRedirect: true,
 			Colormap:         0,
 			Cursor:           0,
-			EventMask:        ButtonPressMask | KeyPressMask,
+			EventMask:        wire.ButtonPressMask | wire.KeyPressMask,
 		},
 	}
 
 	// 2. Create and handle the GetWindowAttributes request
-	req := &GetWindowAttributesRequest{Window: Window(windowID.local)}
+	req := &wire.GetWindowAttributesRequest{Window: wire.Window(windowID.local)}
 	reply := server.handleRequest(client, req, 2)
 	if reply == nil {
 		t.Fatalf("handleRequest returned a nil reply")
@@ -92,7 +94,7 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	}
 
 	// 4. Decode the reply from the buffer
-	var parsedReply getWindowAttributesReply
+	var parsedReply wire.GetWindowAttributesReply
 	err := binary.Read(clientBuffer, binary.LittleEndian, &parsedReply)
 	if err != nil {
 		t.Fatalf("Failed to read reply from buffer: %v", err)
@@ -102,8 +104,8 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	if parsedReply.ReplyType != 1 {
 		t.Errorf("Expected ReplyType 1, got %d", parsedReply.ReplyType)
 	}
-	if parsedReply.BackingStore != NotUseful {
-		t.Errorf("Expected BackingStore %d, got %d", NotUseful, parsedReply.BackingStore)
+	if parsedReply.BackingStore != wire.NotUseful {
+		t.Errorf("Expected BackingStore %d, got %d", wire.NotUseful, parsedReply.BackingStore)
 	}
 	if parsedReply.Sequence != 2 {
 		t.Errorf("Expected Sequence 2, got %d", parsedReply.Sequence)
@@ -114,14 +116,14 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	if parsedReply.VisualID != 0 {
 		t.Errorf("Expected VisualID 0, got %d", parsedReply.VisualID)
 	}
-	if parsedReply.Class != InputOutput {
-		t.Errorf("Expected Class %d, got %d", InputOutput, parsedReply.Class)
+	if parsedReply.Class != wire.InputOutput {
+		t.Errorf("Expected Class %d, got %d", wire.InputOutput, parsedReply.Class)
 	}
-	if parsedReply.BitGravity != NorthWestGravity {
-		t.Errorf("Expected BitGravity %d, got %d", NorthWestGravity, parsedReply.BitGravity)
+	if parsedReply.BitGravity != wire.NorthWestGravity {
+		t.Errorf("Expected BitGravity %d, got %d", wire.NorthWestGravity, parsedReply.BitGravity)
 	}
-	if parsedReply.WinGravity != NorthWestGravity {
-		t.Errorf("Expected WinGravity %d, got %d", NorthWestGravity, parsedReply.WinGravity)
+	if parsedReply.WinGravity != wire.NorthWestGravity {
+		t.Errorf("Expected WinGravity %d, got %d", wire.NorthWestGravity, parsedReply.WinGravity)
 	}
 	if parsedReply.BackingPlanes != 0 {
 		t.Errorf("Expected BackingPlanes 0, got %d", parsedReply.BackingPlanes)
@@ -135,8 +137,8 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	if parsedReply.MapIsInstalled != 0 { // 0 for false
 		t.Errorf("Expected MapIsInstalled false (0), got %d", parsedReply.MapIsInstalled)
 	}
-	if parsedReply.MapState != IsUnmapped {
-		t.Errorf("Expected MapState %d, got %d", IsUnmapped, parsedReply.MapState)
+	if parsedReply.MapState != wire.IsUnmapped {
+		t.Errorf("Expected MapState %d, got %d", wire.IsUnmapped, parsedReply.MapState)
 	}
 	if parsedReply.OverrideRedirect != 1 { // 1 for true
 		t.Errorf("Expected OverrideRedirect true (1), got %d", parsedReply.OverrideRedirect)
@@ -144,11 +146,11 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	if parsedReply.Colormap != 0 {
 		t.Errorf("Expected Colormap 0, got %d", parsedReply.Colormap)
 	}
-	if parsedReply.AllEventMasks != (ButtonPressMask | KeyPressMask) {
-		t.Errorf("Expected AllEventMasks %d, got %d", (ButtonPressMask | KeyPressMask), parsedReply.AllEventMasks)
+	if parsedReply.AllEventMasks != (wire.ButtonPressMask | wire.KeyPressMask) {
+		t.Errorf("Expected AllEventMasks %d, got %d", (wire.ButtonPressMask | wire.KeyPressMask), parsedReply.AllEventMasks)
 	}
-	if parsedReply.YourEventMask != (ButtonPressMask | KeyPressMask) {
-		t.Errorf("Expected YourEventMask %d, got %d", (ButtonPressMask | KeyPressMask), parsedReply.YourEventMask)
+	if parsedReply.YourEventMask != (wire.ButtonPressMask | wire.KeyPressMask) {
+		t.Errorf("Expected YourEventMask %d, got %d", (wire.ButtonPressMask | wire.KeyPressMask), parsedReply.YourEventMask)
 	}
 }
 
@@ -159,11 +161,11 @@ func TestSendKeyboardEvent_PassiveGrab_Activates(t *testing.T) {
 	windowID := xID{client: 1, local: 10}
 	server.windows[windowID] = &window{
 		xid:        windowID,
-		attributes: WindowAttributes{EventMask: KeyPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
 	}
-	req := &GrabKeyRequest{
-		GrabWindow: Window(windowID.local),
-		Modifiers:  AnyModifier,
+	req := &wire.GrabKeyRequest{
+		GrabWindow: wire.Window(windowID.local),
+		Modifiers:  wire.AnyModifier,
 		Key:        38, // KeyA
 	}
 	server.handleRequest(client, req, 2)
@@ -187,9 +189,9 @@ func TestUngrabKeyRequest(t *testing.T) {
 	}
 
 	// 1. Grab a key
-	grabReq := &GrabKeyRequest{
-		GrabWindow:  Window(windowID.local),
-		Modifiers:   ShiftMask,
+	grabReq := &wire.GrabKeyRequest{
+		GrabWindow:  wire.Window(windowID.local),
+		Modifiers:   wire.ShiftMask,
 		Key:         38, // KeyA
 		OwnerEvents: false,
 	}
@@ -201,9 +203,9 @@ func TestUngrabKeyRequest(t *testing.T) {
 	}
 
 	// 2. Ungrab the key
-	ungrabReq := &UngrabKeyRequest{
-		GrabWindow: Window(windowID.local),
-		Modifiers:  ShiftMask,
+	ungrabReq := &wire.UngrabKeyRequest{
+		GrabWindow: wire.Window(windowID.local),
+		Modifiers:  wire.ShiftMask,
 		Key:        38, // KeyA
 	}
 	server.handleRequest(client, ungrabReq, 3)
@@ -224,8 +226,8 @@ func TestUngrabKeyRequest_AnyModifier(t *testing.T) {
 	}
 
 	// 1. Grab a key with different modifiers
-	grabReq1 := &GrabKeyRequest{GrabWindow: Window(windowID.local), Modifiers: ShiftMask, Key: 38}
-	grabReq2 := &GrabKeyRequest{GrabWindow: Window(windowID.local), Modifiers: ControlMask, Key: 38}
+	grabReq1 := &wire.GrabKeyRequest{GrabWindow: wire.Window(windowID.local), Modifiers: wire.ShiftMask, Key: 38}
+	grabReq2 := &wire.GrabKeyRequest{GrabWindow: wire.Window(windowID.local), Modifiers: wire.ControlMask, Key: 38}
 	server.handleRequest(client, grabReq1, 2)
 	server.handleRequest(client, grabReq2, 3)
 
@@ -234,9 +236,9 @@ func TestUngrabKeyRequest_AnyModifier(t *testing.T) {
 	}
 
 	// 2. Ungrab the key with AnyModifier
-	ungrabReq := &UngrabKeyRequest{
-		GrabWindow: Window(windowID.local),
-		Modifiers:  AnyModifier,
+	ungrabReq := &wire.UngrabKeyRequest{
+		GrabWindow: wire.Window(windowID.local),
+		Modifiers:  wire.AnyModifier,
 		Key:        38, // KeyA
 	}
 	server.handleRequest(client, ungrabReq, 4)
@@ -256,16 +258,16 @@ func TestSendMouseEvent_ActivePointerGrab_Redirected(t *testing.T) {
 
 	server.windows[originalWindowID] = &window{
 		xid:        originalWindowID,
-		attributes: WindowAttributes{EventMask: ButtonPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
 	}
 	server.windows[grabWindowID] = &window{
 		xid:        grabWindowID,
-		attributes: WindowAttributes{EventMask: 0}, // Grab window doesn't need the mask
+		attributes: wire.WindowAttributes{EventMask: 0}, // Grab window doesn't need the mask
 	}
 
 	// Grab the pointer on grabWindowID
 	server.pointerGrabWindow = grabWindowID
-	server.pointerGrabEventMask = ButtonPressMask
+	server.pointerGrabEventMask = wire.ButtonPressMask
 	server.pointerGrabOwner = false // Event should be sent to grabWindowID
 
 	// Send a button press event to the original window
@@ -277,9 +279,9 @@ func TestSendMouseEvent_ActivePointerGrab_Redirected(t *testing.T) {
 	}
 
 	// Verify the event was sent to the grab window
-	event := messages[0].(*ButtonPressEvent)
-	if event.event != grabWindowID.local {
-		t.Errorf("Expected event to be redirected to window %d, but it was sent to %d", grabWindowID.local, event.event)
+	event := messages[0].(*wire.ButtonPressEvent)
+	if event.Event != grabWindowID.local {
+		t.Errorf("Expected event to be redirected to window %d, but it was sent to %d", grabWindowID.local, event.Event)
 	}
 }
 
@@ -292,16 +294,16 @@ func TestSendMouseEvent_ActivePointerGrab_OwnerEventsTrue(t *testing.T) {
 
 	server.windows[originalWindowID] = &window{
 		xid:        originalWindowID,
-		attributes: WindowAttributes{EventMask: ButtonPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
 	}
 	server.windows[grabWindowID] = &window{
 		xid:        grabWindowID,
-		attributes: WindowAttributes{EventMask: 0},
+		attributes: wire.WindowAttributes{EventMask: 0},
 	}
 
 	// Grab the pointer with ownerEvents = true
 	server.pointerGrabWindow = grabWindowID
-	server.pointerGrabEventMask = ButtonPressMask
+	server.pointerGrabEventMask = wire.ButtonPressMask
 	server.pointerGrabOwner = true // Event should be sent to originalWindowID
 
 	// Send a button press event to the original window
@@ -312,9 +314,9 @@ func TestSendMouseEvent_ActivePointerGrab_OwnerEventsTrue(t *testing.T) {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 
-	event := messages[0].(*ButtonPressEvent)
-	if event.event != originalWindowID.local {
-		t.Errorf("Expected event to be sent to original window %d, but it was sent to %d", originalWindowID.local, event.event)
+	event := messages[0].(*wire.ButtonPressEvent)
+	if event.Event != originalWindowID.local {
+		t.Errorf("Expected event to be sent to original window %d, but it was sent to %d", originalWindowID.local, event.Event)
 	}
 }
 
@@ -330,7 +332,7 @@ func TestSendMouseEvent_ActivePointerGrab_MaskBlocked(t *testing.T) {
 
 	// Grab the pointer, but with a mask that doesn't include ButtonPress
 	server.pointerGrabWindow = grabWindowID
-	server.pointerGrabEventMask = PointerMotionMask
+	server.pointerGrabEventMask = wire.PointerMotionMask
 
 	// Send a button press event
 	server.SendMouseEvent(originalWindowID, "mousedown", 10, 20, (1<<16)|1)
@@ -347,7 +349,7 @@ func TestSendMouseEvent_PassiveGrab_Activates(t *testing.T) {
 	windowID := xID{client: 1, local: 10}
 	server.windows[windowID] = &window{
 		xid:        windowID,
-		attributes: WindowAttributes{EventMask: ButtonPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
 	}
 
 	// Setup a passive grab on the window for Button 1
@@ -356,7 +358,7 @@ func TestSendMouseEvent_PassiveGrab_Activates(t *testing.T) {
 			button:    1,
 			modifiers: 0,
 			owner:     false,
-			eventMask: ButtonPressMask | ButtonReleaseMask,
+			eventMask: wire.ButtonPressMask | wire.ButtonReleaseMask,
 		},
 	}
 
@@ -368,8 +370,8 @@ func TestSendMouseEvent_PassiveGrab_Activates(t *testing.T) {
 	if server.pointerGrabWindow != windowID {
 		t.Errorf("Expected pointer grab to be activated on window %s, but it was not", windowID)
 	}
-	if server.pointerGrabEventMask != (ButtonPressMask | ButtonReleaseMask) {
-		t.Errorf("Expected grab event mask to be %d, but got %d", (ButtonPressMask | ButtonReleaseMask), server.pointerGrabEventMask)
+	if server.pointerGrabEventMask != (wire.ButtonPressMask | wire.ButtonReleaseMask) {
+		t.Errorf("Expected grab event mask to be %d, but got %d", (wire.ButtonPressMask | wire.ButtonReleaseMask), server.pointerGrabEventMask)
 	}
 }
 
@@ -382,11 +384,11 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_Redirected(t *testing.T) {
 
 	server.windows[originalWindowID] = &window{
 		xid:        originalWindowID,
-		attributes: WindowAttributes{EventMask: KeyPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
 	}
 	server.windows[grabWindowID] = &window{
 		xid:        grabWindowID,
-		attributes: WindowAttributes{EventMask: 0},
+		attributes: wire.WindowAttributes{EventMask: 0},
 	}
 
 	// Grab the keyboard on grabWindowID
@@ -402,9 +404,9 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_Redirected(t *testing.T) {
 	}
 
 	// Verify the event was sent to the grab window
-	event := messages[0].(*keyEvent)
-	if event.event != grabWindowID.local {
-		t.Errorf("Expected event to be redirected to window %d, but it was sent to %d", grabWindowID.local, event.event)
+	event := messages[0].(*wire.KeyEvent)
+	if event.Event != grabWindowID.local {
+		t.Errorf("Expected event to be redirected to window %d, but it was sent to %d", grabWindowID.local, event.Event)
 	}
 }
 
@@ -417,11 +419,11 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_OwnerEventsTrue(t *testing.T) {
 
 	server.windows[originalWindowID] = &window{
 		xid:        originalWindowID,
-		attributes: WindowAttributes{EventMask: KeyPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
 	}
 	server.windows[grabWindowID] = &window{
 		xid:        grabWindowID,
-		attributes: WindowAttributes{EventMask: 0},
+		attributes: wire.WindowAttributes{EventMask: 0},
 	}
 
 	// Grab the keyboard with ownerEvents = true
@@ -436,9 +438,9 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_OwnerEventsTrue(t *testing.T) {
 		t.Fatal("Expected event to be sent, but no message was recorded")
 	}
 
-	event := messages[0].(*keyEvent)
-	if event.event != originalWindowID.local {
-		t.Errorf("Expected event to be sent to original window %d, but it was sent to %d", originalWindowID.local, event.event)
+	event := messages[0].(*wire.KeyEvent)
+	if event.Event != originalWindowID.local {
+		t.Errorf("Expected event to be sent to original window %d, but it was sent to %d", originalWindowID.local, event.Event)
 	}
 }
 
@@ -449,11 +451,11 @@ func TestSendKeyboardEvent_EventMask_Sent(t *testing.T) {
 	windowID := xID{client: 1, local: 10}
 	server.windows[windowID] = &window{
 		xid:        windowID,
-		attributes: WindowAttributes{EventMask: KeyPressMask},
+		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
 	}
 
 	// Send a key press event
-	server.handleRequest(client, &SetInputFocusRequest{Focus: 10}, 0)
+	server.handleRequest(client, &wire.SetInputFocusRequest{Focus: 10}, 0)
 	server.SendKeyboardEvent(windowID, "keydown", "KeyA", false, false, false, false)
 
 	messages := drainMessages(t, clientBuffer, client.byteOrder)
@@ -476,7 +478,7 @@ func TestWindowHierarchyRequests(t *testing.T) {
 	// 2. Test ReparentWindow
 	newParentID := xID{client: 1, local: 30}
 	server.windows[newParentID] = &window{xid: newParentID}
-	reparentReq := &ReparentWindowRequest{Window: Window(childID.local), Parent: Window(newParentID.local), X: 10, Y: 20}
+	reparentReq := &wire.ReparentWindowRequest{Window: wire.Window(childID.local), Parent: wire.Window(newParentID.local), X: 10, Y: 20}
 	server.handleRequest(client, reparentReq, 2)
 
 	if server.windows[childID].parent != newParentID.local {
@@ -493,14 +495,14 @@ func TestWindowHierarchyRequests(t *testing.T) {
 	}
 
 	// 3. Test CirculateWindow
-	circulateReq := &CirculateWindowRequest{Window: Window(childID.local), Direction: 0 /* RaiseLowest */}
+	circulateReq := &wire.CirculateWindowRequest{Window: wire.Window(childID.local), Direction: 0 /* RaiseLowest */}
 	server.handleRequest(client, circulateReq, 3)
 	if len(mockFrontend.CirculateWindowCalls) != 1 {
 		t.Errorf("CirculateWindow: expected frontend to be called")
 	}
 
 	// 4. Test QueryTree
-	queryTreeReq := &QueryTreeRequest{Window: Window(newParentID.local)}
+	queryTreeReq := &wire.QueryTreeRequest{Window: wire.Window(newParentID.local)}
 	reply := server.handleRequest(client, queryTreeReq, 4)
 	if reply == nil {
 		t.Fatalf("QueryTree: handleRequest returned a nil reply")
@@ -533,7 +535,7 @@ func TestWindowHierarchyRequests(t *testing.T) {
 	}
 
 	// 5. Test DestroySubwindows
-	destroyReq := &DestroySubwindowsRequest{Window: Window(newParentID.local)}
+	destroyReq := &wire.DestroySubwindowsRequest{Window: wire.Window(newParentID.local)}
 	server.handleRequest(client, destroyReq, 5)
 	if _, exists := server.windows[childID]; exists {
 		t.Errorf("DestroySubwindows: child window was not destroyed")
@@ -553,7 +555,7 @@ func TestSendKeyboardEvent_EventMask_Blocked(t *testing.T) {
 	windowID := xID{client: 1, local: 10}
 	server.windows[windowID] = &window{
 		xid:        windowID,
-		attributes: WindowAttributes{EventMask: KeyReleaseMask}, // Does not include KeyPressMask
+		attributes: wire.WindowAttributes{EventMask: wire.KeyReleaseMask}, // Does not include KeyPressMask
 	}
 
 	// Send a key press event
@@ -572,7 +574,7 @@ func TestColormapRequests(t *testing.T) {
 	// Test CreateColormapRequest
 	t.Run("CreateColormapRequest", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
-		req := &CreateColormapRequest{Mid: Colormap(cmapID.local), Alloc: 0, Visual: 0}
+		req := &wire.CreateColormapRequest{Mid: wire.Colormap(cmapID.local), Alloc: 0, Visual: 0}
 		reply := server.handleRequest(client, req, 2)
 		if reply != nil {
 			t.Fatalf("CreateColormapRequest: expected nil reply for success, got %v", reply)
@@ -585,33 +587,33 @@ func TestColormapRequests(t *testing.T) {
 	// Test AllocColorRequest
 	t.Run("AllocColorRequest", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
-		req := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		req := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
 		reply := server.handleRequest(client, req, 3)
 		if reply == nil {
 			t.Fatal("AllocColorRequest: expected reply, got nil")
 		}
-		allocReply, ok := reply.(*allocColorReply)
+		allocReply, ok := reply.(*wire.AllocColorReply)
 		if !ok {
-			t.Fatalf("AllocColorRequest: expected *allocColorReply, got %T", reply)
+			t.Fatalf("AllocColorRequest: expected *wire.AllocColorReply, got %T", reply)
 		}
 		expectedPixel := (uint32(0x10) << 16) | (uint32(0x20) << 8) | uint32(0x30)
-		if allocReply.pixel != expectedPixel {
-			t.Errorf("AllocColorRequest: expected pixel %x, got %x", expectedPixel, allocReply.pixel)
+		if allocReply.Pixel != expectedPixel {
+			t.Errorf("AllocColorRequest: expected pixel %x, got %x", expectedPixel, allocReply.Pixel)
 		}
 		if _, ok := server.colormaps[cmapID].pixels[expectedPixel]; !ok {
 			t.Errorf("AllocColorRequest: pixel %x not allocated in colormap %s", expectedPixel, cmapID)
 		}
 
 		// Test with default colormap
-		reqDefault := &AllocColorRequest{Cmap: Colormap(server.defaultColormap), Red: 0x4000, Green: 0x5000, Blue: 0x6000}
+		reqDefault := &wire.AllocColorRequest{Cmap: wire.Colormap(server.defaultColormap), Red: 0x4000, Green: 0x5000, Blue: 0x6000}
 		replyDefault := server.handleRequest(client, reqDefault, 4)
-		allocReplyDefault, ok := replyDefault.(*allocColorReply)
+		allocReplyDefault, ok := replyDefault.(*wire.AllocColorReply)
 		if !ok {
-			t.Fatalf("AllocColorRequest (default): expected *allocColorReply, got %T", replyDefault)
+			t.Fatalf("AllocColorRequest (default): expected *wire.AllocColorReply, got %T", replyDefault)
 		}
 		expectedPixelDefault := (uint32(0x40) << 16) | (uint32(0x50) << 8) | uint32(0x60)
-		if allocReplyDefault.pixel != expectedPixelDefault {
-			t.Errorf("AllocColorRequest (default): expected pixel %x, got %x", expectedPixelDefault, allocReplyDefault.pixel)
+		if allocReplyDefault.Pixel != expectedPixelDefault {
+			t.Errorf("AllocColorRequest (default): expected pixel %x, got %x", expectedPixelDefault, allocReplyDefault.Pixel)
 		}
 		if _, ok := server.colormaps[xID{local: server.defaultColormap}].pixels[expectedPixelDefault]; !ok {
 			t.Errorf("AllocColorRequest (default): pixel %x not allocated in default colormap", expectedPixelDefault)
@@ -621,18 +623,18 @@ func TestColormapRequests(t *testing.T) {
 	// Test AllocNamedColorRequest
 	t.Run("AllocNamedColorRequest", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
-		req := &AllocNamedColorRequest{Cmap: Colormap(cmapID.local), Name: []byte("red")}
+		req := &wire.AllocNamedColorRequest{Cmap: wire.Colormap(cmapID.local), Name: []byte("red")}
 		reply := server.handleRequest(client, req, 5)
 		if reply == nil {
 			t.Fatal("AllocNamedColorRequest: expected reply, got nil")
 		}
-		allocReply, ok := reply.(*allocNamedColorReply)
+		allocReply, ok := reply.(*wire.AllocNamedColorReply)
 		if !ok {
-			t.Fatalf("AllocNamedColorRequest: expected *allocNamedColorReply, got %T", reply)
+			t.Fatalf("AllocNamedColorRequest: expected *wire.AllocNamedColorReply, got %T", reply)
 		}
 		// "red" is 0xFF0000, scaled to 16-bit is 0xFFFF00000000
-		if allocReply.red != 0xFFFF || allocReply.green != 0 || allocReply.blue != 0 {
-			t.Errorf("AllocNamedColorRequest: expected red, got R:%x G:%x B:%x", allocReply.red, allocReply.green, allocReply.blue)
+		if allocReply.Red != 0xFFFF || allocReply.Green != 0 || allocReply.Blue != 0 {
+			t.Errorf("AllocNamedColorRequest: expected red, got R:%x G:%x B:%x", allocReply.Red, allocReply.Green, allocReply.Blue)
 		}
 		expectedPixel := (uint32(0xFF) << 16) | (uint32(0x00) << 8) | uint32(0x00)
 		if _, ok := server.colormaps[cmapID].pixels[expectedPixel]; !ok {
@@ -640,15 +642,15 @@ func TestColormapRequests(t *testing.T) {
 		}
 
 		// Test with default colormap
-		reqDefault := &AllocNamedColorRequest{Cmap: Colormap(server.defaultColormap), Name: []byte("blue")}
+		reqDefault := &wire.AllocNamedColorRequest{Cmap: wire.Colormap(server.defaultColormap), Name: []byte("blue")}
 		replyDefault := server.handleRequest(client, reqDefault, 6)
-		allocReplyDefault, ok := replyDefault.(*allocNamedColorReply)
+		allocReplyDefault, ok := replyDefault.(*wire.AllocNamedColorReply)
 		if !ok {
-			t.Fatalf("AllocNamedColorRequest (default): expected *allocNamedColorReply, got %T", replyDefault)
+			t.Fatalf("AllocNamedColorRequest (default): expected *wire.AllocNamedColorReply, got %T", replyDefault)
 		}
 		// "blue" is 0x0000FF, scaled to 16-bit is 0x00000000FFFF
-		if allocReplyDefault.red != 0 || allocReplyDefault.green != 0 || allocReplyDefault.blue != 0xFFFF {
-			t.Errorf("AllocNamedColorRequest (default): expected blue, got R:%x G:%x B:%x", allocReplyDefault.red, allocReplyDefault.green, allocReplyDefault.blue)
+		if allocReplyDefault.Red != 0 || allocReplyDefault.Green != 0 || allocReplyDefault.Blue != 0xFFFF {
+			t.Errorf("AllocNamedColorRequest (default): expected blue, got R:%x G:%x B:%x", allocReplyDefault.Red, allocReplyDefault.Green, allocReplyDefault.Blue)
 		}
 		expectedPixelDefault := (uint32(0x00) << 16) | (uint32(0x00) << 8) | uint32(0xFF)
 		if _, ok := server.colormaps[xID{local: server.defaultColormap}].pixels[expectedPixelDefault]; !ok {
@@ -660,11 +662,11 @@ func TestColormapRequests(t *testing.T) {
 	t.Run("FreeColorsRequest", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
-		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
-		allocReply := server.handleRequest(client, allocReq, 7).(*allocColorReply)
-		pixelToFree := allocReply.pixel
+		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		allocReply := server.handleRequest(client, allocReq, 7).(*wire.AllocColorReply)
+		pixelToFree := allocReply.Pixel
 
-		req := &FreeColorsRequest{Cmap: Colormap(cmapID.local), Pixels: []uint32{pixelToFree}}
+		req := &wire.FreeColorsRequest{Cmap: wire.Colormap(cmapID.local), Pixels: []uint32{pixelToFree}}
 		reply := server.handleRequest(client, req, 8)
 		if reply != nil {
 			t.Fatalf("FreeColorsRequest: expected nil reply for success, got %v", reply)
@@ -678,21 +680,15 @@ func TestColormapRequests(t *testing.T) {
 	t.Run("StoreColorsRequest", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
-		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
-		allocReply := server.handleRequest(client, allocReq, 9).(*allocColorReply)
-		pixelToStore := allocReply.pixel
+		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		allocReply := server.handleRequest(client, allocReq, 9).(*wire.AllocColorReply)
+		pixelToStore := allocReply.Pixel
 
 		// Store new values for the pixel
-		req := &StoreColorsRequest{
-			Cmap: Colormap(cmapID.local),
-			Items: []struct {
-				Pixel uint32
-				Red   uint16
-				Green uint16
-				Blue  uint16
-				Flags byte
-			}{
-				{Pixel: pixelToStore, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, Flags: DoRed | DoGreen | DoBlue},
+		req := &wire.StoreColorsRequest{
+			Cmap: wire.Colormap(cmapID.local),
+			Items: []wire.ColorItem{
+				{Pixel: pixelToStore, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, Flags: wire.DoRed | wire.DoGreen | wire.DoBlue},
 			},
 		}
 		reply := server.handleRequest(client, req, 10)
@@ -709,16 +705,16 @@ func TestColormapRequests(t *testing.T) {
 	t.Run("StoreNamedColorRequest", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
-		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
-		allocReply := server.handleRequest(client, allocReq, 11).(*allocColorReply)
-		pixelToStore := allocReply.pixel
+		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
+		allocReply := server.handleRequest(client, allocReq, 11).(*wire.AllocColorReply)
+		pixelToStore := allocReply.Pixel
 
 		// Store a named color for the pixel
-		req := &StoreNamedColorRequest{
-			Cmap:  Colormap(cmapID.local),
+		req := &wire.StoreNamedColorRequest{
+			Cmap:  wire.Colormap(cmapID.local),
 			Pixel: pixelToStore,
 			Name:  "green",
-			Flags: DoRed | DoGreen | DoBlue,
+			Flags: wire.DoRed | wire.DoGreen | wire.DoBlue,
 		}
 		reply := server.handleRequest(client, req, 12)
 		if reply != nil {
@@ -734,18 +730,18 @@ func TestColormapRequests(t *testing.T) {
 	// Test LookupColorRequest
 	t.Run("LookupColorRequest", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
-		req := &LookupColorRequest{Cmap: Colormap(cmapID.local), Name: "white"}
+		req := &wire.LookupColorRequest{Cmap: wire.Colormap(cmapID.local), Name: "white"}
 		reply := server.handleRequest(client, req, 13)
 		if reply == nil {
 			t.Fatal("LookupColorRequest: expected reply, got nil")
 		}
-		lookupReply, ok := reply.(*lookupColorReply)
+		lookupReply, ok := reply.(*wire.LookupColorReply)
 		if !ok {
-			t.Fatalf("LookupColorRequest: expected *lookupColorReply, got %T", reply)
+			t.Fatalf("LookupColorRequest: expected *wire.LookupColorReply, got %T", reply)
 		}
 		// "white" is 0xFFFFFF, scaled to 16-bit is 0xFFFFFFFF
-		if lookupReply.red != 0xFFFF || lookupReply.green != 0xFFFF || lookupReply.blue != 0xFFFF {
-			t.Errorf("LookupColorRequest: expected white, got R:%x G:%x B:%x", lookupReply.red, lookupReply.green, lookupReply.blue)
+		if lookupReply.Red != 0xFFFF || lookupReply.Green != 0xFFFF || lookupReply.Blue != 0xFFFF {
+			t.Errorf("LookupColorRequest: expected white, got R:%x G:%x B:%x", lookupReply.Red, lookupReply.Green, lookupReply.Blue)
 		}
 	})
 
@@ -753,9 +749,9 @@ func TestColormapRequests(t *testing.T) {
 	t.Run("GetRGBColor", func(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
-		allocReq := &AllocColorRequest{Cmap: Colormap(cmapID.local), Red: 0x1234, Green: 0x5678, Blue: 0x9ABC}
-		allocReply := server.handleRequest(client, allocReq, 14).(*allocColorReply)
-		pixel := allocReply.pixel
+		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1234, Green: 0x5678, Blue: 0x9ABC}
+		allocReply := server.handleRequest(client, allocReq, 14).(*wire.AllocColorReply)
+		pixel := allocReply.Pixel
 
 		r, g, b := server.GetRGBColor(cmapID, pixel)
 		if r != 0x12 || g != 0x56 || b != 0x9A {
@@ -763,9 +759,9 @@ func TestColormapRequests(t *testing.T) {
 		}
 
 		// Test with default colormap
-		allocReqDefault := &AllocColorRequest{Cmap: Colormap(server.defaultColormap), Red: 0xDEFF, Green: 0xADBE, Blue: 0xEF00}
-		allocReplyDefault := server.handleRequest(client, allocReqDefault, 15).(*allocColorReply)
-		pixelDefault := allocReplyDefault.pixel
+		allocReqDefault := &wire.AllocColorRequest{Cmap: wire.Colormap(server.defaultColormap), Red: 0xDEFF, Green: 0xADBE, Blue: 0xEF00}
+		allocReplyDefault := server.handleRequest(client, allocReqDefault, 15).(*wire.AllocColorReply)
+		pixelDefault := allocReplyDefault.Pixel
 
 		r, g, b = server.GetRGBColor(xID{local: server.defaultColormap}, pixelDefault)
 		if r != 0xDE || g != 0xAD || b != 0xEF {
@@ -785,12 +781,12 @@ func TestColormapRequests(t *testing.T) {
 		newCmapID := xID{client: client.id, local: 201}
 
 		// 1. Create source colormap and allocate a color
-		server.colormaps[srcCmapID] = &colormap{pixels: make(map[uint32]xColorItem)}
-		color := xColorItem{Pixel: 0xABCDEF, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, ClientID: client.id}
+		server.colormaps[srcCmapID] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
+		color := wire.XColorItem{Pixel: 0xABCDEF, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, ClientID: client.id}
 		server.colormaps[srcCmapID].pixels[color.Pixel] = color
 
 		// 2. Send CopyColormapAndFree request
-		req := &CopyColormapAndFreeRequest{Mid: Colormap(newCmapID.local), SrcCmap: Colormap(srcCmapID.local)}
+		req := &wire.CopyColormapAndFreeRequest{Mid: wire.Colormap(newCmapID.local), SrcCmap: wire.Colormap(srcCmapID.local)}
 		reply := server.handleRequest(client, req, 16)
 		if reply != nil {
 			t.Fatalf("CopyColormapAndFreeRequest: expected nil reply for success, got %v", reply)
@@ -817,7 +813,7 @@ func TestKeyboardMappingRequests(t *testing.T) {
 	client := server.clients[1]
 
 	// 1. Test GetKeyboardMappingRequest
-	getReq := &GetKeyboardMappingRequest{FirstKeyCode: 10, Count: 2}
+	getReq := &wire.GetKeyboardMappingRequest{FirstKeyCode: 10, Count: 2}
 	reply := server.handleRequest(client, getReq, 2)
 	if reply == nil {
 		t.Fatal("GetKeyboardMapping: handleRequest returned a nil reply")
@@ -848,7 +844,7 @@ func TestKeyboardMappingRequests(t *testing.T) {
 	}
 
 	// 2. Test ChangeKeyboardMappingRequest
-	changeReq := &ChangeKeyboardMappingRequest{
+	changeReq := &wire.ChangeKeyboardMappingRequest{
 		KeyCodeCount:      1,
 		FirstKeyCode:      10,
 		KeySymsPerKeyCode: 1,
@@ -866,58 +862,58 @@ func TestExtensionRequests(t *testing.T) {
 	client := server.clients[1]
 
 	// 1. Test QueryExtension for a known extension (BIG-REQUESTS)
-	queryBigReq := &QueryExtensionRequest{Name: BigRequestsExtensionName}
+	queryBigReq := &wire.QueryExtensionRequest{Name: wire.BigRequestsExtensionName}
 	reply := server.handleRequest(client, queryBigReq, 2)
 	if reply == nil {
 		t.Fatal("QueryExtension (BIG-REQUESTS): handleRequest returned a nil reply")
 	}
-	queryBigReply, ok := reply.(*queryExtensionReply)
+	queryBigReply, ok := reply.(*wire.QueryExtensionReply)
 	if !ok {
-		t.Fatalf("QueryExtension (BIG-REQUESTS): expected *queryExtensionReply, got %T", reply)
+		t.Fatalf("QueryExtension (BIG-REQUESTS): expected *wire.QueryExtensionReply, got %T", reply)
 	}
-	if !queryBigReply.present || queryBigReply.majorOpcode != bigRequestsOpcode {
-		t.Errorf("QueryExtension (BIG-REQUESTS): incorrect reply. Got present=%t, opcode=%d", queryBigReply.present, queryBigReply.majorOpcode)
+	if !queryBigReply.Present || queryBigReply.MajorOpcode != wire.BigRequestsOpcode {
+		t.Errorf("QueryExtension (BIG-REQUESTS): incorrect reply. Got present=%t, opcode=%d", queryBigReply.Present, queryBigReply.MajorOpcode)
 	}
 
 	// 2. Test QueryExtension for the new XInput extension
-	queryXInputReq := &QueryExtensionRequest{Name: XInputExtensionName}
+	queryXInputReq := &wire.QueryExtensionRequest{Name: wire.XInputExtensionName}
 	reply = server.handleRequest(client, queryXInputReq, 3)
 	if reply == nil {
 		t.Fatal("QueryExtension (XInput): handleRequest returned a nil reply")
 	}
-	queryXInputReply, ok := reply.(*queryExtensionReply)
+	queryXInputReply, ok := reply.(*wire.QueryExtensionReply)
 	if !ok {
-		t.Fatalf("QueryExtension (XInput): expected *queryExtensionReply, got %T", reply)
+		t.Fatalf("QueryExtension (XInput): expected *wire.QueryExtensionReply, got %T", reply)
 	}
-	if !queryXInputReply.present || queryXInputReply.majorOpcode != xInputOpcode {
-		t.Errorf("QueryExtension (XInput): incorrect reply. Got present=%t, opcode=%d", queryXInputReply.present, queryXInputReply.majorOpcode)
+	if !queryXInputReply.Present || queryXInputReply.MajorOpcode != wire.XInputOpcode {
+		t.Errorf("QueryExtension (XInput): incorrect reply. Got present=%t, opcode=%d", queryXInputReply.Present, queryXInputReply.MajorOpcode)
 	}
 
 	// 3. Test ListExtensions
-	listReq := &ListExtensionsRequest{}
+	listReq := &wire.ListExtensionsRequest{}
 	reply = server.handleRequest(client, listReq, 4)
 	if reply == nil {
 		t.Fatal("ListExtensions: handleRequest returned a nil reply")
 	}
-	listReply, ok := reply.(*listExtensionsReply)
+	listReply, ok := reply.(*wire.ListExtensionsReply)
 	if !ok {
-		t.Fatalf("ListExtensions: expected *listExtensionsReply, got %T", reply)
+		t.Fatalf("ListExtensions: expected *wire.ListExtensionsReply, got %T", reply)
 	}
-	if len(listReply.names) != 2 || listReply.names[0] != BigRequestsExtensionName || listReply.names[1] != XInputExtensionName {
-		t.Errorf("ListExtensions: incorrect extension list. Got %v", listReply.names)
+	if len(listReply.Names) != 2 || listReply.Names[0] != wire.BigRequestsExtensionName || listReply.Names[1] != wire.XInputExtensionName {
+		t.Errorf("ListExtensions: incorrect extension list. Got %v", listReply.Names)
 	}
 
 	// 4. Test XListInputDevices
-	xinputReq := &XInputRequest{MinorOpcode: XListInputDevices}
+	xinputReq := &wire.XInputRequest{MinorOpcode: wire.XListInputDevices}
 	reply = server.handleRequest(client, xinputReq, 5)
 	if reply == nil {
 		t.Fatal("XListInputDevices: handleRequest returned a nil reply")
 	}
-	listInputDevicesReply, ok := reply.(*ListInputDevicesReply)
+	listInputDevicesReply, ok := reply.(*wire.ListInputDevicesReply)
 	if !ok {
-		t.Fatalf("XListInputDevices: expected *ListInputDevicesReply, got %T", reply)
+		t.Fatalf("XListInputDevices: expected *wire.ListInputDevicesReply, got %T", reply)
 	}
-	if len(listInputDevicesReply.devices) != 2 {
-		t.Errorf("XListInputDevices: incorrect number of devices. Expected 2, got %d", len(listInputDevicesReply.devices))
+	if len(listInputDevicesReply.Devices) != 2 {
+		t.Errorf("XListInputDevices: incorrect number of devices. Expected 2, got %d", len(listInputDevicesReply.Devices))
 	}
 }
