@@ -21,7 +21,7 @@ func setupTestServerWithClient(t *testing.T) (*x11Server, *x11Client, *MockX11Fr
 		conn:        mockConn,
 		byteOrder:   binary.LittleEndian,
 		sequence:    0, // Will be incremented to 1 by readRequest
-		openDevices: make(map[byte]*deviceInfo),
+		openDevices: make(map[byte]*wire.DeviceInfo),
 		saveSet:     make(map[uint32]bool),
 	}
 
@@ -41,7 +41,7 @@ func setupTestServerWithClient(t *testing.T) (*x11Server, *x11Client, *MockX11Fr
 		defaultColormap: 1,
 	}
 	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
-	for k, v := range wire.KeyCodeToKeysym {
+	for k, v := range KeyCodeToKeysym {
 		server.keymap[k] = v
 	}
 

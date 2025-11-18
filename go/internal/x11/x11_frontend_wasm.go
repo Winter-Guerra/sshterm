@@ -12,6 +12,7 @@ import (
 	"syscall/js"
 
 	"github.com/c2FmZQ/sshterm/internal/jsutil"
+	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
 
 type property struct {
@@ -70,7 +71,7 @@ type wasmX11Frontend struct {
 	body             js.Value
 	windows          map[xID]*windowInfo    // Map to store window elements (div)
 	pixmaps          map[xID]*pixmapInfo    // Map to store pixmap elements (canvas)
-	gcs              map[xID]GC             // Map to store graphics contexts (Go representation)
+	gcs              map[xID]wire.GC        // Map to store graphics contexts (Go representation)
 	fonts            map[xID]*fontInfo      // Map to store opened fonts
 	cursors          map[xID]*cursorInfo    // Map to store cursor info
 	focusedWindowID  xID                    // Track the currently focused window
@@ -79,7 +80,7 @@ type wasmX11Frontend struct {
 	atoms            map[string]uint32      // Map atom names to IDs
 	nextAtomID       uint32                 // Next available atom ID
 	cursorStyles     map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
-	modifierMap      []KeyCode
+	modifierMap      []wire.KeyCode
 }
 
 func (w *wasmX11Frontend) showMessage(message string) {
@@ -181,7 +182,7 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 		body:         body,
 		windows:      make(map[xID]*windowInfo),
 		pixmaps:      make(map[xID]*pixmapInfo),
-		gcs:          make(map[xID]GC),
+		gcs:          make(map[xID]wire.GC),
 		fonts:        make(map[xID]*fontInfo),
 		cursors:      make(map[xID]*cursorInfo),
 		server:       s,
@@ -211,7 +212,7 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 	return frontend
 }
 
-func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc GC) (out string) {
+func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc wire.GC) (out string) {
 	defer func() {
 		debugf("getForegroundColor: cmap:%s gc=%+v %s", cmap, gc, out)
 	}()
@@ -219,7 +220,7 @@ func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc GC) (out string) {
 	return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
 }
 
-func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values WindowAttributes) {
+func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values wire.WindowAttributes) {
 	debugf("X11: createWindow xid=%s parent=%d x=%d y=%d width=%d height=%d depth=%d values=%+v", xid, parent, x, y, width, height, depth, values)
 
 	windowDiv := w.document.Call("createElement", "div")
@@ -868,7 +869,7 @@ func (w *wasmX11Frontend) getLowestZIndex() int {
 	}
 	return lowest
 }
-func (w *wasmX11Frontend) CreateGC(xid xID, valueMask uint32, values GC) {
+func (w *wasmX11Frontend) CreateGC(xid xID, valueMask uint32, values wire.GC) {
 	debugf("X11: createGC id=%s gc=%+v", xid, values)
 	w.gcs[xid] = values
 	w.recordOperation(CanvasOperation{
@@ -877,7 +878,7 @@ func (w *wasmX11Frontend) CreateGC(xid xID, valueMask uint32, values GC) {
 	})
 }
 
-func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc GC) {
+func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc wire.GC) {
 	debugf("X11: changeGC id=%s valueMask=%d gc=%+v", xid, valueMask, gc)
 	existingGC, ok := w.gcs[xid]
 	if !ok {
@@ -890,73 +891,73 @@ func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc GC) {
 		return
 	}
 
-	if valueMask&GCFunction != 0 {
+	if valueMask&wire.GCFunction != 0 {
 		existingGC.Function = gc.Function
 	}
-	if valueMask&GCPlaneMask != 0 {
+	if valueMask&wire.GCPlaneMask != 0 {
 		existingGC.PlaneMask = gc.PlaneMask
 	}
-	if valueMask&GCForeground != 0 {
+	if valueMask&wire.GCForeground != 0 {
 		existingGC.Foreground = gc.Foreground
 	}
-	if valueMask&GCBackground != 0 {
+	if valueMask&wire.GCBackground != 0 {
 		existingGC.Background = gc.Background
 	}
-	if valueMask&GCLineWidth != 0 {
+	if valueMask&wire.GCLineWidth != 0 {
 		existingGC.LineWidth = gc.LineWidth
 	}
-	if valueMask&GCLineStyle != 0 {
+	if valueMask&wire.GCLineStyle != 0 {
 		existingGC.LineStyle = gc.LineStyle
 	}
-	if valueMask&GCCapStyle != 0 {
+	if valueMask&wire.GCCapStyle != 0 {
 		existingGC.CapStyle = gc.CapStyle
 	}
-	if valueMask&GCJoinStyle != 0 {
+	if valueMask&wire.GCJoinStyle != 0 {
 		existingGC.JoinStyle = gc.JoinStyle
 	}
-	if valueMask&GCFillStyle != 0 {
+	if valueMask&wire.GCFillStyle != 0 {
 		existingGC.FillStyle = gc.FillStyle
 	}
-	if valueMask&GCFillRule != 0 {
+	if valueMask&wire.GCFillRule != 0 {
 		existingGC.FillRule = gc.FillRule
 	}
-	if valueMask&GCTile != 0 {
+	if valueMask&wire.GCTile != 0 {
 		existingGC.Tile = gc.Tile
 	}
-	if valueMask&GCStipple != 0 {
+	if valueMask&wire.GCStipple != 0 {
 		existingGC.Stipple = gc.Stipple
 	}
-	if valueMask&GCTileStipXOrigin != 0 {
+	if valueMask&wire.GCTileStipXOrigin != 0 {
 		existingGC.TileStipXOrigin = gc.TileStipXOrigin
 	}
-	if valueMask&GCTileStipYOrigin != 0 {
+	if valueMask&wire.GCTileStipYOrigin != 0 {
 		existingGC.TileStipYOrigin = gc.TileStipYOrigin
 	}
-	if valueMask&GCFont != 0 {
+	if valueMask&wire.GCFont != 0 {
 		existingGC.Font = gc.Font
 	}
-	if valueMask&GCSubwindowMode != 0 {
+	if valueMask&wire.GCSubwindowMode != 0 {
 		existingGC.SubwindowMode = gc.SubwindowMode
 	}
-	if valueMask&GCGraphicsExposures != 0 {
+	if valueMask&wire.GCGraphicsExposures != 0 {
 		existingGC.GraphicsExposures = gc.GraphicsExposures
 	}
-	if valueMask&GCClipXOrigin != 0 {
+	if valueMask&wire.GCClipXOrigin != 0 {
 		existingGC.ClipXOrigin = gc.ClipXOrigin
 	}
-	if valueMask&GCClipYOrigin != 0 {
+	if valueMask&wire.GCClipYOrigin != 0 {
 		existingGC.ClipYOrigin = gc.ClipYOrigin
 	}
-	if valueMask&GCClipMask != 0 {
+	if valueMask&wire.GCClipMask != 0 {
 		existingGC.ClipMask = gc.ClipMask
 	}
-	if valueMask&GCDashOffset != 0 {
+	if valueMask&wire.GCDashOffset != 0 {
 		existingGC.DashOffset = gc.DashOffset
 	}
-	if valueMask&GCDashes != 0 {
+	if valueMask&wire.GCDashes != 0 {
 		existingGC.Dashes = gc.Dashes
 	}
-	if valueMask&GCArcMode != 0 {
+	if valueMask&wire.GCArcMode != 0 {
 		existingGC.ArcMode = gc.ArcMode
 	}
 
@@ -1132,7 +1133,7 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	})
 }
 
-func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc GC) {
+func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC) {
 	ctx.Set("imageSmoothingEnabled", false)
 
 	color := w.getForegroundColor(colormap, gc)
@@ -1141,36 +1142,36 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc GC) {
 	ctx.Set("lineWidth", gc.LineWidth)
 
 	switch gc.LineStyle {
-	case LineStyleOnOffDash, LineStyleDoubleDash:
-	case LineStyleSolid:
+	case wire.LineStyleOnOffDash, wire.LineStyleDoubleDash:
+	case wire.LineStyleSolid:
 		ctx.Call("setLineDash", js.Global().Get("Array").New())
 	}
 	switch gc.CapStyle {
-	case CapStyleNotLast, CapStyleButt:
+	case wire.CapStyleNotLast, wire.CapStyleButt:
 		ctx.Set("lineCap", "butt")
-	case CapStyleRound:
+	case wire.CapStyleRound:
 		ctx.Set("lineCap", "round")
-	case CapStyleProjecting:
+	case wire.CapStyleProjecting:
 		ctx.Set("lineCap", "square")
 	}
 	switch gc.JoinStyle {
-	case JoinStyleMiter:
+	case wire.JoinStyleMiter:
 		ctx.Set("lineJoin", "miter")
-	case JoinStyleRound:
+	case wire.JoinStyleRound:
 		ctx.Set("lineJoin", "round")
-	case JoinStyleBevel:
+	case wire.JoinStyleBevel:
 		ctx.Set("lineJoin", "bevel")
 	}
 
 	switch gc.FillStyle {
-	case FillStyleSolid:
+	case wire.FillStyleSolid:
 		ctx.Set("fillStyle", color)
-	case FillStyleTiled:
+	case wire.FillStyleTiled:
 		if tilePixmap, ok := w.pixmaps[xID{local: gc.Tile}]; ok {
 			pattern := ctx.Call("createPattern", tilePixmap.canvas, "repeat")
 			ctx.Set("fillStyle", pattern)
 		}
-	case FillStyleStippled:
+	case wire.FillStyleStippled:
 		if stipplePixmap, ok := w.pixmaps[xID{local: gc.Stipple}]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
 			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
@@ -1185,7 +1186,7 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc GC) {
 			pattern := ctx.Call("createPattern", stippleCanvas, "repeat")
 			ctx.Set("fillStyle", pattern)
 		}
-	case FillStyleOpaqueStippled:
+	case wire.FillStyleOpaqueStippled:
 		if stipplePixmap, ok := w.pixmaps[xID{local: gc.Stipple}]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
 			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
@@ -1241,11 +1242,11 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 	useSoftwareEmulation := false
 
 	switch gc.Function {
-	case FunctionClear:
+	case wire.FunctionClear:
 		nativeOp = "destination-out"
-	case FunctionCopy:
+	case wire.FunctionCopy:
 		nativeOp = "source-over"
-	case FunctionNoOp:
+	case wire.FunctionNoOp:
 		debugf("applyGC: NoOp, returning")
 		return
 	default:
@@ -1313,31 +1314,31 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 
 		var result uint32
 		switch gc.Function {
-		case FunctionXor:
+		case wire.FunctionXor:
 			result = src ^ dest
-		case FunctionAnd:
+		case wire.FunctionAnd:
 			result = src & dest
-		case FunctionAndReverse:
+		case wire.FunctionAndReverse:
 			result = src & (^dest & 0xffffff)
-		case FunctionAndInverted:
+		case wire.FunctionAndInverted:
 			result = (^src & 0xffffff) & dest
-		case FunctionOr:
+		case wire.FunctionOr:
 			result = src | dest
-		case FunctionNor:
+		case wire.FunctionNor:
 			result = ^(src | dest) & 0xffffff
-		case FunctionEquiv:
+		case wire.FunctionEquiv:
 			result = ^(src ^ dest) & 0xffffff
-		case FunctionInvert:
+		case wire.FunctionInvert:
 			result = ^dest & 0xffffff
-		case FunctionOrReverse:
+		case wire.FunctionOrReverse:
 			result = src | (^dest & 0xffffff)
-		case FunctionCopyInverted:
+		case wire.FunctionCopyInverted:
 			result = ^src & 0xffffff
-		case FunctionOrInverted:
+		case wire.FunctionOrInverted:
 			result = (^src & 0xffffff) | dest
-		case FunctionNand:
+		case wire.FunctionNand:
 			result = ^(src & dest) & 0xffffff
-		case FunctionSet:
+		case wire.FunctionSet:
 			result = 0xffffff & gc.PlaneMask
 		}
 
@@ -2042,7 +2043,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	})
 }
 
-func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
+func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []wire.PolyTextItem) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
 		return
@@ -2070,7 +2071,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 
 	for _, item := range items {
 		switch it := item.(type) {
-		case PolyText8String:
+		case wire.PolyText8String:
 			currentX += int32(it.Delta)
 			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(it.Str)).String()
 			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
@@ -2085,7 +2086,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 			} else {
 				opBounds = opBounds.Union(itemBounds)
 			}
-		case PolyTextFont:
+		case wire.PolyTextFont:
 			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
 				ctx.Set("font", font.cssFont)
 			}
@@ -2101,13 +2102,13 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 		recordedItems = nil // Reset for re-recording
 		for _, item := range items {
 			switch it := item.(type) {
-			case PolyText8String:
+			case wire.PolyText8String:
 				currentX += int32(it.Delta)
 				decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(it.Str)).String()
 				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
 				targetCtx.Call("fillText", decodedText, currentX, y)
 				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
-			case PolyTextFont:
+			case wire.PolyTextFont:
 				if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
 					targetCtx.Set("font", font.cssFont)
 					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
@@ -2136,7 +2137,7 @@ func (w *wasmX11Frontend) SetDashes(gcID xID, dashOffset uint16, dashes []byte) 
 	})
 }
 
-func (w *wasmX11Frontend) SetClipRectangles(gcID xID, clippingX, clippingY int16, rectangles []Rectangle, ordering byte) {
+func (w *wasmX11Frontend) SetClipRectangles(gcID xID, clippingX, clippingY int16, rectangles []wire.Rectangle, ordering byte) {
 	debugf("X11: setClipRectangles gc=%s clippingX=%d clippingY=%d rectangles=%v ordering=%d", gcID, clippingX, clippingY, rectangles, ordering)
 	if gc, ok := w.gcs[gcID]; ok {
 		gc.ClipXOrigin = int32(clippingX)
@@ -2195,7 +2196,7 @@ func (w *wasmX11Frontend) GetPointerControl() (accelNumerator, accelDenominator,
 	return 1, 1, 1, nil
 }
 
-func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values KeyboardControl) {
+func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values wire.KeyboardControl) {
 	debugf("X11: ChangeKeyboardControl (not implemented)")
 	w.recordOperation(CanvasOperation{
 		Type: "changeKeyboardControl",
@@ -2203,13 +2204,13 @@ func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values Keyboar
 	})
 }
 
-func (w *wasmX11Frontend) GetKeyboardControl() (KeyboardControl, error) {
+func (w *wasmX11Frontend) GetKeyboardControl() (wire.KeyboardControl, error) {
 	debugf("X11: GetKeyboardControl (not implemented)")
 	w.recordOperation(CanvasOperation{
 		Type: "getKeyboardControl",
 		Args: []any{},
 	})
-	return KeyboardControl{}, nil
+	return wire.KeyboardControl{}, nil
 }
 
 func (w *wasmX11Frontend) SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte) {
@@ -2229,7 +2230,7 @@ func (w *wasmX11Frontend) GetScreenSaver() (timeout, interval int16, preferBlank
 	return 0, 0, 0, 0, nil
 }
 
-func (w *wasmX11Frontend) ChangeHosts(mode byte, host Host) {
+func (w *wasmX11Frontend) ChangeHosts(mode byte, host wire.Host) {
 	debugf("X11: ChangeHosts (not implemented)")
 	w.recordOperation(CanvasOperation{
 		Type: "changeHosts",
@@ -2237,7 +2238,7 @@ func (w *wasmX11Frontend) ChangeHosts(mode byte, host Host) {
 	})
 }
 
-func (w *wasmX11Frontend) ListHosts() ([]Host, error) {
+func (w *wasmX11Frontend) ListHosts() ([]wire.Host, error) {
 	debugf("X11: ListHosts (not implemented)")
 	w.recordOperation(CanvasOperation{
 		Type: "listHosts",
@@ -2270,7 +2271,7 @@ func (w *wasmX11Frontend) KillClient(resource uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) RotateProperties(window xID, delta int16, atoms []Atom) {
+func (w *wasmX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) {
 	debugf("X11: RotateProperties (not implemented)")
 	w.recordOperation(CanvasOperation{
 		Type: "rotateProperties",
@@ -2286,7 +2287,7 @@ func (w *wasmX11Frontend) ForceScreenSaver(mode byte) {
 	})
 }
 
-func (w *wasmX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []KeyCode) (byte, error) {
+func (w *wasmX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes []wire.KeyCode) (byte, error) {
 	debugf("X11: SetModifierMapping keyCodesPerModifier=%d keyCodes=%v", keyCodesPerModifier, keyCodes)
 	w.recordOperation(CanvasOperation{
 		Type: "setModifierMapping",
@@ -2296,19 +2297,19 @@ func (w *wasmX11Frontend) SetModifierMapping(keyCodesPerModifier byte, keyCodes 
 	return 0, nil
 }
 
-func (w *wasmX11Frontend) GetModifierMapping() ([]KeyCode, error) {
+func (w *wasmX11Frontend) GetModifierMapping() ([]wire.KeyCode, error) {
 	debugf("X11: GetModifierMapping")
 	w.recordOperation(CanvasOperation{
 		Type: "getModifierMapping",
 		Args: []any{},
 	})
 	if w.modifierMap == nil {
-		return make([]KeyCode, 8), nil
+		return make([]wire.KeyCode, 8), nil
 	}
 	return w.modifierMap, nil
 }
 
-func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []PolyTextItem) {
+func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []wire.PolyTextItem) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
 		return
@@ -2336,7 +2337,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 
 	for _, item := range items {
 		switch it := item.(type) {
-		case PolyText16String:
+		case wire.PolyText16String:
 			currentX += int32(it.Delta)
 			textBytes := make([]byte, len(it.Str)*2)
 			for i, r := range it.Str {
@@ -2355,7 +2356,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 			} else {
 				opBounds = opBounds.Union(itemBounds)
 			}
-		case PolyTextFont:
+		case wire.PolyTextFont:
 			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
 				ctx.Set("font", font.cssFont)
 			}
@@ -2371,7 +2372,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 		recordedItems = nil // Reset for re-recording
 		for _, item := range items {
 			switch it := item.(type) {
-			case PolyText16String:
+			case wire.PolyText16String:
 				currentX += int32(it.Delta)
 				textBytes := make([]byte, len(it.Str)*2)
 				for i, r := range it.Str {
@@ -2381,7 +2382,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
 				targetCtx.Call("fillText", decodedText, currentX, y)
 				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
-			case PolyTextFont:
+			case wire.PolyTextFont:
 				if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
 					targetCtx.Set("font", font.cssFont)
 					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
@@ -2630,7 +2631,7 @@ func (w *wasmX11Frontend) FreeCursor(cursorID xID) {
 }
 
 func (w *wasmX11Frontend) SendEvent(eventData messageEncoder) {
-	encodedData := eventData.encodeMessage(w.server.byteOrder)
+	encodedData := eventData.EncodeMessage(w.server.byteOrder)
 	debugf("X11: SendEvent data=%v", encodedData)
 	// In a real implementation, this would send the event data back to the Go server
 	// which would then forward it to the X11 client.
@@ -3051,7 +3052,7 @@ func (w *wasmX11Frontend) keyboardEventHandler(xid xID, eventType string) js.Fun
 	})
 }
 
-func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []xCharInfo) {
+func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo) {
 	w.recordOperation(CanvasOperation{
 		Type: "queryFont",
 		Args: []any{fid.local},
@@ -3102,14 +3103,14 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, mi
 	initialLSB := int16(math.Round(spaceMetrics.Get("actualBoundingBoxLeft").Float()))
 	initialRSB := int16(math.Round(spaceMetrics.Get("actualBoundingBoxRight").Float()))
 
-	minBounds = xCharInfo{
+	minBounds = wire.XCharInfo{
 		LeftSideBearing:  initialLSB,
 		RightSideBearing: initialRSB,
 		CharacterWidth:   initialCharWidth,
 		Ascent:           initialAscent,
 		Descent:          initialDescent,
 	}
-	maxBounds = xCharInfo{
+	maxBounds = wire.XCharInfo{
 		LeftSideBearing:  initialLSB,
 		RightSideBearing: initialRSB,
 		CharacterWidth:   initialCharWidth,
@@ -3125,7 +3126,7 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, mi
 	maxByte1 = 0
 	allCharsExist = true // Assume true, set to false if any char has 0 width
 
-	charInfos = make([]xCharInfo, maxCharOrByte2-minCharOrByte2+1)
+	charInfos = make([]wire.XCharInfo, maxCharOrByte2-minCharOrByte2+1)
 
 	for i := minCharOrByte2; i <= maxCharOrByte2; i++ {
 		char := string(rune(i))
@@ -3176,7 +3177,7 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds xCharInfo, mi
 			charDescent = 1
 		}
 
-		ci := xCharInfo{
+		ci := wire.XCharInfo{
 			LeftSideBearing:  charLSB,
 			RightSideBearing: charRSB,
 			CharacterWidth:   charWidth,
@@ -3331,23 +3332,23 @@ func (w *wasmX11Frontend) ListFonts(maxNames uint16, pattern string) []string {
 	return matchingFonts
 }
 
-func (w *wasmX11Frontend) GetWindowAttributes(xid xID) WindowAttributes {
+func (w *wasmX11Frontend) GetWindowAttributes(xid xID) wire.WindowAttributes {
 	// Not implemented for wasm
 	w.recordOperation(CanvasOperation{
 		Type: "getWindowAttributes",
 		Args: []any{xid.local},
 	})
-	return WindowAttributes{}
+	return wire.WindowAttributes{}
 }
 
-func (w *wasmX11Frontend) watchWindowEvents(xid xID, values WindowAttributes) {
+func (w *wasmX11Frontend) watchWindowEvents(xid xID, values wire.WindowAttributes) {
 	winInfo, ok := w.windows[xid]
 	if !ok {
 		return
 	}
 
 	// XInput keyboard events
-	if values.EventMask&(DeviceKeyPressMask|DeviceKeyReleaseMask) != 0 {
+	if values.EventMask&(wire.DeviceKeyPressMask|wire.DeviceKeyReleaseMask) != 0 {
 		if _, ok := winInfo.xInputEvents["keydown"]; !ok {
 			fn := w.keyboardEventHandler(xid, "keydown")
 			winInfo.xInputEvents["keydown"] = fn
@@ -3370,7 +3371,7 @@ func (w *wasmX11Frontend) watchWindowEvents(xid xID, values WindowAttributes) {
 	}
 
 	// XInput mouse events
-	if values.EventMask&DeviceButtonPressMask != 0 {
+	if values.EventMask&wire.DeviceButtonPressMask != 0 {
 		if _, ok := winInfo.xInputEvents["mousedown"]; !ok {
 			fn := w.mouseEventHandler(xid, "mousedown")
 			winInfo.xInputEvents["mousedown"] = fn
@@ -3382,7 +3383,7 @@ func (w *wasmX11Frontend) watchWindowEvents(xid xID, values WindowAttributes) {
 			delete(winInfo.xInputEvents, "mousedown")
 		}
 	}
-	if values.EventMask&DeviceButtonReleaseMask != 0 {
+	if values.EventMask&wire.DeviceButtonReleaseMask != 0 {
 		if _, ok := winInfo.xInputEvents["mouseup"]; !ok {
 			fn := w.mouseEventHandler(xid, "mouseup")
 			winInfo.xInputEvents["mouseup"] = fn
@@ -3396,27 +3397,27 @@ func (w *wasmX11Frontend) watchWindowEvents(xid xID, values WindowAttributes) {
 	}
 }
 
-func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values WindowAttributes) {
+func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values wire.WindowAttributes) {
 	debugf("X11: changeWindowAttributes id=%s valueMask=%d values=%+v", xid, valueMask, values)
 	if winInfo, ok := w.windows[xid]; ok {
 		style := winInfo.div.Get("style")
-		if valueMask&CWColormap != 0 {
+		if valueMask&wire.CWColormap != 0 {
 			winInfo.colormap = xID{client: xid.client, local: uint32(values.Colormap)}
 		}
-		if valueMask&CWBackPixel != 0 {
+		if valueMask&wire.CWBackPixel != 0 {
 			r, g, b := w.GetRGBColor(winInfo.colormap, values.BackgroundPixel)
 			bgColor := fmt.Sprintf("rgb(%d, %d, %d)", r, g, b)
 			style.Set("backgroundColor", bgColor)
 		}
-		if valueMask&CWBorderPixel != 0 {
+		if valueMask&wire.CWBorderPixel != 0 {
 			r, g, b := w.GetRGBColor(winInfo.colormap, values.BorderPixel)
 			borderColor := fmt.Sprintf("rgb(%d, %d, %d)", r, g, b)
 			style.Set("borderColor", borderColor)
 		}
-		if valueMask&CWCursor != 0 {
+		if valueMask&wire.CWCursor != 0 {
 			w.SetWindowCursor(xid, xID{client: xid.client, local: uint32(values.Cursor)})
 		}
-		if valueMask&CWEventMask != 0 {
+		if valueMask&wire.CWEventMask != 0 {
 			w.watchWindowEvents(xid, values)
 		}
 	}

@@ -4,19 +4,14 @@ package wire
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
-)
-
-var (
-	errParseError = errors.New("x11: request parsing error")
 )
 
 type Request interface {
 	OpCode() ReqCode
 }
 
-func padLen(n int) int {
+func PadLen(n int) int {
 	return (4 - n%4) % 4
 }
 
@@ -45,13 +40,12 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 	data := reqHeader[1]
 	body := raw[bodyOffset:]
 
-	// TODO: Move big_requests.go and xinput.go to the wire package.
-	// if opcode == BigRequestsOpcode {
-	// 	return ParseEnableBigRequestsRequest(order, raw, seq)
-	// }
-	// if opcode == XInputOpcode {
-	// 	return ParseXInputRequest(order, data, body, seq)
-	// }
+	if opcode == BigRequestsOpcode {
+		return ParseEnableBigRequestsRequest(order, raw, seq)
+	}
+	if opcode == XInputOpcode {
+		return ParseXInputRequest(order, data, body, seq)
+	}
 
 	switch opcode {
 	case CreateWindow:
@@ -538,7 +532,7 @@ func ParseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []b
 	req.Class = order.Uint16(requestBody[18:20])
 	req.Visual = VisualID(order.Uint32(requestBody[20:24]))
 	req.ValueMask = order.Uint32(requestBody[24:28])
-	values, bytesRead, err := parseWindowAttributes(order, req.ValueMask, requestBody[28:], seq)
+	values, bytesRead, err := ParseWindowAttributes(order, req.ValueMask, requestBody[28:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -574,7 +568,7 @@ func ParseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []by
 	req := &ChangeWindowAttributesRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
 	req.ValueMask = order.Uint32(requestBody[4:8])
-	values, bytesRead, err := parseWindowAttributes(order, req.ValueMask, requestBody[8:], seq)
+	values, bytesRead, err := ParseWindowAttributes(order, req.ValueMask, requestBody[8:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -943,7 +937,7 @@ func ParseInternAtomRequest(order binary.ByteOrder, data byte, requestBody []byt
 	req := &InternAtomRequest{}
 	req.OnlyIfExists = data != 0
 	nameLen := order.Uint16(requestBody[0:2])
-	paddedLen := 4 + int(nameLen) + padLen(int(nameLen))
+	paddedLen := 4 + int(nameLen) + PadLen(int(nameLen))
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, InternAtom)
 	}
@@ -1412,9 +1406,9 @@ type GrabKeyboardRequest struct {
 	KeyboardMode byte
 }
 
-func (GrabKeyboardRequest) OpCode() reqCode { return GrabKeyboard }
+func (GrabKeyboardRequest) OpCode() ReqCode { return GrabKeyboard }
 
-func parseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabKeyboardRequest, error) {
+func ParseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabKeyboardRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabKeyboard)
 	}
@@ -1438,9 +1432,9 @@ type UngrabKeyboardRequest struct {
 	Time Timestamp
 }
 
-func (UngrabKeyboardRequest) OpCode() reqCode { return UngrabKeyboard }
+func (UngrabKeyboardRequest) OpCode() ReqCode { return UngrabKeyboard }
 
-func parseUngrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyboardRequest, error) {
+func ParseUngrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyboardRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabKeyboard)
 	}
@@ -1471,9 +1465,9 @@ type GrabKeyRequest struct {
 	KeyboardMode byte
 }
 
-func (GrabKeyRequest) OpCode() reqCode { return GrabKey }
+func (GrabKeyRequest) OpCode() ReqCode { return GrabKey }
 
-func parseGrabKeyRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabKeyRequest, error) {
+func ParseGrabKeyRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabKeyRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabKey)
 	}
@@ -1503,9 +1497,9 @@ type UngrabKeyRequest struct {
 	Key        KeyCode
 }
 
-func (UngrabKeyRequest) OpCode() reqCode { return UngrabKey }
+func (UngrabKeyRequest) OpCode() ReqCode { return UngrabKey }
 
-func parseUngrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyRequest, error) {
+func ParseUngrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyRequest, error) {
 	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabKey)
 	}
@@ -1534,9 +1528,9 @@ type AllowEventsRequest struct {
 	Time Timestamp
 }
 
-func (AllowEventsRequest) OpCode() reqCode { return AllowEvents }
+func (AllowEventsRequest) OpCode() ReqCode { return AllowEvents }
 
-func parseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*AllowEventsRequest, error) {
+func ParseAllowEventsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*AllowEventsRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllowEvents)
 	}
@@ -1555,9 +1549,9 @@ GrabServer
 */
 type GrabServerRequest struct{}
 
-func (GrabServerRequest) OpCode() reqCode { return GrabServer }
+func (GrabServerRequest) OpCode() ReqCode { return GrabServer }
 
-func parseGrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabServerRequest, error) {
+func ParseGrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabServerRequest, error) {
 	return &GrabServerRequest{}, nil
 }
 
@@ -1570,9 +1564,9 @@ UngrabServer
 */
 type UngrabServerRequest struct{}
 
-func (UngrabServerRequest) OpCode() reqCode { return UngrabServer }
+func (UngrabServerRequest) OpCode() ReqCode { return UngrabServer }
 
-func parseUngrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabServerRequest, error) {
+func ParseUngrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabServerRequest, error) {
 	return &UngrabServerRequest{}, nil
 }
 
@@ -1588,9 +1582,9 @@ type QueryPointerRequest struct {
 	Drawable Drawable
 }
 
-func (QueryPointerRequest) OpCode() reqCode { return QueryPointer }
+func (QueryPointerRequest) OpCode() ReqCode { return QueryPointer }
 
-func parseQueryPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryPointerRequest, error) {
+func ParseQueryPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryPointerRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryPointer)
 	}
@@ -1615,9 +1609,9 @@ type GetMotionEventsRequest struct {
 	Stop   Timestamp
 }
 
-func (GetMotionEventsRequest) OpCode() reqCode { return GetMotionEvents }
+func (GetMotionEventsRequest) OpCode() ReqCode { return GetMotionEvents }
 
-func parseGetMotionEventsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetMotionEventsRequest, error) {
+func ParseGetMotionEventsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetMotionEventsRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetMotionEvents)
 	}
@@ -1646,9 +1640,9 @@ type TranslateCoordsRequest struct {
 	SrcY      int16
 }
 
-func (TranslateCoordsRequest) OpCode() reqCode { return TranslateCoords }
+func (TranslateCoordsRequest) OpCode() ReqCode { return TranslateCoords }
 
-func parseTranslateCoordsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*TranslateCoordsRequest, error) {
+func ParseTranslateCoordsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*TranslateCoordsRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, TranslateCoords)
 	}
@@ -1686,9 +1680,9 @@ type WarpPointerRequest struct {
 	DstY      int16
 }
 
-func (WarpPointerRequest) OpCode() reqCode { return WarpPointer }
+func (WarpPointerRequest) OpCode() ReqCode { return WarpPointer }
 
-func parseWarpPointerRequest(order binary.ByteOrder, payload []byte, seq uint16) (*WarpPointerRequest, error) {
+func ParseWarpPointerRequest(order binary.ByteOrder, payload []byte, seq uint16) (*WarpPointerRequest, error) {
 	if len(payload) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, WarpPointer)
 	}
@@ -1722,9 +1716,9 @@ type SetInputFocusRequest struct {
 	Time     Timestamp
 }
 
-func (SetInputFocusRequest) OpCode() reqCode { return SetInputFocus }
+func (SetInputFocusRequest) OpCode() ReqCode { return SetInputFocus }
 
-func parseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetInputFocusRequest, error) {
+func ParseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetInputFocusRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetInputFocus)
 	}
@@ -1744,9 +1738,9 @@ GetInputFocus
 */
 type GetInputFocusRequest struct{}
 
-func (GetInputFocusRequest) OpCode() reqCode { return GetInputFocus }
+func (GetInputFocusRequest) OpCode() ReqCode { return GetInputFocus }
 
-func parseGetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetInputFocusRequest, error) {
+func ParseGetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetInputFocusRequest, error) {
 	return &GetInputFocusRequest{}, nil
 }
 
@@ -1759,9 +1753,9 @@ QueryKeymap
 */
 type QueryKeymapRequest struct{}
 
-func (QueryKeymapRequest) OpCode() reqCode { return QueryKeymap }
+func (QueryKeymapRequest) OpCode() ReqCode { return QueryKeymap }
 
-func parseQueryKeymapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryKeymapRequest, error) {
+func ParseQueryKeymapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryKeymapRequest, error) {
 	return &QueryKeymapRequest{}, nil
 }
 
@@ -1782,16 +1776,16 @@ type OpenFontRequest struct {
 	Name string
 }
 
-func (OpenFontRequest) OpCode() reqCode { return OpenFont }
+func (OpenFontRequest) OpCode() ReqCode { return OpenFont }
 
-func parseOpenFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*OpenFontRequest, error) {
+func ParseOpenFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*OpenFontRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, OpenFont)
 	}
 	req := &OpenFontRequest{}
 	req.Fid = Font(order.Uint32(requestBody[0:4]))
 	nameLen := int(order.Uint16(requestBody[4:6]))
-	paddedLen := 8 + nameLen + padLen(8+nameLen)
+	paddedLen := 8 + nameLen + PadLen(8+nameLen)
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, OpenFont)
 	}
@@ -1811,9 +1805,9 @@ type CloseFontRequest struct {
 	Fid Font
 }
 
-func (CloseFontRequest) OpCode() reqCode { return CloseFont }
+func (CloseFontRequest) OpCode() ReqCode { return CloseFont }
 
-func parseCloseFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CloseFontRequest, error) {
+func ParseCloseFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CloseFontRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CloseFont)
 	}
@@ -1834,9 +1828,9 @@ type QueryFontRequest struct {
 	Fid Font
 }
 
-func (QueryFontRequest) OpCode() reqCode { return QueryFont }
+func (QueryFontRequest) OpCode() ReqCode { return QueryFont }
 
-func parseQueryFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryFontRequest, error) {
+func ParseQueryFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryFontRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryFont)
 	}
@@ -1859,9 +1853,9 @@ type QueryTextExtentsRequest struct {
 	Text []uint16
 }
 
-func (QueryTextExtentsRequest) OpCode() reqCode { return QueryTextExtents }
+func (QueryTextExtentsRequest) OpCode() ReqCode { return QueryTextExtents }
 
-func parseQueryTextExtentsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*QueryTextExtentsRequest, error) {
+func ParseQueryTextExtentsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*QueryTextExtentsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryTextExtents)
 	}
@@ -1908,16 +1902,16 @@ type ListFontsRequest struct {
 	Pattern  string
 }
 
-func (ListFontsRequest) OpCode() reqCode { return ListFonts }
+func (ListFontsRequest) OpCode() ReqCode { return ListFonts }
 
-func parseListFontsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListFontsRequest, error) {
+func ParseListFontsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListFontsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFonts)
 	}
 	req := &ListFontsRequest{}
 	req.MaxNames = order.Uint16(requestBody[0:2])
 	nameLen := int(order.Uint16(requestBody[2:4]))
-	paddedLen := 4 + nameLen + padLen(nameLen)
+	paddedLen := 4 + nameLen + PadLen(nameLen)
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFonts)
 	}
@@ -1941,16 +1935,16 @@ type ListFontsWithInfoRequest struct {
 	Pattern  string
 }
 
-func (ListFontsWithInfoRequest) OpCode() reqCode { return ListFontsWithInfo }
+func (ListFontsWithInfoRequest) OpCode() ReqCode { return ListFontsWithInfo }
 
-func parseListFontsWithInfoRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListFontsWithInfoRequest, error) {
+func ParseListFontsWithInfoRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListFontsWithInfoRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFontsWithInfo)
 	}
 	req := &ListFontsWithInfoRequest{}
 	req.MaxNames = order.Uint16(requestBody[0:2])
 	nameLen := int(order.Uint16(requestBody[2:4]))
-	paddedLen := 4 + nameLen + padLen(nameLen)
+	paddedLen := 4 + nameLen + PadLen(nameLen)
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListFontsWithInfo)
 	}
@@ -1974,9 +1968,9 @@ type SetFontPathRequest struct {
 	Paths    []string
 }
 
-func (SetFontPathRequest) OpCode() reqCode { return SetFontPath }
+func (SetFontPathRequest) OpCode() ReqCode { return SetFontPath }
 
-func parseSetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetFontPathRequest, error) {
+func ParseSetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetFontPathRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 	}
@@ -1999,7 +1993,7 @@ func parseSetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uin
 		tempPathsData = tempPathsData[pathLen:]
 		pathsLen += pathLen
 	}
-	paddedLen := pathsLen + padLen(pathsLen)
+	paddedLen := pathsLen + PadLen(pathsLen)
 	if len(pathsData) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetFontPath)
 	}
@@ -2015,9 +2009,9 @@ GetFontPath
 */
 type GetFontPathRequest struct{}
 
-func (GetFontPathRequest) OpCode() reqCode { return GetFontPath }
+func (GetFontPathRequest) OpCode() ReqCode { return GetFontPath }
 
-func parseGetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetFontPathRequest, error) {
+func ParseGetFontPathRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetFontPathRequest, error) {
 	return &GetFontPathRequest{}, nil
 }
 
@@ -2040,9 +2034,9 @@ type CreatePixmapRequest struct {
 	Depth    byte
 }
 
-func (CreatePixmapRequest) OpCode() reqCode { return CreatePixmap }
+func (CreatePixmapRequest) OpCode() ReqCode { return CreatePixmap }
 
-func parseCreatePixmapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreatePixmapRequest, error) {
+func ParseCreatePixmapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreatePixmapRequest, error) {
 	if len(payload) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreatePixmap)
 	}
@@ -2067,9 +2061,9 @@ type FreePixmapRequest struct {
 	Pid Pixmap
 }
 
-func (FreePixmapRequest) OpCode() reqCode { return FreePixmap }
+func (FreePixmapRequest) OpCode() ReqCode { return FreePixmap }
 
-func parseFreePixmapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreePixmapRequest, error) {
+func ParseFreePixmapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreePixmapRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreePixmap)
 	}
@@ -2096,9 +2090,9 @@ type CreateGCRequest struct {
 	Values    GC
 }
 
-func (CreateGCRequest) OpCode() reqCode { return CreateGC }
+func (CreateGCRequest) OpCode() ReqCode { return CreateGC }
 
-func parseCreateGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CreateGCRequest, error) {
+func ParseCreateGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CreateGCRequest, error) {
 	if len(requestBody) < 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateGC)
 	}
@@ -2106,7 +2100,7 @@ func parseCreateGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	req.Cid = GContext(order.Uint32(requestBody[0:4]))
 	req.Drawable = Drawable(order.Uint32(requestBody[4:8]))
 	req.ValueMask = order.Uint32(requestBody[8:12])
-	values, _, err := parseGCValues(order, req.ValueMask, requestBody[12:], seq)
+	values, _, err := ParseGCValues(order, req.ValueMask, requestBody[12:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -2130,16 +2124,16 @@ type ChangeGCRequest struct {
 	Values    GC
 }
 
-func (ChangeGCRequest) OpCode() reqCode { return ChangeGC }
+func (ChangeGCRequest) OpCode() ReqCode { return ChangeGC }
 
-func parseChangeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeGCRequest, error) {
+func ParseChangeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeGCRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeGC)
 	}
 	req := &ChangeGCRequest{}
 	req.Gc = GContext(order.Uint32(requestBody[0:4]))
 	req.ValueMask = order.Uint32(requestBody[4:8])
-	values, _, err := parseGCValues(order, req.ValueMask, requestBody[8:], seq)
+	values, _, err := ParseGCValues(order, req.ValueMask, requestBody[8:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -2163,9 +2157,9 @@ type CopyGCRequest struct {
 	ValueMask uint32
 }
 
-func (CopyGCRequest) OpCode() reqCode { return CopyGC }
+func (CopyGCRequest) OpCode() ReqCode { return CopyGC }
 
-func parseCopyGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyGCRequest, error) {
+func ParseCopyGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyGCRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyGC)
 	}
@@ -2194,9 +2188,9 @@ type SetDashesRequest struct {
 	Dashes     []byte
 }
 
-func (SetDashesRequest) OpCode() reqCode { return SetDashes }
+func (SetDashesRequest) OpCode() ReqCode { return SetDashes }
 
-func parseSetDashesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetDashesRequest, error) {
+func ParseSetDashesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetDashesRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetDashes)
 	}
@@ -2204,7 +2198,7 @@ func parseSetDashesRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 	req.GC = GContext(order.Uint32(requestBody[0:4]))
 	req.DashOffset = order.Uint16(requestBody[4:6])
 	nDashes := int(order.Uint16(requestBody[6:8]))
-	paddedLen := 8 + nDashes + padLen(8+nDashes)
+	paddedLen := 8 + nDashes + PadLen(8+nDashes)
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetDashes)
 	}
@@ -2234,9 +2228,9 @@ type SetClipRectanglesRequest struct {
 	Ordering   byte
 }
 
-func (SetClipRectanglesRequest) OpCode() reqCode { return SetClipRectangles }
+func (SetClipRectanglesRequest) OpCode() ReqCode { return SetClipRectangles }
 
-func parseSetClipRectanglesRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetClipRectanglesRequest, error) {
+func ParseSetClipRectanglesRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetClipRectanglesRequest, error) {
 	if len(requestBody) < 8 || len(requestBody)%8 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetClipRectangles)
 	}
@@ -2271,9 +2265,9 @@ type FreeGCRequest struct {
 	GC GContext
 }
 
-func (FreeGCRequest) OpCode() reqCode { return FreeGC }
+func (FreeGCRequest) OpCode() ReqCode { return FreeGC }
 
-func parseFreeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeGCRequest, error) {
+func ParseFreeGCRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeGCRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeGC)
 	}
@@ -2303,9 +2297,9 @@ type ClearAreaRequest struct {
 	Height    uint16
 }
 
-func (ClearAreaRequest) OpCode() reqCode { return ClearArea }
+func (ClearAreaRequest) OpCode() ReqCode { return ClearArea }
 
-func parseClearAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ClearAreaRequest, error) {
+func ParseClearAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ClearAreaRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ClearArea)
 	}
@@ -2346,9 +2340,9 @@ type CopyAreaRequest struct {
 	Height      uint16
 }
 
-func (CopyAreaRequest) OpCode() reqCode { return CopyArea }
+func (CopyAreaRequest) OpCode() ReqCode { return CopyArea }
 
-func parseCopyAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyAreaRequest, error) {
+func ParseCopyAreaRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyAreaRequest, error) {
 	if len(requestBody) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyArea)
 	}
@@ -2381,9 +2375,9 @@ type PolyPointRequest struct {
 	Coordinates []uint32
 }
 
-func (PolyPointRequest) OpCode() reqCode { return PolyPoint }
+func (PolyPointRequest) OpCode() ReqCode { return PolyPoint }
 
-func parsePolyPointRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyPointRequest, error) {
+func ParsePolyPointRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyPointRequest, error) {
 	if len(requestBody) < 8 || (len(requestBody)-8)%4 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyPoint)
 	}
@@ -2416,9 +2410,9 @@ type PolyLineRequest struct {
 	Coordinates []uint32
 }
 
-func (PolyLineRequest) OpCode() reqCode { return PolyLine }
+func (PolyLineRequest) OpCode() ReqCode { return PolyLine }
 
-func parsePolyLineRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyLineRequest, error) {
+func ParsePolyLineRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyLineRequest, error) {
 	if len(requestBody) < 8 || (len(requestBody)-8)%4 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyLine)
 	}
@@ -2451,9 +2445,9 @@ type PolySegmentRequest struct {
 	Segments []uint32
 }
 
-func (PolySegmentRequest) OpCode() reqCode { return PolySegment }
+func (PolySegmentRequest) OpCode() ReqCode { return PolySegment }
 
-func parsePolySegmentRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolySegmentRequest, error) {
+func ParsePolySegmentRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolySegmentRequest, error) {
 	if len(requestBody) < 8 || (len(requestBody)-8)%8 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolySegment)
 	}
@@ -2488,9 +2482,9 @@ type PolyRectangleRequest struct {
 	Rectangles []uint32
 }
 
-func (PolyRectangleRequest) OpCode() reqCode { return PolyRectangle }
+func (PolyRectangleRequest) OpCode() ReqCode { return PolyRectangle }
 
-func parsePolyRectangleRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyRectangleRequest, error) {
+func ParsePolyRectangleRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyRectangleRequest, error) {
 	if len(requestBody) < 8 || (len(requestBody)-8)%8 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyRectangle)
 	}
@@ -2525,9 +2519,9 @@ type PolyArcRequest struct {
 	Arcs     []uint32
 }
 
-func (PolyArcRequest) OpCode() reqCode { return PolyArc }
+func (PolyArcRequest) OpCode() ReqCode { return PolyArc }
 
-func parsePolyArcRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyArcRequest, error) {
+func ParsePolyArcRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyArcRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyArc)
 	}
@@ -2568,9 +2562,9 @@ type FillPolyRequest struct {
 	Coordinates []uint32
 }
 
-func (FillPolyRequest) OpCode() reqCode { return FillPoly }
+func (FillPolyRequest) OpCode() ReqCode { return FillPoly }
 
-func parseFillPolyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FillPolyRequest, error) {
+func ParseFillPolyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FillPolyRequest, error) {
 	if len(requestBody) < 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FillPoly)
 	}
@@ -2603,9 +2597,9 @@ type PolyFillRectangleRequest struct {
 	Rectangles []uint32
 }
 
-func (PolyFillRectangleRequest) OpCode() reqCode { return PolyFillRectangle }
+func (PolyFillRectangleRequest) OpCode() ReqCode { return PolyFillRectangle }
 
-func parsePolyFillRectangleRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyFillRectangleRequest, error) {
+func ParsePolyFillRectangleRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyFillRectangleRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyFillRectangle)
 	}
@@ -2640,9 +2634,9 @@ type PolyFillArcRequest struct {
 	Arcs     []uint32
 }
 
-func (PolyFillArcRequest) OpCode() reqCode { return PolyFillArc }
+func (PolyFillArcRequest) OpCode() ReqCode { return PolyFillArc }
 
-func parsePolyFillArcRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyFillArcRequest, error) {
+func ParsePolyFillArcRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyFillArcRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyFillArc)
 	}
@@ -2694,9 +2688,9 @@ type PutImageRequest struct {
 	Data     []byte
 }
 
-func (PutImageRequest) OpCode() reqCode { return PutImage }
+func (PutImageRequest) OpCode() ReqCode { return PutImage }
 
-func parsePutImageRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*PutImageRequest, error) {
+func ParsePutImageRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*PutImageRequest, error) {
 	if len(requestBody) < 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PutImage)
 	}
@@ -2737,9 +2731,9 @@ type GetImageRequest struct {
 	Format    byte
 }
 
-func (GetImageRequest) OpCode() reqCode { return GetImage }
+func (GetImageRequest) OpCode() ReqCode { return GetImage }
 
-func parseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GetImageRequest, error) {
+func ParseGetImageRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GetImageRequest, error) {
 	if len(requestBody) != 16 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetImage)
 	}
@@ -2774,9 +2768,9 @@ type PolyText8Request struct {
 	Items    []PolyTextItem
 }
 
-func (PolyText8Request) OpCode() reqCode { return PolyText8 }
+func (PolyText8Request) OpCode() ReqCode { return PolyText8 }
 
-func parsePolyText8Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText8Request, error) {
+func ParsePolyText8Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText8Request, error) {
 	var req PolyText8Request
 	if len(data) < 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyText8)
@@ -2837,9 +2831,9 @@ type PolyText16Request struct {
 	Items    []PolyTextItem
 }
 
-func (PolyText16Request) OpCode() reqCode { return PolyText16 }
+func (PolyText16Request) OpCode() ReqCode { return PolyText16 }
 
-func parsePolyText16Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText16Request, error) {
+func ParsePolyText16Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText16Request, error) {
 	var req PolyText16Request
 	if len(data) < 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, PolyText16)
@@ -2905,11 +2899,11 @@ type ImageText8Request struct {
 	Text     []byte
 }
 
-func (ImageText8Request) OpCode() reqCode { return ImageText8 }
+func (ImageText8Request) OpCode() ReqCode { return ImageText8 }
 
-func parseImageText8Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText8Request, error) {
+func ParseImageText8Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText8Request, error) {
 	n := int(data)
-	paddedLen := 12 + n + padLen(n)
+	paddedLen := 12 + n + PadLen(n)
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ImageText8)
 	}
@@ -2943,11 +2937,11 @@ type ImageText16Request struct {
 	Text     []uint16
 }
 
-func (ImageText16Request) OpCode() reqCode { return ImageText16 }
+func (ImageText16Request) OpCode() ReqCode { return ImageText16 }
 
-func parseImageText16Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText16Request, error) {
+func ParseImageText16Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText16Request, error) {
 	n := int(data)
-	paddedLen := 12 + 2*n + padLen(12+2*n)
+	paddedLen := 12 + 2*n + PadLen(12+2*n)
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ImageText16)
 	}
@@ -2979,9 +2973,9 @@ type CreateColormapRequest struct {
 	Visual VisualID
 }
 
-func (CreateColormapRequest) OpCode() reqCode { return CreateColormap }
+func (CreateColormapRequest) OpCode() ReqCode { return CreateColormap }
 
-func parseCreateColormapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreateColormapRequest, error) {
+func ParseCreateColormapRequest(order binary.ByteOrder, data byte, payload []byte, seq uint16) (*CreateColormapRequest, error) {
 	if len(payload) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateColormap)
 	}
@@ -3005,9 +2999,9 @@ type FreeColormapRequest struct {
 	Cmap Colormap
 }
 
-func (FreeColormapRequest) OpCode() reqCode { return FreeColormap }
+func (FreeColormapRequest) OpCode() ReqCode { return FreeColormap }
 
-func parseFreeColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeColormapRequest, error) {
+func ParseFreeColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeColormapRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeColormap)
 	}
@@ -3030,9 +3024,9 @@ type CopyColormapAndFreeRequest struct {
 	SrcCmap Colormap
 }
 
-func (CopyColormapAndFreeRequest) OpCode() reqCode { return CopyColormapAndFree }
+func (CopyColormapAndFreeRequest) OpCode() ReqCode { return CopyColormapAndFree }
 
-func parseCopyColormapAndFreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyColormapAndFreeRequest, error) {
+func ParseCopyColormapAndFreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CopyColormapAndFreeRequest, error) {
 	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyColormapAndFree)
 	}
@@ -3054,9 +3048,9 @@ type InstallColormapRequest struct {
 	Cmap Colormap
 }
 
-func (InstallColormapRequest) OpCode() reqCode { return InstallColormap }
+func (InstallColormapRequest) OpCode() ReqCode { return InstallColormap }
 
-func parseInstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*InstallColormapRequest, error) {
+func ParseInstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*InstallColormapRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, InstallColormap)
 	}
@@ -3077,9 +3071,9 @@ type UninstallColormapRequest struct {
 	Cmap Colormap
 }
 
-func (UninstallColormapRequest) OpCode() reqCode { return UninstallColormap }
+func (UninstallColormapRequest) OpCode() ReqCode { return UninstallColormap }
 
-func parseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UninstallColormapRequest, error) {
+func ParseUninstallColormapRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UninstallColormapRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UninstallColormap)
 	}
@@ -3100,9 +3094,9 @@ type ListInstalledColormapsRequest struct {
 	Window Window
 }
 
-func (ListInstalledColormapsRequest) OpCode() reqCode { return ListInstalledColormaps }
+func (ListInstalledColormapsRequest) OpCode() ReqCode { return ListInstalledColormaps }
 
-func parseListInstalledColormapsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListInstalledColormapsRequest, error) {
+func ParseListInstalledColormapsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListInstalledColormapsRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ListInstalledColormaps)
 	}
@@ -3130,9 +3124,9 @@ type AllocColorRequest struct {
 	Blue  uint16
 }
 
-func (AllocColorRequest) OpCode() reqCode { return AllocColor }
+func (AllocColorRequest) OpCode() ReqCode { return AllocColor }
 
-func parseAllocColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocColorRequest, error) {
+func ParseAllocColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocColorRequest, error) {
 	if len(payload) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColor)
 	}
@@ -3149,7 +3143,7 @@ type AllocNamedColorRequest struct {
 	Name []byte
 }
 
-func (AllocNamedColorRequest) OpCode() reqCode { return AllocNamedColor }
+func (AllocNamedColorRequest) OpCode() ReqCode { return AllocNamedColor }
 
 /*
 AllocNamedColor
@@ -3163,14 +3157,14 @@ AllocNamedColor
 n     STRING8                         name
 p                                     padding
 */
-func parseAllocNamedColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocNamedColorRequest, error) {
+func ParseAllocNamedColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*AllocNamedColorRequest, error) {
 	if len(payload) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocNamedColor)
 	}
 	req := &AllocNamedColorRequest{}
 	req.Cmap = Colormap(order.Uint32(payload[0:4]))
 	nameLen := order.Uint16(payload[4:6])
-	paddedLen := 8 + int(nameLen) + padLen(8+int(nameLen))
+	paddedLen := 8 + int(nameLen) + PadLen(8+int(nameLen))
 	if len(payload) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocNamedColor)
 	}
@@ -3184,7 +3178,7 @@ type FreeColorsRequest struct {
 	Pixels    []uint32
 }
 
-func (FreeColorsRequest) OpCode() reqCode { return FreeColors }
+func (FreeColorsRequest) OpCode() ReqCode { return FreeColors }
 
 /*
 FreeColors
@@ -3196,7 +3190,7 @@ FreeColors
 	4     CARD32                          plane-mask
 	4n     LISTofCARD32                   pixels
 */
-func parseFreeColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeColorsRequest, error) {
+func ParseFreeColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeColorsRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeColors)
 	}
@@ -3216,16 +3210,10 @@ func parseFreeColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint
 
 type StoreColorsRequest struct {
 	Cmap  Colormap
-	Items []struct {
-		Pixel uint32
-		Red   uint16
-		Green uint16
-		Blue  uint16
-		Flags byte
-	}
+	Items []XColorItem
 }
 
-func (StoreColorsRequest) OpCode() reqCode { return StoreColors }
+func (StoreColorsRequest) OpCode() ReqCode { return StoreColors }
 
 /*
 StoreColors
@@ -3236,7 +3224,7 @@ StoreColors
 4     COLORMAP                        cmap
 12n   LISTofCOLORITEM                 items
 */
-func parseStoreColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*StoreColorsRequest, error) {
+func ParseStoreColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*StoreColorsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, StoreColors)
 	}
@@ -3245,13 +3233,7 @@ func parseStoreColorsRequest(order binary.ByteOrder, requestBody []byte, seq uin
 	numItems := (len(requestBody) - 4) / 12
 	for i := 0; i < numItems; i++ {
 		offset := 4 + i*12
-		item := struct {
-			Pixel uint32
-			Red   uint16
-			Green uint16
-			Blue  uint16
-			Flags byte
-		}{
+		item := XColorItem{
 			Pixel: order.Uint32(requestBody[offset : offset+4]),
 			Red:   order.Uint16(requestBody[offset+4 : offset+6]),
 			Green: order.Uint16(requestBody[offset+6 : offset+8]),
@@ -3270,7 +3252,7 @@ type StoreNamedColorRequest struct {
 	Flags byte
 }
 
-func (StoreNamedColorRequest) OpCode() reqCode { return StoreNamedColor }
+func (StoreNamedColorRequest) OpCode() ReqCode { return StoreNamedColor }
 
 /*
 StoreNamedColor
@@ -3285,7 +3267,7 @@ StoreNamedColor
 n     STRING8                         name
 p                                     padding
 */
-func parseStoreNamedColorRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*StoreNamedColorRequest, error) {
+func ParseStoreNamedColorRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*StoreNamedColorRequest, error) {
 	if len(requestBody) < 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, StoreNamedColor)
 	}
@@ -3302,11 +3284,11 @@ func parseStoreNamedColorRequest(order binary.ByteOrder, data byte, requestBody 
 }
 
 type QueryColorsRequest struct {
-	Cmap   xID
+	Cmap   uint32
 	Pixels []uint32
 }
 
-func (QueryColorsRequest) OpCode() reqCode { return QueryColors }
+func (QueryColorsRequest) OpCode() ReqCode { return QueryColors }
 
 /*
 QueryColors
@@ -3317,12 +3299,12 @@ QueryColors
 4     COLORMAP                        cmap
 4n    LISTofCARD32                    pixels
 */
-func parseQueryColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryColorsRequest, error) {
+func ParseQueryColorsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryColorsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryColors)
 	}
 	req := &QueryColorsRequest{}
-	req.Cmap = xID{local: order.Uint32(requestBody[0:4])}
+	req.Cmap = order.Uint32(requestBody[0:4])
 	numPixels := (len(requestBody) - 4) / 4
 	for i := 0; i < numPixels; i++ {
 		offset := 4 + i*4
@@ -3336,7 +3318,7 @@ type LookupColorRequest struct {
 	Name string
 }
 
-func (LookupColorRequest) OpCode() reqCode { return LookupColor }
+func (LookupColorRequest) OpCode() ReqCode { return LookupColor }
 
 /*
 LookupColor
@@ -3350,14 +3332,14 @@ LookupColor
 n     STRING8                         name
 p                                     padding
 */
-func parseLookupColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*LookupColorRequest, error) {
+func ParseLookupColorRequest(order binary.ByteOrder, payload []byte, seq uint16) (*LookupColorRequest, error) {
 	if len(payload) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, LookupColor)
 	}
 	req := &LookupColorRequest{}
 	req.Cmap = Colormap(order.Uint32(payload[0:4]))
 	nameLen := order.Uint16(payload[4:6])
-	paddedLen := 8 + int(nameLen) + padLen(int(nameLen))
+	paddedLen := 8 + int(nameLen) + PadLen(int(nameLen))
 	if len(payload) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, LookupColor)
 	}
@@ -3375,7 +3357,7 @@ type CreateGlyphCursorRequest struct {
 	BackColor  [3]uint16
 }
 
-func (CreateGlyphCursorRequest) OpCode() reqCode { return CreateGlyphCursor }
+func (CreateGlyphCursorRequest) OpCode() ReqCode { return CreateGlyphCursor }
 
 /*
 CreateGlyphCursor
@@ -3395,7 +3377,7 @@ CreateGlyphCursor
 2     CARD16                          back-green
 2     CARD16                          back-blue
 */
-func parseCreateGlyphCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CreateGlyphCursorRequest, error) {
+func ParseCreateGlyphCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CreateGlyphCursorRequest, error) {
 	if len(requestBody) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateGlyphCursor)
 	}
@@ -3418,7 +3400,7 @@ type FreeCursorRequest struct {
 	Cursor Cursor
 }
 
-func (FreeCursorRequest) OpCode() reqCode { return FreeCursor }
+func (FreeCursorRequest) OpCode() ReqCode { return FreeCursor }
 
 /*
 FreeCursor
@@ -3428,7 +3410,7 @@ FreeCursor
 2     2                               request length
 4     CURSOR                          cursor
 */
-func parseFreeCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeCursorRequest, error) {
+func ParseFreeCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*FreeCursorRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, FreeCursor)
 	}
@@ -3443,7 +3425,7 @@ type RecolorCursorRequest struct {
 	BackColor [3]uint16
 }
 
-func (RecolorCursorRequest) OpCode() reqCode { return RecolorCursor }
+func (RecolorCursorRequest) OpCode() ReqCode { return RecolorCursor }
 
 /*
 RecolorCursor
@@ -3459,7 +3441,7 @@ RecolorCursor
 2     CARD16                          back-green
 2     CARD16                          back-blue
 */
-func parseRecolorCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*RecolorCursorRequest, error) {
+func ParseRecolorCursorRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*RecolorCursorRequest, error) {
 	if len(requestBody) != 16 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, RecolorCursor)
 	}
@@ -3481,7 +3463,7 @@ type QueryBestSizeRequest struct {
 	Height   uint16
 }
 
-func (QueryBestSizeRequest) OpCode() reqCode { return QueryBestSize }
+func (QueryBestSizeRequest) OpCode() ReqCode { return QueryBestSize }
 
 /*
 QueryBestSize
@@ -3493,7 +3475,7 @@ QueryBestSize
 2     CARD16                          width
 2     CARD16                          height
 */
-func parseQueryBestSizeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryBestSizeRequest, error) {
+func ParseQueryBestSizeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryBestSizeRequest, error) {
 	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryBestSize)
 	}
@@ -3508,7 +3490,7 @@ type QueryExtensionRequest struct {
 	Name string
 }
 
-func (QueryExtensionRequest) OpCode() reqCode { return QueryExtension }
+func (QueryExtensionRequest) OpCode() ReqCode { return QueryExtension }
 
 /*
 QueryExtension
@@ -3521,13 +3503,13 @@ QueryExtension
 n     STRING8                         name
 p                                     padding
 */
-func parseQueryExtensionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryExtensionRequest, error) {
+func ParseQueryExtensionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryExtensionRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryExtension)
 	}
 	req := &QueryExtensionRequest{}
 	nameLen := order.Uint16(requestBody[0:2])
-	paddedLen := 4 + int(nameLen) + padLen(int(nameLen))
+	paddedLen := 4 + int(nameLen) + PadLen(int(nameLen))
 	if len(requestBody) != paddedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, QueryExtension)
 	}
@@ -3539,7 +3521,7 @@ type BellRequest struct {
 	Percent int8
 }
 
-func (BellRequest) OpCode() reqCode { return Bell }
+func (BellRequest) OpCode() ReqCode { return Bell }
 
 /*
 Bell
@@ -3548,7 +3530,7 @@ Bell
 1     INT8                            percent
 2     1                               request length
 */
-func parseBellRequest(requestBody byte, seq uint16) (*BellRequest, error) {
+func ParseBellRequest(requestBody byte, seq uint16) (*BellRequest, error) {
 	req := &BellRequest{}
 	req.Percent = int8(requestBody)
 	return req, nil
@@ -3558,7 +3540,7 @@ type SetPointerMappingRequest struct {
 	Map []byte
 }
 
-func (SetPointerMappingRequest) OpCode() reqCode { return SetPointerMapping }
+func (SetPointerMappingRequest) OpCode() ReqCode { return SetPointerMapping }
 
 /*
 SetPointerMapping
@@ -3568,7 +3550,7 @@ SetPointerMapping
 2     1+n/4                           request length
 n     LISTofBYTE                      map
 */
-func parseSetPointerMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetPointerMappingRequest, error) {
+func ParseSetPointerMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetPointerMappingRequest, error) {
 	req := &SetPointerMappingRequest{}
 	mapLen := int(data)
 	if len(requestBody) < mapLen {
@@ -3580,7 +3562,7 @@ func parseSetPointerMappingRequest(order binary.ByteOrder, data byte, requestBod
 
 type GetPointerMappingRequest struct{}
 
-func (GetPointerMappingRequest) OpCode() reqCode { return GetPointerMapping }
+func (GetPointerMappingRequest) OpCode() ReqCode { return GetPointerMapping }
 
 /*
 GetPointerMapping
@@ -3589,13 +3571,13 @@ GetPointerMapping
 1                                     unused
 2     1                               request length
 */
-func parseGetPointerMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPointerMappingRequest, error) {
+func ParseGetPointerMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPointerMappingRequest, error) {
 	return &GetPointerMappingRequest{}, nil
 }
 
 type GetPointerControlRequest struct{}
 
-func (GetPointerControlRequest) OpCode() reqCode { return GetPointerControl }
+func (GetPointerControlRequest) OpCode() ReqCode { return GetPointerControl }
 
 /*
 GetPointerControl
@@ -3604,7 +3586,7 @@ GetPointerControl
 1                                     unused
 2     1                               request length
 */
-func parseGetPointerControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPointerControlRequest, error) {
+func ParseGetPointerControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPointerControlRequest, error) {
 	return &GetPointerControlRequest{}, nil
 }
 
@@ -3613,7 +3595,7 @@ type GetKeyboardMappingRequest struct {
 	Count        byte
 }
 
-func (GetKeyboardMappingRequest) OpCode() reqCode { return GetKeyboardMapping }
+func (GetKeyboardMappingRequest) OpCode() ReqCode { return GetKeyboardMapping }
 
 /*
 GetKeyboardMapping
@@ -3625,7 +3607,7 @@ GetKeyboardMapping
 1     CARD8                           count
 2                                     unused
 */
-func parseGetKeyboardMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetKeyboardMappingRequest, error) {
+func ParseGetKeyboardMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetKeyboardMappingRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetKeyboardMapping)
 	}
@@ -3642,7 +3624,7 @@ type ChangeKeyboardMappingRequest struct {
 	KeySyms           []uint32
 }
 
-func (ChangeKeyboardMappingRequest) OpCode() reqCode { return ChangeKeyboardMapping }
+func (ChangeKeyboardMappingRequest) OpCode() ReqCode { return ChangeKeyboardMapping }
 
 /*
 ChangeKeyboardMapping
@@ -3655,7 +3637,7 @@ ChangeKeyboardMapping
 2                                     unused
 4nm   LISTofKEYSYM                    keysyms
 */
-func parseChangeKeyboardMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeKeyboardMappingRequest, error) {
+func ParseChangeKeyboardMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeKeyboardMappingRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardMapping)
 	}
@@ -3679,7 +3661,7 @@ type ChangeKeyboardControlRequest struct {
 	Values    KeyboardControl
 }
 
-func (ChangeKeyboardControlRequest) OpCode() reqCode { return ChangeKeyboardControl }
+func (ChangeKeyboardControlRequest) OpCode() ReqCode { return ChangeKeyboardControl }
 
 /*
 ChangeKeyboardControl
@@ -3690,13 +3672,13 @@ ChangeKeyboardControl
 4     BITMASK                         value-mask
 4n    LISTofVALUE                     value-list
 */
-func parseChangeKeyboardControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeKeyboardControlRequest, error) {
+func ParseChangeKeyboardControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeKeyboardControlRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeKeyboardControl)
 	}
 	req := &ChangeKeyboardControlRequest{}
 	req.ValueMask = order.Uint32(requestBody[0:4])
-	values, _, err := parseKeyboardControl(order, req.ValueMask, requestBody[4:], seq)
+	values, _, err := ParseKeyboardControl(order, req.ValueMask, requestBody[4:], seq)
 	if err != nil {
 		return nil, err
 	}
@@ -3706,7 +3688,7 @@ func parseChangeKeyboardControlRequest(order binary.ByteOrder, requestBody []byt
 
 type GetKeyboardControlRequest struct{}
 
-func (GetKeyboardControlRequest) OpCode() reqCode { return GetKeyboardControl }
+func (GetKeyboardControlRequest) OpCode() ReqCode { return GetKeyboardControl }
 
 /*
 GetKeyboardControl
@@ -3715,7 +3697,7 @@ GetKeyboardControl
 1                                     unused
 2     1                               request length
 */
-func parseGetKeyboardControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetKeyboardControlRequest, error) {
+func ParseGetKeyboardControlRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetKeyboardControlRequest, error) {
 	return &GetKeyboardControlRequest{}, nil
 }
 
@@ -3726,7 +3708,7 @@ type SetScreenSaverRequest struct {
 	AllowExpose byte
 }
 
-func (SetScreenSaverRequest) OpCode() reqCode { return SetScreenSaver }
+func (SetScreenSaverRequest) OpCode() ReqCode { return SetScreenSaver }
 
 /*
 SetScreenSaver
@@ -3740,7 +3722,7 @@ SetScreenSaver
 1     { No, Yes, Default }            allow-exposures
 2                                     unused
 */
-func parseSetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetScreenSaverRequest, error) {
+func ParseSetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetScreenSaverRequest, error) {
 	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetScreenSaver)
 	}
@@ -3754,7 +3736,7 @@ func parseSetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq 
 
 type GetScreenSaverRequest struct{}
 
-func (GetScreenSaverRequest) OpCode() reqCode { return GetScreenSaver }
+func (GetScreenSaverRequest) OpCode() ReqCode { return GetScreenSaver }
 
 /*
 GetScreenSaver
@@ -3763,7 +3745,7 @@ GetScreenSaver
 1                                     unused
 2     1                               request length
 */
-func parseGetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetScreenSaverRequest, error) {
+func ParseGetScreenSaverRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetScreenSaverRequest, error) {
 	return &GetScreenSaverRequest{}, nil
 }
 
@@ -3772,7 +3754,7 @@ type ChangeHostsRequest struct {
 	Host Host
 }
 
-func (ChangeHostsRequest) OpCode() reqCode { return ChangeHosts }
+func (ChangeHostsRequest) OpCode() ReqCode { return ChangeHosts }
 
 /*
 ChangeHosts
@@ -3790,7 +3772,7 @@ ChangeHosts
 n     LISTofBYTE                      address
 p                                     padding
 */
-func parseChangeHostsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeHostsRequest, error) {
+func ParseChangeHostsRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeHostsRequest, error) {
 	if len(requestBody) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangeHosts)
 	}
@@ -3810,7 +3792,7 @@ func parseChangeHostsRequest(order binary.ByteOrder, data byte, requestBody []by
 
 type ListHostsRequest struct{}
 
-func (ListHostsRequest) OpCode() reqCode { return ListHosts }
+func (ListHostsRequest) OpCode() ReqCode { return ListHosts }
 
 /*
 ListHosts
@@ -3819,7 +3801,7 @@ ListHosts
 1                                     unused
 2     1                               request length
 */
-func parseListHostsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListHostsRequest, error) {
+func ParseListHostsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListHostsRequest, error) {
 	return &ListHostsRequest{}, nil
 }
 
@@ -3827,7 +3809,7 @@ type SetAccessControlRequest struct {
 	Mode byte
 }
 
-func (SetAccessControlRequest) OpCode() reqCode { return SetAccessControl }
+func (SetAccessControlRequest) OpCode() ReqCode { return SetAccessControl }
 
 /*
 SetAccessControl
@@ -3836,7 +3818,7 @@ SetAccessControl
 1     { Enable, Disable }             mode
 2     1                               request length
 */
-func parseSetAccessControlRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetAccessControlRequest, error) {
+func ParseSetAccessControlRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetAccessControlRequest, error) {
 	req := &SetAccessControlRequest{}
 	req.Mode = data
 	return req, nil
@@ -3846,7 +3828,7 @@ type SetCloseDownModeRequest struct {
 	Mode byte
 }
 
-func (SetCloseDownModeRequest) OpCode() reqCode { return SetCloseDownMode }
+func (SetCloseDownModeRequest) OpCode() ReqCode { return SetCloseDownMode }
 
 /*
 SetCloseDownMode
@@ -3858,7 +3840,7 @@ SetCloseDownMode
 
 2     1                               request length
 */
-func parseSetCloseDownModeRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetCloseDownModeRequest, error) {
+func ParseSetCloseDownModeRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetCloseDownModeRequest, error) {
 	req := &SetCloseDownModeRequest{}
 	req.Mode = data
 	return req, nil
@@ -3868,7 +3850,7 @@ type KillClientRequest struct {
 	Resource uint32
 }
 
-func (KillClientRequest) OpCode() reqCode { return KillClient }
+func (KillClientRequest) OpCode() ReqCode { return KillClient }
 
 /*
 KillClient
@@ -3878,7 +3860,7 @@ KillClient
 2     2                               request length
 4     CARD32                          resource
 */
-func parseKillClientRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*KillClientRequest, error) {
+func ParseKillClientRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*KillClientRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, KillClient)
 	}
@@ -3893,7 +3875,7 @@ type RotatePropertiesRequest struct {
 	Atoms  []Atom
 }
 
-func (RotatePropertiesRequest) OpCode() reqCode { return RotateProperties }
+func (RotatePropertiesRequest) OpCode() ReqCode { return RotateProperties }
 
 /*
 RotateProperties
@@ -3906,7 +3888,7 @@ RotateProperties
 2     INT16                           delta
 4n    LISTofATOM                      properties
 */
-func parseRotatePropertiesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*RotatePropertiesRequest, error) {
+func ParseRotatePropertiesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*RotatePropertiesRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, RotateProperties)
 	}
@@ -3928,7 +3910,7 @@ type ForceScreenSaverRequest struct {
 	Mode byte
 }
 
-func (ForceScreenSaverRequest) OpCode() reqCode { return ForceScreenSaver }
+func (ForceScreenSaverRequest) OpCode() ReqCode { return ForceScreenSaver }
 
 /*
 ForceScreenSaver
@@ -3937,7 +3919,7 @@ ForceScreenSaver
 1     { Activate, Reset }             mode
 2     1                               request length
 */
-func parseForceScreenSaverRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ForceScreenSaverRequest, error) {
+func ParseForceScreenSaverRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ForceScreenSaverRequest, error) {
 	req := &ForceScreenSaverRequest{}
 	req.Mode = data
 	return req, nil
@@ -3948,7 +3930,7 @@ type SetModifierMappingRequest struct {
 	KeyCodes            []KeyCode
 }
 
-func (SetModifierMappingRequest) OpCode() reqCode { return SetModifierMapping }
+func (SetModifierMappingRequest) OpCode() ReqCode { return SetModifierMapping }
 
 /*
 SetModifierMapping
@@ -3958,7 +3940,7 @@ SetModifierMapping
 2     1+2n                            request length
 8n    LISTofKEYCODE                   keycodes
 */
-func parseSetModifierMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetModifierMappingRequest, error) {
+func ParseSetModifierMappingRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetModifierMappingRequest, error) {
 	req := &SetModifierMappingRequest{}
 	req.KeyCodesPerModifier = data
 	req.KeyCodes = make([]KeyCode, 0, 8*int(req.KeyCodesPerModifier))
@@ -3973,7 +3955,7 @@ func parseSetModifierMappingRequest(order binary.ByteOrder, data byte, requestBo
 
 type GetModifierMappingRequest struct{}
 
-func (GetModifierMappingRequest) OpCode() reqCode { return GetModifierMapping }
+func (GetModifierMappingRequest) OpCode() ReqCode { return GetModifierMapping }
 
 /*
 GetModifierMapping
@@ -3982,7 +3964,7 @@ GetModifierMapping
 1                                     unused
 2     1                               request length
 */
-func parseGetModifierMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetModifierMappingRequest, error) {
+func ParseGetModifierMappingRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetModifierMappingRequest, error) {
 	return &GetModifierMappingRequest{}, nil
 }
 
@@ -4050,7 +4032,7 @@ func ParseKeyboardControl(order binary.ByteOrder, valueMask uint32, valuesData [
 
 type NoOperationRequest struct{}
 
-func (NoOperationRequest) OpCode() reqCode { return NoOperation }
+func (NoOperationRequest) OpCode() ReqCode { return NoOperation }
 
 /*
 NoOperation
@@ -4059,7 +4041,7 @@ NoOperation
 1                                     unused
 2     1                               request length
 */
-func parseNoOperationRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*NoOperationRequest, error) {
+func ParseNoOperationRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*NoOperationRequest, error) {
 	return &NoOperationRequest{}, nil
 }
 
@@ -4261,7 +4243,7 @@ func ParseGCValues(order binary.ByteOrder, valueMask uint32, valuesData []byte, 
 	return gc, offset, nil
 }
 
-func parseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (WindowAttributes, int, error) {
+func ParseWindowAttributes(order binary.ByteOrder, valueMask uint32, valuesData []byte, seq uint16) (WindowAttributes, int, error) {
 	wa := WindowAttributes{}
 	offset := 0
 	if valueMask&CWBackPixmap != 0 {
@@ -4381,7 +4363,7 @@ type AllocColorCellsRequest struct {
 	Planes     uint16
 }
 
-func (r *AllocColorCellsRequest) OpCode() reqCode { return AllocColorCells }
+func (r *AllocColorCellsRequest) OpCode() ReqCode { return AllocColorCells }
 
 /*
 AllocColorCells
@@ -4393,7 +4375,7 @@ AllocColorCells
 	2     CARD16                          colors
 	2     CARD16                          planes
 */
-func parseAllocColorCellsRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorCellsRequest, error) {
+func ParseAllocColorCellsRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorCellsRequest, error) {
 	if len(body) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColorCells)
 	}
@@ -4415,7 +4397,7 @@ type AllocColorPlanesRequest struct {
 	Blues      uint16
 }
 
-func (r *AllocColorPlanesRequest) OpCode() reqCode { return AllocColorPlanes }
+func (r *AllocColorPlanesRequest) OpCode() ReqCode { return AllocColorPlanes }
 
 /*
 AllocColorPlanes
@@ -4429,7 +4411,7 @@ AllocColorPlanes
 	2     CARD16                          greens
 	2     CARD16                          blues
 */
-func parseAllocColorPlanesRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorPlanesRequest, error) {
+func ParseAllocColorPlanesRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*AllocColorPlanesRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, AllocColorPlanes)
 	}
@@ -4443,7 +4425,7 @@ func parseAllocColorPlanesRequest(order binary.ByteOrder, data byte, body []byte
 	return req, nil
 }
 
-// reqCodeCreateCursor:
+// ReqCodeCreateCursor:
 type CreateCursorRequest struct {
 	Cid       Cursor
 	Source    Pixmap
@@ -4458,7 +4440,7 @@ type CreateCursorRequest struct {
 	Y         uint16
 }
 
-func (r *CreateCursorRequest) OpCode() reqCode { return CreateCursor }
+func (r *CreateCursorRequest) OpCode() ReqCode { return CreateCursor }
 
 /*
 CreateCursor
@@ -4478,7 +4460,7 @@ CreateCursor
 2     CARD16                          x
 2     CARD16                          y
 */
-func parseCreateCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (*CreateCursorRequest, error) {
+func ParseCreateCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (*CreateCursorRequest, error) {
 	if len(body) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CreateCursor)
 	}
@@ -4497,7 +4479,7 @@ func parseCreateCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (
 	return req, nil
 }
 
-// reqCodeCopyPlane:
+// ReqCodeCopyPlane:
 type CopyPlaneRequest struct {
 	SrcDrawable Drawable
 	DstDrawable Drawable
@@ -4511,7 +4493,7 @@ type CopyPlaneRequest struct {
 	PlaneMask   uint32
 }
 
-func (r *CopyPlaneRequest) OpCode() reqCode { return CopyPlane }
+func (r *CopyPlaneRequest) OpCode() ReqCode { return CopyPlane }
 
 /*
 CopyPlane
@@ -4530,7 +4512,7 @@ CopyPlane
 2     CARD16                          height
 4     BITMASK                         bit-plane
 */
-func parseCopyPlaneRequest(order binary.ByteOrder, body []byte, seq uint16) (*CopyPlaneRequest, error) {
+func ParseCopyPlaneRequest(order binary.ByteOrder, body []byte, seq uint16) (*CopyPlaneRequest, error) {
 	if len(body) != 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, CopyPlane)
 	}
@@ -4548,10 +4530,10 @@ func parseCopyPlaneRequest(order binary.ByteOrder, body []byte, seq uint16) (*Co
 	return req, nil
 }
 
-// reqCodeListExtensions:
+// ReqCodeListExtensions:
 type ListExtensionsRequest struct{}
 
-func (r *ListExtensionsRequest) OpCode() reqCode { return ListExtensions }
+func (r *ListExtensionsRequest) OpCode() ReqCode { return ListExtensions }
 
 /*
 ListExtensions
@@ -4560,11 +4542,11 @@ ListExtensions
 1                                     unused
 2     1                               request length
 */
-func parseListExtensionsRequest(order binary.ByteOrder, raw []byte, seq uint16) (*ListExtensionsRequest, error) {
+func ParseListExtensionsRequest(order binary.ByteOrder, raw []byte, seq uint16) (*ListExtensionsRequest, error) {
 	return &ListExtensionsRequest{}, nil
 }
 
-// reqCodeChangePointerControl:
+// ReqCodeChangePointerControl:
 type ChangePointerControlRequest struct {
 	AccelerationNumerator   int16
 	AccelerationDenominator int16
@@ -4573,7 +4555,7 @@ type ChangePointerControlRequest struct {
 	DoThreshold             bool
 }
 
-func (r *ChangePointerControlRequest) OpCode() reqCode { return ChangePointerControl }
+func (r *ChangePointerControlRequest) OpCode() ReqCode { return ChangePointerControl }
 
 /*
 ChangePointerControl
@@ -4587,7 +4569,7 @@ ChangePointerControl
 1     BOOL                            do-acceleration
 1     BOOL                            do-threshold
 */
-func parseChangePointerControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangePointerControlRequest, error) {
+func ParseChangePointerControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangePointerControlRequest, error) {
 	if len(body) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, ChangePointerControl)
 	}

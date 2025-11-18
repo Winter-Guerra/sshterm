@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
 
 func TestSetSelectionOwnerRequest(t *testing.T) {
@@ -15,10 +17,10 @@ func TestSetSelectionOwnerRequest(t *testing.T) {
 	mockConn := client.conn.(*testConn)
 
 	// 1. Send a SetSelectionOwner request
-	selection := Atom(1)
-	owner := Window(2)
+	selection := wire.Atom(1)
+	owner := wire.Window(2)
 	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(SetSelectionOwner))
+	binary.Write(reqBuf, client.byteOrder, uint8(wire.SetSelectionOwner))
 	binary.Write(reqBuf, client.byteOrder, byte(0))
 	binary.Write(reqBuf, client.byteOrder, uint16(4))
 	binary.Write(reqBuf, client.byteOrder, uint32(owner))
@@ -41,13 +43,13 @@ func TestGetSelectionOwnerRequest(t *testing.T) {
 	mockConn := client.conn.(*testConn)
 
 	// 1. Set a selection owner
-	selection := Atom(1)
-	owner := Window(2)
+	selection := wire.Atom(1)
+	owner := wire.Window(2)
 	server.selections[client.xID(uint32(selection))] = uint32(owner)
 
 	// 2. Send a GetSelectionOwner request
 	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(GetSelectionOwner))
+	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetSelectionOwner))
 	binary.Write(reqBuf, client.byteOrder, byte(0))
 	binary.Write(reqBuf, client.byteOrder, uint16(2))
 	binary.Write(reqBuf, client.byteOrder, uint32(selection))
@@ -60,7 +62,7 @@ func TestGetSelectionOwnerRequest(t *testing.T) {
 	reply := server.handleRequest(client, req, seq)
 
 	// 3. Verify the reply
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
 	replyBytes := clientBuffer.Bytes()
@@ -87,12 +89,12 @@ func TestConvertSelectionRequest(t *testing.T) {
 	mockConn := client.conn.(*testConn)
 
 	// 1. Send a ConvertSelection request
-	selection := Atom(1)
-	target := Atom(2)
-	property := Atom(3)
-	requestor := Window(4)
+	selection := wire.Atom(1)
+	target := wire.Atom(2)
+	property := wire.Atom(3)
+	requestor := wire.Window(4)
 	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(ConvertSelection))
+	binary.Write(reqBuf, client.byteOrder, uint8(wire.ConvertSelection))
 	binary.Write(reqBuf, client.byteOrder, byte(0))
 	binary.Write(reqBuf, client.byteOrder, uint16(6))
 	binary.Write(reqBuf, client.byteOrder, uint32(requestor))

@@ -4,15 +4,19 @@ package x11
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"runtime/debug"
 	"sync"
 
-	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 	"golang.org/x/crypto/ssh"
+
+	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
+
+var errParseError = errors.New("x11: request parsing error")
 
 type xID struct {
 	client uint32
@@ -165,7 +169,7 @@ func (w *window) mapState() byte {
 }
 
 type colormap struct {
-	pixels map[uint32]xColorItem
+	pixels map[uint32]wire.XColorItem
 }
 
 type DeviceButtonPressEventData struct {
@@ -232,21 +236,15 @@ type deviceGrab struct {
 	time        uint32
 }
 
-type deviceInfo struct {
-	header     wire.DeviceHeader
-	classes    []wire.InputClassInfo
-	eventMasks map[uint32]uint32 // window ID -> event mask
-}
-
-var virtualPointer = &deviceInfo{
-	header: wire.DeviceHeader{
+var virtualPointer = &wire.DeviceInfo{
+	Header: wire.DeviceHeader{
 		DeviceID:   2,
 		DeviceType: 0,
 		NumClasses: 2,
 		Use:        0, // IsXPointer
 		Name:       "Virtual Pointer",
 	},
-	classes: []wire.InputClassInfo{
+	Classes: []wire.InputClassInfo{
 		&wire.ButtonClassInfo{NumButtons: 5},
 		&wire.ValuatorClassInfo{
 			NumAxes:    2,
@@ -260,15 +258,15 @@ var virtualPointer = &deviceInfo{
 	},
 }
 
-var virtualKeyboard = &deviceInfo{
-	header: wire.DeviceHeader{
+var virtualKeyboard = &wire.DeviceInfo{
+	Header: wire.DeviceHeader{
 		DeviceID:   3,
 		DeviceType: 0,
 		NumClasses: 1,
 		Use:        1, // IsXKeyboard
 		Name:       "Virtual Keyboard",
 	},
-	classes: []wire.InputClassInfo{
+	Classes: []wire.InputClassInfo{
 		&wire.KeyClassInfo{
 			NumKeys:    248,
 			MinKeycode: 8,
@@ -393,14 +391,14 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	}
 
 	if xiEventMask > 0 {
-		if grab, ok := s.deviceGrabs[virtualPointer.header.DeviceID]; ok {
+		if grab, ok := s.deviceGrabs[virtualPointer.Header.DeviceID]; ok {
 			// A device grab is active. Send event only to the grabbing client.
 			grabbingClient, clientExists := s.clients[grab.window.client]
 			if clientExists {
-				if deviceInfo, ok := grabbingClient.openDevices[virtualPointer.header.DeviceID]; ok {
-					if mask, ok := deviceInfo.eventMasks[originalXID.local]; ok {
+				if deviceInfo, ok := grabbingClient.openDevices[virtualPointer.Header.DeviceID]; ok {
+					if mask, ok := deviceInfo.EventMasks[originalXID.local]; ok {
 						if mask&xiEventMask != 0 {
-							s.sendXInputMouseEvent(grabbingClient, eventType, virtualPointer.header.DeviceID, button, originalXID.local, x, y, state)
+							s.sendXInputMouseEvent(grabbingClient, eventType, virtualPointer.Header.DeviceID, button, originalXID.local, x, y, state)
 						}
 					}
 				}
@@ -408,10 +406,10 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		} else {
 			// No device grab, send to all interested clients.
 			for _, client := range s.clients {
-				if deviceInfo, ok := client.openDevices[virtualPointer.header.DeviceID]; ok {
-					if mask, ok := deviceInfo.eventMasks[originalXID.local]; ok {
+				if deviceInfo, ok := client.openDevices[virtualPointer.Header.DeviceID]; ok {
+					if mask, ok := deviceInfo.EventMasks[originalXID.local]; ok {
 						if mask&xiEventMask != 0 {
-							s.sendXInputMouseEvent(client, eventType, virtualPointer.header.DeviceID, button, originalXID.local, x, y, state)
+							s.sendXInputMouseEvent(client, eventType, virtualPointer.Header.DeviceID, button, originalXID.local, x, y, state)
 						}
 					}
 				}
@@ -544,7 +542,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	// Handle device grabs first
-	if grab, ok := s.deviceGrabs[virtualKeyboard.header.DeviceID]; ok {
+	if grab, ok := s.deviceGrabs[virtualKeyboard.Header.DeviceID]; ok {
 		grabbingClient, clientExists := s.clients[grab.window.client]
 		if clientExists {
 			var xiEventMask uint32
@@ -629,8 +627,8 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 
 	if xiEventMask > 0 {
 		for _, client := range s.clients {
-			if deviceInfo, ok := client.openDevices[virtualKeyboard.header.DeviceID]; ok {
-				if mask, ok := deviceInfo.eventMasks[s.inputFocus.local]; ok {
+			if deviceInfo, ok := client.openDevices[virtualKeyboard.Header.DeviceID]; ok {
+				if mask, ok := deviceInfo.EventMasks[s.inputFocus.local]; ok {
 					if mask&xiEventMask != 0 {
 						s.sendXInputKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
 					}
@@ -676,7 +674,7 @@ func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string,
 	case "keydown":
 		xiEvent = &wire.DeviceKeyPressEvent{
 			Sequence:   client.sequence - 1,
-			DeviceID:   virtualKeyboard.header.DeviceID,
+			DeviceID:   virtualKeyboard.Header.DeviceID,
 			Time:       0, // Timestamp
 			KeyCode:    keycode,
 			Root:       s.rootWindowID(),
@@ -692,7 +690,7 @@ func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string,
 	case "keyup":
 		xiEvent = &wire.DeviceKeyReleaseEvent{
 			Sequence:   client.sequence - 1,
-			DeviceID:   virtualKeyboard.header.DeviceID,
+			DeviceID:   virtualKeyboard.Header.DeviceID,
 			Time:       0, // Timestamp
 			KeyCode:    keycode,
 			Root:       s.rootWindowID(),
@@ -1005,7 +1003,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		// Check if the window ID is already in use
 		if _, exists := s.windows[xid]; exists {
 			s.logger.Errorf("X11: CreateWindow: ID %d already in use", xid)
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Drawable), MajorOp: wire.CreateWindow, Code: wire.IDChoiceErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Drawable), 0, wire.CreateWindow, wire.IDChoiceErrorCode)
 		}
 
 		newWindow := &window{
@@ -1088,7 +1086,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		xid := client.xID(uint32(p.Window))
 		attrs, ok := s.GetWindowAttributes(xid)
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Window), MajorOp: wire.GetWindowAttributes, Code: wire.WindowErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.GetWindowAttributes, wire.WindowErrorCode)
 		}
 		return &wire.GetWindowAttributesReply{
 			Sequence:           seq,
@@ -1099,10 +1097,10 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			WinGravity:         byte(attrs.WinGravity),
 			BackingPlanes:      attrs.BackingPlanes,
 			BackingPixel:       attrs.BackingPixel,
-			SaveUnder:          boolToByte(attrs.SaveUnder),
-			MapIsInstalled:     boolToByte(attrs.MapIsInstalled),
+			SaveUnder:          wire.BoolToByte(attrs.SaveUnder),
+			MapIsInstalled:     wire.BoolToByte(attrs.MapIsInstalled),
 			MapState:           byte(attrs.MapState),
-			OverrideRedirect:   boolToByte(attrs.OverrideRedirect),
+			OverrideRedirect:   wire.BoolToByte(attrs.OverrideRedirect),
 			Colormap:           uint32(attrs.Colormap),
 			AllEventMasks:      attrs.EventMask,
 			YourEventMask:      attrs.EventMask,
@@ -1146,15 +1144,15 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		parentXID := client.xID(uint32(p.Parent))
 		window, ok := s.windows[windowXID]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Window), MajorOp: wire.ReparentWindow, Code: wire.WindowErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.ReparentWindow, wire.WindowErrorCode)
 		}
 		oldParent, ok := s.windows[client.xID(window.parent)]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: window.parent, MajorOp: wire.ReparentWindow, Code: wire.WindowErrorCode})
+			return wire.NewGenericError(seq, window.parent, 0, wire.ReparentWindow, wire.WindowErrorCode)
 		}
 		newParent, ok := s.windows[parentXID]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Parent), MajorOp: wire.ReparentWindow, Code: wire.WindowErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Parent), 0, wire.ReparentWindow, wire.WindowErrorCode)
 		}
 
 		// Remove from old parent's children
@@ -1223,11 +1221,11 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		xid := client.xID(uint32(p.Window))
 		window, ok := s.windows[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Window), MajorOp: wire.CirculateWindow, Code: wire.WindowErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.CirculateWindow, wire.WindowErrorCode)
 		}
 		parent, ok := s.windows[client.xID(window.parent)]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: window.parent, MajorOp: wire.CirculateWindow, Code: wire.WindowErrorCode})
+			return wire.NewGenericError(seq, window.parent, 0, wire.CirculateWindow, wire.WindowErrorCode)
 		}
 
 		// Find index of window in parent's children
@@ -1287,7 +1285,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		xid := client.xID(uint32(p.Window))
 		window, ok := s.windows[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Window), MajorOp: wire.QueryTree, Code: wire.WindowErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.QueryTree, wire.WindowErrorCode)
 		}
 		return &wire.QueryTreeReply{
 			Sequence:    seq,
@@ -1385,7 +1383,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		// The X11 client sends an event to another client.
 		// We need to forward this event to the appropriate frontend.
 		// For now, we'll just log it and pass it to the frontend.
-		s.frontend.SendEvent(&x11RawEvent{data: p.EventData})
+		s.frontend.SendEvent(&wire.X11RawEvent{Data: p.EventData})
 
 	case *wire.GrabPointerRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
@@ -1629,7 +1627,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		// Check if the pixmap ID is already in use
 		if _, exists := s.pixmaps[xid]; exists {
 			s.logger.Errorf("X11: CreatePixmap: ID %s already in use", xid)
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Pid), MajorOp: wire.CreatePixmap, Code: wire.IDChoiceErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Pid), 0, wire.CreatePixmap, wire.IDChoiceErrorCode)
 		}
 
 		s.pixmaps[xid] = true // Mark pixmap ID as used
@@ -1646,7 +1644,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		// Check if the GC ID is already in use
 		if _, exists := s.gcs[xid]; exists {
 			s.logger.Errorf("X11: CreateGC: ID %s already in use", xid)
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(xid.local), MajorOp: wire.CreateGC, Code: wire.IDChoiceErrorCode})
+			return wire.NewGenericError(seq, uint32(xid.local), 0, wire.CreateGC, wire.IDChoiceErrorCode)
 		}
 
 		s.gcs[xid] = p.Values
@@ -1822,7 +1820,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		xid := client.xID(uint32(p.Mid))
 
 		if _, exists := s.colormaps[xid]; exists {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Mid), MajorOp: wire.CreateColormap, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Mid), 0, wire.CreateColormap, wire.ColormapErrorCode)
 		}
 
 		newColormap := &colormap{
@@ -1840,7 +1838,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 	case *wire.FreeColormapRequest:
 		xid := client.xID(uint32(p.Cmap))
 		if _, ok := s.colormaps[xid]; !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.FreeColormap, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.FreeColormap, wire.ColormapErrorCode)
 		}
 		delete(s.colormaps, xid)
 
@@ -1848,12 +1846,12 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		srcCmapID := client.xID(uint32(p.SrcCmap))
 		srcCmap, ok := s.colormaps[srcCmapID]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.SrcCmap), MajorOp: wire.CopyColormapAndFree, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.SrcCmap), 0, wire.CopyColormapAndFree, wire.ColormapErrorCode)
 		}
 
 		newCmapID := client.xID(uint32(p.Mid))
 		if _, exists := s.colormaps[newCmapID]; exists {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Mid), MajorOp: wire.CopyColormapAndFree, Code: wire.IDChoiceErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Mid), 0, wire.CopyColormapAndFree, wire.IDChoiceErrorCode)
 		}
 
 		newCmap := &colormap{
@@ -1872,7 +1870,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		xid := client.xID(uint32(p.Cmap))
 		_, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.InstallColormap, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.InstallColormap, wire.ColormapErrorCode)
 		}
 
 		s.installedColormap = xid
@@ -1900,7 +1898,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		xid := client.xID(uint32(p.Cmap))
 		_, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.UninstallColormap, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.UninstallColormap, wire.ColormapErrorCode)
 		}
 
 		if s.installedColormap == xid {
@@ -1945,7 +1943,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.AllocColor, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.AllocColor, wire.ColormapErrorCode)
 		}
 
 		// Simple allocation for TrueColor: construct pixel value from RGB
@@ -2012,7 +2010,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.FreeColors, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.FreeColors, wire.ColormapErrorCode)
 		}
 
 		for _, pixel := range p.Pixels {
@@ -2026,7 +2024,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.StoreColors, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.StoreColors, wire.ColormapErrorCode)
 		}
 
 		for _, item := range p.Items {
@@ -2054,12 +2052,12 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 		cm, ok := s.colormaps[xid]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.StoreNamedColor, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.StoreNamedColor, wire.ColormapErrorCode)
 		}
 
 		rgb, ok := lookupColor(p.Name)
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: 0, MajorOp: wire.StoreNamedColor, Code: wire.NameErrorCode})
+			return wire.NewGenericError(seq, 0, 0, wire.StoreNamedColor, wire.NameErrorCode)
 		}
 
 		c, exists := cm.pixels[p.Pixel]
@@ -2085,7 +2083,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 		cm, ok := s.colormaps[cmap]
 		if !ok {
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.QueryColors, Code: wire.ColormapErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.QueryColors, wire.ColormapErrorCode)
 		}
 
 		colors := make([]wire.XColorItem, len(p.Pixels))
@@ -2108,8 +2106,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 		color, ok := lookupColor(p.Name)
 		if !ok {
-			// TODO: This should be BadName, not BadColor
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cmap), MajorOp: wire.LookupColor, Code: wire.NameErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.LookupColor, wire.NameErrorCode)
 		}
 
 		return &wire.LookupColorReply{
@@ -2126,7 +2123,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		cursorXID := client.xID(uint32(p.Cid))
 		if _, exists := s.cursors[cursorXID]; exists {
 			s.logger.Errorf("X11: CreateCursor: ID %s already in use", cursorXID)
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cid), MajorOp: wire.CreateCursor, Code: wire.IDChoiceErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cid), 0, wire.CreateCursor, wire.IDChoiceErrorCode)
 		}
 
 		s.cursors[cursorXID] = true
@@ -2140,7 +2137,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		// Check if the cursor ID is already in use
 		if _, exists := s.cursors[client.xID(uint32(p.Cid))]; exists {
 			s.logger.Errorf("X11: CreateGlyphCursor: ID %d already in use", p.Cid)
-			return client.sendError(&wire.GenericError{Seq: seq, BadValue: uint32(p.Cid), MajorOp: wire.CreateGlyphCursor, Code: wire.IDChoiceErrorCode})
+			return wire.NewGenericError(seq, uint32(p.Cid), 0, wire.CreateGlyphCursor, wire.IDChoiceErrorCode)
 		}
 
 		s.cursors[client.xID(uint32(p.Cid))] = true
@@ -2171,7 +2168,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			return &wire.QueryExtensionReply{
 				Sequence:    seq,
 				Present:     true,
-				MajorOpcode: wire.BigRequestsOpcode,
+				MajorOpcode: byte(wire.BigRequestsOpcode),
 				FirstEvent:  0,
 				FirstError:  0,
 			}
@@ -2179,7 +2176,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			return &wire.QueryExtensionReply{
 				Sequence:    seq,
 				Present:     true,
-				MajorOpcode: wire.XInputOpcode,
+				MajorOpcode: byte(wire.XInputOpcode),
 				FirstEvent:  0,
 				FirstError:  0,
 			}
@@ -2354,323 +2351,6 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 	return nil
 }
 
-func (s *x11Server) handleXInputRequest(client *x11Client, minorOpcode byte, body []byte, seq uint16) (reply messageEncoder) {
-	switch minorOpcode {
-	case XGetExtensionVersion:
-		return &GetExtensionVersionReply{
-			sequence:     seq,
-			MajorVersion: 1,
-			MinorVersion: 5,
-		}
-	case XListInputDevices:
-		return &ListInputDevicesReply{
-			sequence: seq,
-			devices:  []DeviceInfo{virtualPointer, virtualKeyboard},
-		}
-	case XOpenDevice:
-		req, err := parseOpenDeviceRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-
-		var selectedDevice *deviceInfo
-		if req.DeviceID == virtualPointer.header.DeviceID {
-			selectedDevice = virtualPointer
-		} else if req.DeviceID == virtualKeyboard.header.DeviceID {
-			selectedDevice = virtualKeyboard
-		} else {
-			return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XOpenDevice)
-		}
-
-		// Create a new deviceInfo instance for the client, so event masks are not shared.
-		newClasses := make([]InputClassInfo, len(selectedDevice.classes))
-		copy(newClasses, selectedDevice.classes)
-		newDeviceInfo := &deviceInfo{
-			header:     selectedDevice.header,
-			classes:    newClasses,
-			eventMasks: make(map[uint32]uint32),
-		}
-		client.openDevices[req.DeviceID] = newDeviceInfo
-		return &OpenDeviceReply{sequence: seq, classes: newDeviceInfo.classes}
-
-	case XSetDeviceMode:
-		req, err := parseSetDeviceModeRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		device, ok := client.openDevices[req.DeviceID]
-		if !ok {
-			return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XSetDeviceMode)
-		}
-		var valuatorInfo *ValuatorClassInfo
-		for _, class := range device.classes {
-			if vc, ok := class.(*ValuatorClassInfo); ok {
-				valuatorInfo = vc
-				break
-			}
-		}
-		if valuatorInfo == nil {
-			return NewError(MatchErrorCode, seq, 0, xInputOpcode, XSetDeviceMode)
-		}
-		valuatorInfo.Mode = req.Mode
-		return &SetDeviceModeReply{sequence: seq, Status: GrabSuccess}
-	case XSetDeviceValuators:
-		req, err := parseSetDeviceValuatorsRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		device, ok := client.openDevices[req.DeviceID]
-		if !ok {
-			return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XSetDeviceValuators)
-		}
-		var valuatorInfo *ValuatorClassInfo
-		for _, class := range device.classes {
-			if vc, ok := class.(*ValuatorClassInfo); ok {
-				valuatorInfo = vc
-				break
-			}
-		}
-		if valuatorInfo == nil {
-			return NewError(MatchErrorCode, seq, 0, xInputOpcode, XSetDeviceValuators)
-		}
-		if int(req.FirstValuator)+int(req.NumValuators) > len(valuatorInfo.Axes) {
-			return NewError(ValueErrorCode, seq, 0, xInputOpcode, XSetDeviceValuators)
-		}
-		for i := 0; i < int(req.NumValuators); i++ {
-			valuatorInfo.Axes[int(req.FirstValuator)+i].Value = req.Valuators[i]
-		}
-		return &SetDeviceValuatorsReply{sequence: seq, Status: GrabSuccess}
-	case XGetDeviceControl:
-		req, err := parseGetDeviceControlRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		device, ok := client.openDevices[req.DeviceID]
-		if !ok {
-			return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XGetDeviceControl)
-		}
-		var valuatorInfo *ValuatorClassInfo
-		for _, class := range device.classes {
-			if vc, ok := class.(*ValuatorClassInfo); ok {
-				valuatorInfo = vc
-				break
-			}
-		}
-		if valuatorInfo == nil {
-			return NewError(MatchErrorCode, seq, 0, xInputOpcode, XGetDeviceControl)
-		}
-		resolutions := make([]uint32, len(valuatorInfo.Axes))
-		minResolutions := make([]uint32, len(valuatorInfo.Axes))
-		maxResolutions := make([]uint32, len(valuatorInfo.Axes))
-		for i, axis := range valuatorInfo.Axes {
-			resolutions[i] = axis.Resolution
-			minResolutions[i] = 0
-			maxResolutions[i] = 1000
-		}
-		return &GetDeviceControlReply{
-			sequence: seq,
-			Control: &DeviceResolutionState{
-				NumValuators:   byte(len(valuatorInfo.Axes)),
-				Resolutions:    resolutions,
-				MinResolutions: minResolutions,
-				MaxResolutions: maxResolutions,
-			},
-		}
-	case XChangeDeviceControl:
-		req, err := parseChangeDeviceControlRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		device, ok := client.openDevices[req.DeviceID]
-		if !ok {
-			return NewError(ValueErrorCode, seq, uint32(req.DeviceID), xInputOpcode, XChangeDeviceControl)
-		}
-		var valuatorInfo *ValuatorClassInfo
-		for _, class := range device.classes {
-			if vc, ok := class.(*ValuatorClassInfo); ok {
-				valuatorInfo = vc
-				break
-			}
-		}
-		if valuatorInfo == nil {
-			return NewError(MatchErrorCode, seq, 0, xInputOpcode, XChangeDeviceControl)
-		}
-		resolutionControl, ok := req.Control.(*DeviceResolutionControl)
-		if !ok {
-			return NewError(ValueErrorCode, seq, 0, xInputOpcode, XChangeDeviceControl)
-		}
-		if int(resolutionControl.FirstValuator)+int(resolutionControl.NumValuators) > len(valuatorInfo.Axes) {
-			return NewError(ValueErrorCode, seq, 0, xInputOpcode, XChangeDeviceControl)
-		}
-		for i := 0; i < int(resolutionControl.NumValuators); i++ {
-			valuatorInfo.Axes[int(resolutionControl.FirstValuator)+i].Resolution = resolutionControl.Resolutions[i]
-		}
-		return &ChangeDeviceControlReply{sequence: seq, Status: GrabSuccess}
-	case XGetSelectedExtensionEvents:
-		req, err := parseGetSelectedExtensionEventsRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		var thisClientClasses, allClientsClasses []uint32
-		for _, dev := range client.openDevices {
-			if mask, ok := dev.eventMasks[req.Window]; ok {
-				class := (mask << 8) | uint32(dev.header.DeviceID)
-				thisClientClasses = append(thisClientClasses, class)
-			}
-		}
-		for _, c := range s.clients {
-			for _, dev := range c.openDevices {
-				if mask, ok := dev.eventMasks[req.Window]; ok {
-					class := (mask << 8) | uint32(dev.header.DeviceID)
-					allClientsClasses = append(allClientsClasses, class)
-				}
-			}
-		}
-		return &GetSelectedExtensionEventsReply{
-			sequence:          seq,
-			ThisClientClasses: thisClientClasses,
-			AllClientsClasses: allClientsClasses,
-		}
-	case XChangeDeviceDontPropagateList:
-		req, err := parseChangeDeviceDontPropagateListRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		win, ok := s.windows[client.xID(req.Window)]
-		if !ok {
-			return NewError(WindowErrorCode, seq, req.Window, xInputOpcode, XChangeDeviceDontPropagateList)
-		}
-		if win.dontPropagateDeviceEvents == nil {
-			win.dontPropagateDeviceEvents = make(map[uint32]bool)
-		}
-		for _, class := range req.Classes {
-			if req.Mode == 0 { // AddToList
-				win.dontPropagateDeviceEvents[class] = true
-			} else { // DeleteFromList
-				delete(win.dontPropagateDeviceEvents, class)
-			}
-		}
-		return nil
-	case XAllowDeviceEvents:
-		req, err := parseAllowDeviceEventsRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		s.frontend.AllowEvents(client.id, req.Mode, req.Time)
-		return nil
-	case XChangeKeyboardDevice:
-		return NewError(DeviceErrorCode, seq, 0, xInputOpcode, XChangeKeyboardDevice)
-	case XChangePointerDevice:
-		return NewError(DeviceErrorCode, seq, 0, xInputOpcode, XChangePointerDevice)
-	case XGetDeviceDontPropagateList:
-		req, err := parseGetDeviceDontPropagateListRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		win, ok := s.windows[client.xID(req.Window)]
-		if !ok {
-			return NewError(WindowErrorCode, seq, req.Window, xInputOpcode, XGetDeviceDontPropagateList)
-		}
-		classes := make([]uint32, 0, len(win.dontPropagateDeviceEvents))
-		for class := range win.dontPropagateDeviceEvents {
-			classes = append(classes, class)
-		}
-		return &GetDeviceDontPropagateListReply{
-			sequence: seq,
-			Classes:  classes,
-		}
-	case XSendExtensionEvent:
-		dest := client.byteOrder.Uint32(body[0:4])
-		numClasses := client.byteOrder.Uint16(body[8:10])
-		numEvents := body[10]
-
-		if len(body) < 12+int(numEvents)*32+int(numClasses)*4 {
-			return NewError(LengthErrorCode, seq, 0, xInputOpcode, XSendExtensionEvent)
-		}
-
-		eventBytes := body[12 : 12+int(numEvents)*32]
-		classesBytes := body[12+int(numEvents)*32:]
-
-		// Assuming a 1-to-1 mapping between events and classes
-		for i := 0; i < int(numEvents); i++ {
-			eventData := eventBytes[i*32 : (i+1)*32]
-			class := client.byteOrder.Uint32(classesBytes[i*4 : (i+1)*4])
-
-			eventMask := class >> 8
-			deviceID := byte(class & 0xFF)
-
-			for _, c := range s.clients {
-				if dev, ok := c.openDevices[deviceID]; ok {
-					if mask, ok := dev.eventMasks[dest]; ok {
-						if (mask & eventMask) != 0 {
-							// The client has selected for this event.
-							// Send the raw event, but update the sequence number.
-							c.byteOrder.PutUint16(eventData[2:4], c.sequence-1)
-							rawEvent := &x11RawEvent{data: eventData}
-							c.send(rawEvent)
-						}
-					}
-				}
-			}
-		}
-		return nil
-	case XCloseDevice:
-		req, err := parseCloseDeviceRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		delete(client.openDevices, req.DeviceID)
-		return &CloseDeviceReply{sequence: seq}
-	case XSelectExtensionEvent:
-		windowID := client.byteOrder.Uint32(body[0:4])
-		numClasses := client.byteOrder.Uint16(body[4:6])
-		for i := 0; i < int(numClasses); i++ {
-			class := client.byteOrder.Uint32(body[8+i*4 : 12+i*4])
-			deviceID := byte(class & 0xFF)
-			mask := class >> 8
-			if dev, ok := client.openDevices[deviceID]; ok {
-				if dev.eventMasks == nil {
-					dev.eventMasks = make(map[uint32]uint32)
-				}
-				dev.eventMasks[windowID] = mask
-			}
-		}
-		return nil
-	case XGrabDevice:
-		req, err := parseGrabDeviceRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		if _, ok := s.deviceGrabs[req.DeviceID]; ok {
-			return &GrabDeviceReply{sequence: seq, Status: AlreadyGrabbed}
-		}
-		grab := &deviceGrab{
-			window:      client.xID(req.GrabWindow),
-			ownerEvents: req.OwnerEvents,
-			eventMask:   req.Classes,
-			time:        req.Time,
-		}
-		s.deviceGrabs[req.DeviceID] = grab
-		return &GrabDeviceReply{sequence: seq, Status: GrabSuccess}
-	case XUngrabDevice:
-		req, err := parseUngrabDeviceRequest(client.byteOrder, body, seq)
-		if err != nil {
-			return err.(messageEncoder)
-		}
-		if grab, ok := s.deviceGrabs[req.DeviceID]; ok {
-			// In a real server, we'd check the grabbing client ID.
-			// Here we assume any client can ungrab.
-			if grab.window.client == client.id {
-				delete(s.deviceGrabs, req.DeviceID)
-			}
-		}
-		return nil
-	default:
-		// TODO: Implement other XInput requests
-		return nil
-	}
-}
-
 func (s *x11Server) handshake(client *x11Client) {
 	var handshake [12]byte
 	if _, err := io.ReadFull(client.conn, handshake[:]); err != nil {
@@ -2796,7 +2476,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					authCookie:      authCookie,
 					keymap:          make(map[byte]uint32),
 				}
-				for k, v := range wire.KeyCodeToKeysym {
+				for k, v := range KeyCodeToKeysym {
 					x11ServerInstance.keymap[k] = v
 				}
 				x11ServerInstance.frontend = newX11Frontend(logger, x11ServerInstance)
@@ -2808,7 +2488,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 				sequence:    0,
 				byteOrder:   binary.LittleEndian, // Default, will be updated in handshake
 				saveSet:     make(map[uint32]bool),
-				openDevices: make(map[byte]*deviceInfo),
+				openDevices: make(map[byte]*wire.DeviceInfo),
 			}
 			x11ServerInstance.clients[client.id] = client
 			x11ServerInstance.nextClientID++

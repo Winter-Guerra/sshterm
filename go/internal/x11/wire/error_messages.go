@@ -194,13 +194,17 @@ func NewError(code byte, seq uint16, badValue uint32, minorOp byte, majorOp ReqC
 	case DeviceErrorCode:
 		return &DeviceError{base}
 	default:
-		return &GenericError{
-			seq:      seq,
-			badValue: badValue,
-			minorOp:  minorOp,
-			majorOp:  majorOp,
-			code:     code,
-		}
+		return NewGenericError(seq, badValue, minorOp, majorOp, code)
+	}
+}
+
+func NewGenericError(seq uint16, badValue uint32, minorOp byte, majorOp ReqCode, code byte) *GenericError {
+	return &GenericError{
+		seq:      seq,
+		badValue: badValue,
+		minorOp:  minorOp,
+		majorOp:  majorOp,
+		code:     code,
 	}
 }
 

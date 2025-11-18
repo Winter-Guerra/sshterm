@@ -40,7 +40,7 @@ func TestErrors(t *testing.T) {
 				t.Errorf("expected error code %d, got %d", tc.errorCode, err.Code())
 			}
 
-			encoded := err.encodeMessage(binary.LittleEndian)
+			encoded := err.EncodeMessage(binary.LittleEndian)
 			expected := make([]byte, 32)
 			expected[0] = 0
 			expected[1] = tc.errorCode

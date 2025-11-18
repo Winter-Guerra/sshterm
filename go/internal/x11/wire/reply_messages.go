@@ -16,7 +16,7 @@ type XCharInfo struct {
 	Attributes       uint16
 }
 
-func boolToByte(b bool) byte {
+func BoolToByte(b bool) byte {
 	if b {
 		return 1
 	}
@@ -45,7 +45,7 @@ type GetWindowAttributesReply struct {
 	DoNotPropagateMask uint16
 }
 
-func (r *GetWindowAttributesReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetWindowAttributesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 44)
 	reply[0] = 1 // Reply type
 	reply[1] = r.BackingStore
@@ -79,7 +79,7 @@ type GetGeometryReply struct {
 	BorderWidth   uint16
 }
 
-func (r *GetGeometryReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetGeometryReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	reply[1] = r.Depth
@@ -101,7 +101,7 @@ type InternAtomReply struct {
 	Atom     uint32
 }
 
-func (r *InternAtomReply) Encode(order binary.ByteOrder) []byte {
+func (r *InternAtomReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	// byte 1 is unused
@@ -119,7 +119,7 @@ type GetAtomNameReply struct {
 	Name       string
 }
 
-func (r *GetAtomNameReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetAtomNameReply) EncodeMessage(order binary.ByteOrder) []byte {
 	nameLen := len(r.Name)
 	p := (4 - (nameLen % 4)) % 4
 	reply := make([]byte, 32+nameLen+p)
@@ -143,7 +143,7 @@ type GetPropertyReply struct {
 	Value                 []byte
 }
 
-func (r *GetPropertyReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetPropertyReply) EncodeMessage(order binary.ByteOrder) []byte {
 	n := len(r.Value)
 	p := (4 - (n % 4)) % 4
 	replyLen := (n + p) / 4
@@ -168,7 +168,7 @@ type ListPropertiesReply struct {
 	Atoms         []uint32
 }
 
-func (r *ListPropertiesReply) Encode(order binary.ByteOrder) []byte {
+func (r *ListPropertiesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numAtoms := len(r.Atoms)
 	reply := make([]byte, 32+numAtoms*4)
 	reply[0] = 1 // Reply type
@@ -196,7 +196,7 @@ type QueryTextExtentsReply struct {
 	OverallRight   int32
 }
 
-func (r *QueryTextExtentsReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryTextExtentsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	reply[1] = r.DrawDirection
@@ -224,7 +224,7 @@ type TimeCoord struct {
 	X, Y int16
 }
 
-func (r *GetMotionEventsReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetMotionEventsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.Events)*8)
 	reply[0] = 1 // Reply type
 	order.PutUint16(reply[2:4], r.Sequence)
@@ -244,7 +244,7 @@ type GetSelectionOwnerReply struct {
 	Owner    uint32
 }
 
-func (r *GetSelectionOwnerReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetSelectionOwnerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	// byte 1 is unused
@@ -261,7 +261,7 @@ type GrabPointerReply struct {
 	Status   byte
 }
 
-func (r *GrabPointerReply) Encode(order binary.ByteOrder) []byte {
+func (r *GrabPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	reply[1] = r.Status
@@ -277,7 +277,7 @@ type GrabKeyboardReply struct {
 	Status   byte
 }
 
-func (r *GrabKeyboardReply) Encode(order binary.ByteOrder) []byte {
+func (r *GrabKeyboardReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	reply[1] = r.Status
@@ -298,10 +298,10 @@ type QueryPointerReply struct {
 	Mask         uint16
 }
 
-func (r *QueryPointerReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
-	reply[1] = boolToByte(r.SameScreen)
+	reply[1] = BoolToByte(r.SameScreen)
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
 	order.PutUint32(reply[8:12], r.Root)
@@ -323,10 +323,10 @@ type TranslateCoordsReply struct {
 	DstX, DstY int16
 }
 
-func (r *TranslateCoordsReply) Encode(order binary.ByteOrder) []byte {
+func (r *TranslateCoordsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
-	reply[1] = boolToByte(r.SameScreen)
+	reply[1] = BoolToByte(r.SameScreen)
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
 	order.PutUint32(reply[8:12], r.Child)
@@ -343,7 +343,7 @@ type GetInputFocusReply struct {
 	Focus    uint32
 }
 
-func (r *GetInputFocusReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetInputFocusReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	reply[1] = r.RevertTo
@@ -373,7 +373,7 @@ type QueryFontReply struct {
 	CharInfos      []XCharInfo
 }
 
-func (r *QueryFontReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryFontReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numFontProps := 0 // Not implemented yet
 	numCharInfos := len(r.CharInfos)
 
@@ -407,7 +407,7 @@ func (r *QueryFontReply) Encode(order binary.ByteOrder) []byte {
 	reply[48] = r.DrawDirection & 0x1
 	reply[49] = r.MinByte1
 	reply[50] = r.MaxByte1
-	reply[51] = boolToByte(r.AllCharsExist)
+	reply[51] = BoolToByte(r.AllCharsExist)
 
 	order.PutUint16(reply[52:54], uint16(r.FontAscent))
 	order.PutUint16(reply[54:56], uint16(r.FontDescent))
@@ -433,7 +433,7 @@ type ListFontsReply struct {
 	FontNames []string
 }
 
-func (r *ListFontsReply) Encode(order binary.ByteOrder) []byte {
+func (r *ListFontsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	var namesData []byte
 	for _, name := range r.FontNames {
 		namesData = append(namesData, byte(len(name)))
@@ -462,7 +462,7 @@ type GetImageReply struct {
 	ImageData []byte
 }
 
-func (r *GetImageReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetImageReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.ImageData))
 	reply[0] = 1 // Reply type
 	reply[1] = r.Depth
@@ -495,7 +495,7 @@ type AllocColorReply struct {
 4     CARD32                          pixel
 12                                    unused
 */
-func (r *AllocColorReply) Encode(order binary.ByteOrder) []byte {
+func (r *AllocColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	// byte 1 is unused
@@ -533,7 +533,7 @@ type AllocNamedColorReply struct {
 2     CARD16                          visual-blue
 8                                     unused
 */
-func (r *AllocNamedColorReply) Encode(order binary.ByteOrder) []byte {
+func (r *AllocNamedColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	// byte 1 is unused
@@ -556,7 +556,7 @@ type ListInstalledColormapsReply struct {
 	Colormaps    []uint32
 }
 
-func (r *ListInstalledColormapsReply) Encode(order binary.ByteOrder) []byte {
+func (r *ListInstalledColormapsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	nColormaps := len(r.Colormaps)
 	reply := make([]byte, 32+nColormaps*4)
 	reply[0] = 1 // Reply
@@ -577,7 +577,7 @@ type QueryColorsReply struct {
 	Colors   []XColorItem
 }
 
-func (r *QueryColorsReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryColorsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numColors := len(r.Colors)
 	replies := make([]byte, numColors*8)
 	for i, color := range r.Colors {
@@ -609,7 +609,7 @@ type LookupColorReply struct {
 	ExactBlue  uint16
 }
 
-func (r *LookupColorReply) Encode(order binary.ByteOrder) []byte {
+func (r *LookupColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	// byte 1 is unused
@@ -632,7 +632,7 @@ type QueryBestSizeReply struct {
 	Height   uint16
 }
 
-func (r *QueryBestSizeReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryBestSizeReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	// byte 1 is unused
@@ -662,12 +662,12 @@ type QueryExtensionReply struct {
 // 1     CARD8                           first-event
 // 1     CARD8                           first-error
 // 20                                    unused
-func (r *QueryExtensionReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryExtensionReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
-	reply[8] = boolToByte(r.Present)
+	reply[8] = BoolToByte(r.Present)
 	reply[9] = r.MajorOpcode
 	reply[10] = r.FirstEvent
 	reply[11] = r.FirstError
@@ -699,7 +699,7 @@ type SetupResponse struct {
 	Screens                  []Screen
 }
 
-func (r *SetupResponse) Encode(order binary.ByteOrder) []byte {
+func (r *SetupResponse) EncodeMessage(order binary.ByteOrder) []byte {
 	if r.Success == 0 {
 		response := make([]byte, 8+len(r.Reason))
 		order.PutUint16(response[2:4], r.ProtocolVersion)
@@ -940,7 +940,7 @@ type SetPointerMappingReply struct {
 	Status   byte
 }
 
-func (r *SetPointerMappingReply) Encode(order binary.ByteOrder) []byte {
+func (r *SetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	reply[1] = r.Status
@@ -956,7 +956,7 @@ type GetPointerMappingReply struct {
 	PMap     []byte
 }
 
-func (r *GetPointerMappingReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.PMap))
 	reply[0] = 1 // Reply type
 	reply[1] = r.Length
@@ -975,7 +975,7 @@ type GetKeyboardMappingReply struct {
 
 func (r *GetKeyboardMappingReply) OpCode() ReqCode { return GetKeyboardMapping }
 
-func (r *GetKeyboardMappingReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetKeyboardMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numKeysyms := len(r.KeySyms)
 	length := uint32(numKeysyms)
 
@@ -1003,7 +1003,7 @@ type GetKeyboardControlReply struct {
 	AutoRepeats      [32]byte
 }
 
-func (r *GetKeyboardControlReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetKeyboardControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 52)
 	reply[0] = 1 // Reply type
 	reply[1] = r.GlobalAutoRepeat
@@ -1028,7 +1028,7 @@ type GetScreenSaverReply struct {
 	AllowExpose byte
 }
 
-func (r *GetScreenSaverReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetScreenSaverReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	order.PutUint16(reply[2:4], r.Sequence)
@@ -1047,7 +1047,7 @@ type ListHostsReply struct {
 	Hosts    []Host
 }
 
-func (r *ListHostsReply) Encode(order binary.ByteOrder) []byte {
+func (r *ListHostsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	var data []byte
 	for _, host := range r.Hosts {
 		var hostData []byte
@@ -1075,7 +1075,7 @@ type SetModifierMappingReply struct {
 	Status   byte
 }
 
-func (r *SetModifierMappingReply) Encode(order binary.ByteOrder) []byte {
+func (r *SetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	reply[1] = r.Status
@@ -1091,7 +1091,7 @@ type GetModifierMappingReply struct {
 	KeyCodes            []KeyCode
 }
 
-func (r *GetModifierMappingReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	keyCodes := make([]byte, len(r.KeyCodes))
 	for i, kc := range r.KeyCodes {
 		keyCodes[i] = byte(kc)
@@ -1111,7 +1111,7 @@ type QueryKeymapReply struct {
 	Keys     [32]byte
 }
 
-func (r *QueryKeymapReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryKeymapReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 40)
 	reply[0] = 1 // Reply type
 	order.PutUint16(reply[2:4], r.Sequence)
@@ -1127,7 +1127,7 @@ type GetFontPathReply struct {
 	Paths    []string
 }
 
-func (r *GetFontPathReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetFontPathReply) EncodeMessage(order binary.ByteOrder) []byte {
 	var data []byte
 	for _, path := range r.Paths {
 		data = append(data, byte(len(path)))
@@ -1171,7 +1171,7 @@ type FontProp struct {
 	Value uint32
 }
 
-func (r *ListFontsWithInfoReply) Encode(order binary.ByteOrder) []byte {
+func (r *ListFontsWithInfoReply) EncodeMessage(order binary.ByteOrder) []byte {
 	fontNameBytes := []byte(r.FontName)
 	fontNameLen := len(fontNameBytes)
 	p := (4 - (fontNameLen % 4)) % 4
@@ -1206,7 +1206,7 @@ func (r *ListFontsWithInfoReply) Encode(order binary.ByteOrder) []byte {
 	reply[48] = r.DrawDirection
 	reply[49] = r.MinByte1
 	reply[50] = r.MaxByte1
-	reply[51] = boolToByte(r.AllCharsExist)
+	reply[51] = BoolToByte(r.AllCharsExist)
 	order.PutUint16(reply[52:54], uint16(r.FontAscent))
 	order.PutUint16(reply[54:56], uint16(r.FontDescent))
 	order.PutUint32(reply[56:60], r.NReplies)
@@ -1231,7 +1231,7 @@ type QueryTreeReply struct {
 	Children    []uint32
 }
 
-func (r *QueryTreeReply) Encode(order binary.ByteOrder) []byte {
+func (r *QueryTreeReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.Children)*4)
 	reply[0] = 1 // Reply type
 	order.PutUint16(reply[2:4], r.Sequence)
@@ -1254,7 +1254,7 @@ type AllocColorCellsReply struct {
 	Masks    []uint32
 }
 
-func (r *AllocColorCellsReply) Encode(order binary.ByteOrder) []byte {
+func (r *AllocColorCellsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numPixels := len(r.Pixels)
 	numMasks := len(r.Masks)
 	reply := make([]byte, 32+(numPixels+numMasks)*4)
@@ -1284,7 +1284,7 @@ type AllocColorPlanesReply struct {
 	Pixels    []uint32
 }
 
-func (r *AllocColorPlanesReply) Encode(order binary.ByteOrder) []byte {
+func (r *AllocColorPlanesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numPixels := len(r.Pixels)
 	reply := make([]byte, 32+numPixels*4)
 	reply[0] = 1 // Reply type
@@ -1318,7 +1318,7 @@ type GetPointerControlReply struct {
 	Threshold        uint16
 }
 
-func (r *GetPointerControlReply) Encode(order binary.ByteOrder) []byte {
+func (r *GetPointerControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
 	// byte 1 is unused
@@ -1331,7 +1331,7 @@ func (r *GetPointerControlReply) Encode(order binary.ByteOrder) []byte {
 	return reply
 }
 
-func (r *ListExtensionsReply) Encode(order binary.ByteOrder) []byte {
+func (r *ListExtensionsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	var data []byte
 	for _, name := range r.Names {
 		data = append(data, byte(len(name)))

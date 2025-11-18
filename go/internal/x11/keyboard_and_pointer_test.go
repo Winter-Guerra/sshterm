@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
 
 func TestGetPointerMappingRequest(t *testing.T) {
@@ -16,7 +18,7 @@ func TestGetPointerMappingRequest(t *testing.T) {
 
 	// 1. Send a GetPointerMapping request
 	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(GetPointerMapping))
+	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetPointerMapping))
 	binary.Write(reqBuf, client.byteOrder, byte(0))
 	binary.Write(reqBuf, client.byteOrder, uint16(1))
 	binary.Write(reqBuf, client.byteOrder, uint32(0))
@@ -29,7 +31,7 @@ func TestGetPointerMappingRequest(t *testing.T) {
 	reply := server.handleRequest(client, req, seq)
 
 	// 2. Verify the reply
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
 	replyBytes := clientBuffer.Bytes()
@@ -63,7 +65,7 @@ func TestGetPointerControlRequest(t *testing.T) {
 
 	// 1. Send a GetPointerControl request
 	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(GetPointerControl))
+	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetPointerControl))
 	binary.Write(reqBuf, client.byteOrder, byte(0))
 	binary.Write(reqBuf, client.byteOrder, uint16(1))
 	// Pad to 4 bytes
@@ -77,7 +79,7 @@ func TestGetPointerControlRequest(t *testing.T) {
 	reply := server.handleRequest(client, req, seq)
 
 	// 2. Verify the reply
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
 	replyBytes := clientBuffer.Bytes()
@@ -115,13 +117,13 @@ func TestSetModifierMappingRequest(t *testing.T) {
 
 	// 1. Send a SetModifierMapping request
 	const keyCodesPerModifier = 2
-	keyCodes := make([]KeyCode, 8*keyCodesPerModifier)
+	keyCodes := make([]wire.KeyCode, 8*keyCodesPerModifier)
 	for i := range keyCodes {
-		keyCodes[i] = KeyCode(i + 1)
+		keyCodes[i] = wire.KeyCode(i + 1)
 	}
 
 	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(SetModifierMapping))
+	binary.Write(reqBuf, client.byteOrder, uint8(wire.SetModifierMapping))
 	binary.Write(reqBuf, client.byteOrder, byte(keyCodesPerModifier))
 	binary.Write(reqBuf, client.byteOrder, uint16(1+2*keyCodesPerModifier)) // request length
 	for _, kc := range keyCodes {
@@ -145,7 +147,7 @@ func TestGetModifierMappingRequest(t *testing.T) {
 
 	// 1. Send a GetModifierMapping request
 	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(GetModifierMapping))
+	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetModifierMapping))
 	binary.Write(reqBuf, client.byteOrder, byte(0))
 	binary.Write(reqBuf, client.byteOrder, uint16(1))
 	binary.Write(reqBuf, client.byteOrder, uint32(0))
@@ -158,7 +160,7 @@ func TestGetModifierMappingRequest(t *testing.T) {
 	reply := server.handleRequest(client, req, seq)
 
 	// 2. Verify the reply
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
 	replyBytes := clientBuffer.Bytes()
@@ -192,15 +194,15 @@ func TestSetPointerMappingRequest(t *testing.T) {
 	// 1. Define the pointer map and construct the raw request bytes
 	pointerMap := []byte{3, 1, 2}
 	n := len(pointerMap)
-	paddedLen := n + padLen(n)
+	paddedLen := n + wire.PadLen(n)
 	reqLen := 1 + (paddedLen / 4) // Request length in 4-byte units
 
 	rawReq := new(bytes.Buffer)
-	binary.Write(rawReq, client.byteOrder, uint8(SetPointerMapping)) // Opcode
-	binary.Write(rawReq, client.byteOrder, uint8(n))                 // length of map
-	binary.Write(rawReq, client.byteOrder, uint16(reqLen))           // request length
+	binary.Write(rawReq, client.byteOrder, uint8(wire.SetPointerMapping)) // Opcode
+	binary.Write(rawReq, client.byteOrder, uint8(n))                      // length of map
+	binary.Write(rawReq, client.byteOrder, uint16(reqLen))                // request length
 	rawReq.Write(pointerMap)
-	rawReq.Write(make([]byte, padLen(n))) // padding
+	rawReq.Write(make([]byte, wire.PadLen(n))) // padding
 
 	// The mock connection needs the raw request to be read
 	mockConn := client.conn.(*testConn)
@@ -225,7 +227,7 @@ func TestSetPointerMappingRequest(t *testing.T) {
 	}
 
 	// 4. Verify the reply sent to the client
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	if _, err := clientBuffer.Write(encodedReply); err != nil {
 		t.Fatalf("Failed to write reply to buffer: %v", err)
 	}

@@ -88,7 +88,7 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	}
 
 	// 3. Encode the reply and write to the client's buffer
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	if _, err := clientBuffer.Write(encodedReply); err != nil {
 		t.Fatalf("Failed to write reply to buffer: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestWindowHierarchyRequests(t *testing.T) {
 	if reply == nil {
 		t.Fatalf("QueryTree: handleRequest returned a nil reply")
 	}
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	if _, err := clientBuffer.Write(encodedReply); err != nil {
 		t.Fatalf("QueryTree: failed to write reply to buffer: %v", err)
 	}
@@ -687,7 +687,7 @@ func TestColormapRequests(t *testing.T) {
 		// Store new values for the pixel
 		req := &wire.StoreColorsRequest{
 			Cmap: wire.Colormap(cmapID.local),
-			Items: []wire.ColorItem{
+			Items: []wire.XColorItem{
 				{Pixel: pixelToStore, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, Flags: wire.DoRed | wire.DoGreen | wire.DoBlue},
 			},
 		}
@@ -818,7 +818,7 @@ func TestKeyboardMappingRequests(t *testing.T) {
 	if reply == nil {
 		t.Fatal("GetKeyboardMapping: handleRequest returned a nil reply")
 	}
-	encodedReply := reply.encodeMessage(client.byteOrder)
+	encodedReply := reply.EncodeMessage(client.byteOrder)
 	if _, err := clientBuffer.Write(encodedReply); err != nil {
 		t.Fatalf("GetKeyboardMapping: failed to write reply to buffer: %v", err)
 	}
@@ -871,7 +871,7 @@ func TestExtensionRequests(t *testing.T) {
 	if !ok {
 		t.Fatalf("QueryExtension (BIG-REQUESTS): expected *wire.QueryExtensionReply, got %T", reply)
 	}
-	if !queryBigReply.Present || queryBigReply.MajorOpcode != wire.BigRequestsOpcode {
+	if !queryBigReply.Present || queryBigReply.MajorOpcode != byte(wire.BigRequestsOpcode) {
 		t.Errorf("QueryExtension (BIG-REQUESTS): incorrect reply. Got present=%t, opcode=%d", queryBigReply.Present, queryBigReply.MajorOpcode)
 	}
 
@@ -885,7 +885,7 @@ func TestExtensionRequests(t *testing.T) {
 	if !ok {
 		t.Fatalf("QueryExtension (XInput): expected *wire.QueryExtensionReply, got %T", reply)
 	}
-	if !queryXInputReply.Present || queryXInputReply.MajorOpcode != wire.XInputOpcode {
+	if !queryXInputReply.Present || queryXInputReply.MajorOpcode != byte(wire.XInputOpcode) {
 		t.Errorf("QueryExtension (XInput): incorrect reply. Got present=%t, opcode=%d", queryXInputReply.Present, queryXInputReply.MajorOpcode)
 	}
 

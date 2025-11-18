@@ -10,17 +10,17 @@ import (
 
 func TestReplyMessages(t *testing.T) {
 	t.Run("GetKeyboardControl", func(t *testing.T) {
-		reply := &getKeyboardControlReply{
-			sequence:         9,
-			keyClickPercent:  1,
-			bellPercent:      2,
-			bellPitch:        3,
-			bellDuration:     4,
-			ledMask:          5,
-			globalAutoRepeat: 1,
-			autoRepeats:      [32]byte{1, 2, 3},
+		reply := &GetKeyboardControlReply{
+			Sequence:         9,
+			KeyClickPercent:  1,
+			BellPercent:      2,
+			BellPitch:        3,
+			BellDuration:     4,
+			LedMask:          5,
+			GlobalAutoRepeat: 1,
+			AutoRepeats:      [32]byte{1, 2, 3},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 52)
 		expected[0] = 1
 		expected[1] = 1
@@ -40,14 +40,14 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryTree", func(t *testing.T) {
-		reply := &queryTreeReply{
-			sequence:    5,
-			root:        1,
-			parent:      2,
-			numChildren: 1,
-			children:    []uint32{3},
+		reply := &QueryTreeReply{
+			Sequence:    5,
+			Root:        1,
+			Parent:      2,
+			NumChildren: 1,
+			Children:    []uint32{3},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 36)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 5)
@@ -62,12 +62,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("ListFontsWithInfo", func(t *testing.T) {
-		reply := &listFontsWithInfoReply{
-			sequence:   6,
-			nameLength: 4,
-			fontName:   "test",
+		reply := &ListFontsWithInfoReply{
+			Sequence:   6,
+			NameLength: 4,
+			FontName:   "test",
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 64)
 		expected[0] = 1
 		expected[1] = 4
@@ -80,12 +80,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetFontPath", func(t *testing.T) {
-		reply := &getFontPathReply{
-			sequence: 7,
-			nPaths:   1,
-			paths:    []string{"/usr/share/fonts"},
+		reply := &GetFontPathReply{
+			Sequence: 7,
+			NPaths:   1,
+			Paths:    []string{"/usr/share/fonts"},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 52)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 7)
@@ -99,11 +99,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryKeymap", func(t *testing.T) {
-		reply := &queryKeymapReply{
-			sequence: 8,
-			keys:     [32]byte{1, 2, 3},
+		reply := &QueryKeymapReply{
+			Sequence: 8,
+			Keys:     [32]byte{1, 2, 3},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 40)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 8)
@@ -117,10 +117,10 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetMotionEvents", func(t *testing.T) {
-		reply := &getMotionEventsReply{
-			sequence: 2,
-			nEvents:  1,
-			events: []TimeCoord{
+		reply := &GetMotionEventsReply{
+			Sequence: 2,
+			NEvents:  1,
+			Events: []TimeCoord{
 				{
 					Time: 123,
 					X:    10,
@@ -128,7 +128,7 @@ func TestReplyMessages(t *testing.T) {
 				},
 			},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 40)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 2)
@@ -143,18 +143,18 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryTextExtents", func(t *testing.T) {
-		reply := &queryTextExtentsReply{
-			sequence:       3,
-			drawDirection:  0,
-			fontAscent:     10,
-			fontDescent:    2,
-			overallAscent:  11,
-			overallDescent: 3,
-			overallWidth:   100,
-			overallLeft:    -5,
-			overallRight:   95,
+		reply := &QueryTextExtentsReply{
+			Sequence:       3,
+			DrawDirection:  0,
+			FontAscent:     10,
+			FontDescent:    2,
+			OverallAscent:  11,
+			OverallDescent: 3,
+			OverallWidth:   100,
+			OverallLeft:    -5,
+			OverallRight:   95,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 0
@@ -173,18 +173,18 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("ListExtensions", func(t *testing.T) {
-		reply := &listExtensionsReply{
-			sequence: 4,
-			nNames:   2,
-			names:    []string{"ext1", "ext2"},
+		reply := &ListExtensionsReply{
+			Sequence: 4,
+			NNames:   2,
+			Names:    []string{"ext1", "ext2"},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 
 		var data []byte
 		data = append(data, 4, 'e', 'x', 't', '1')
 		data = append(data, 4, 'e', 'x', 't', '2')
 
-		expected := make([]byte, 32+len(data)+padLen(len(data)))
+		expected := make([]byte, 32+len(data)+PadLen(len(data)))
 		expected[0] = 1
 		expected[1] = 2
 		binary.LittleEndian.PutUint16(expected[2:4], 4)
@@ -197,7 +197,7 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetWindowAttributes", func(t *testing.T) {
-		reply := &getWindowAttributesReply{
+		reply := &GetWindowAttributesReply{
 			Sequence:           10,
 			BackingStore:       1,
 			VisualID:           2,
@@ -215,7 +215,7 @@ func TestReplyMessages(t *testing.T) {
 			YourEventMask:      10,
 			DoNotPropagateMask: 11,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 44)
 		expected[0] = 1
 		expected[1] = 1
@@ -241,17 +241,17 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetGeometry", func(t *testing.T) {
-		reply := &getGeometryReply{
-			sequence:    11,
-			depth:       1,
-			root:        2,
-			x:           3,
-			y:           4,
-			width:       5,
-			height:      6,
-			borderWidth: 7,
+		reply := &GetGeometryReply{
+			Sequence:    11,
+			Depth:       1,
+			Root:        2,
+			X:           3,
+			Y:           4,
+			Width:       5,
+			Height:      6,
+			BorderWidth: 7,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -268,11 +268,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("InternAtom", func(t *testing.T) {
-		reply := &internAtomReply{
-			sequence: 12,
-			atom:     1,
+		reply := &InternAtomReply{
+			Sequence: 12,
+			Atom:     1,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 12)
@@ -283,12 +283,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetAtomName", func(t *testing.T) {
-		reply := &getAtomNameReply{
-			sequence:   13,
-			nameLength: 4,
-			name:       "test",
+		reply := &GetAtomNameReply{
+			Sequence:   13,
+			NameLength: 4,
+			Name:       "test",
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 36)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 13)
@@ -301,15 +301,15 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetProperty", func(t *testing.T) {
-		reply := &getPropertyReply{
-			sequence:              14,
-			format:                8,
-			propertyType:          1,
-			bytesAfter:            2,
-			valueLenInFormatUnits: 4,
-			value:                 []byte{1, 2, 3, 4},
+		reply := &GetPropertyReply{
+			Sequence:              14,
+			Format:                8,
+			PropertyType:          1,
+			BytesAfter:            2,
+			ValueLenInFormatUnits: 4,
+			Value:                 []byte{1, 2, 3, 4},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 36)
 		expected[0] = 1
 		expected[1] = 8
@@ -325,12 +325,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("ListProperties", func(t *testing.T) {
-		reply := &listPropertiesReply{
-			sequence:      15,
-			numProperties: 3,
-			atoms:         []uint32{1, 2, 3},
+		reply := &ListPropertiesReply{
+			Sequence:      15,
+			NumProperties: 3,
+			Atoms:         []uint32{1, 2, 3},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 44)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 15)
@@ -345,11 +345,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetSelectionOwner", func(t *testing.T) {
-		reply := &getSelectionOwnerReply{
-			sequence: 16,
-			owner:    1,
+		reply := &GetSelectionOwnerReply{
+			Sequence: 16,
+			Owner:    1,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 16)
@@ -360,11 +360,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GrabPointer", func(t *testing.T) {
-		reply := &grabPointerReply{
-			sequence: 17,
-			status:   1,
+		reply := &GrabPointerReply{
+			Sequence: 17,
+			Status:   1,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -375,11 +375,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GrabKeyboard", func(t *testing.T) {
-		reply := &grabKeyboardReply{
-			sequence: 18,
-			status:   1,
+		reply := &GrabKeyboardReply{
+			Sequence: 18,
+			Status:   1,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -390,18 +390,18 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryPointer", func(t *testing.T) {
-		reply := &queryPointerReply{
-			sequence:   19,
-			sameScreen: true,
-			root:       1,
-			child:      2,
-			rootX:      3,
-			rootY:      4,
-			winX:       5,
-			winY:       6,
-			mask:       7,
+		reply := &QueryPointerReply{
+			Sequence:   19,
+			SameScreen: true,
+			Root:       1,
+			Child:      2,
+			RootX:      3,
+			RootY:      4,
+			WinX:       5,
+			WinY:       6,
+			Mask:       7,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -419,14 +419,14 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("TranslateCoords", func(t *testing.T) {
-		reply := &translateCoordsReply{
-			sequence:   20,
-			sameScreen: true,
-			child:      1,
-			dstX:       2,
-			dstY:       3,
+		reply := &TranslateCoordsReply{
+			Sequence:   20,
+			SameScreen: true,
+			Child:      1,
+			DstX:       2,
+			DstY:       3,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -440,12 +440,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetInputFocus", func(t *testing.T) {
-		reply := &getInputFocusReply{
-			sequence: 21,
-			revertTo: 1,
-			focus:    2,
+		reply := &GetInputFocusReply{
+			Sequence: 21,
+			RevertTo: 1,
+			Focus:    2,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -457,22 +457,22 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryFont", func(t *testing.T) {
-		reply := &queryFontReply{
-			sequence:       22,
-			minCharOrByte2: 1,
-			maxCharOrByte2: 2,
-			defaultChar:    3,
-			drawDirection:  1,
-			minByte1:       1,
-			maxByte1:       2,
-			allCharsExist:  true,
-			fontAscent:     10,
-			fontDescent:    2,
-			charInfos: []xCharInfo{
+		reply := &QueryFontReply{
+			Sequence:       22,
+			MinCharOrByte2: 1,
+			MaxCharOrByte2: 2,
+			DefaultChar:    3,
+			DrawDirection:  1,
+			MinByte1:       1,
+			MaxByte1:       2,
+			AllCharsExist:  true,
+			FontAscent:     10,
+			FontDescent:    2,
+			CharInfos: []XCharInfo{
 				{1, 2, 3, 4, 5, 6},
 			},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 72)
 		expected[0] = 1
 		expected[1] = 1
@@ -500,11 +500,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("ListFonts", func(t *testing.T) {
-		reply := &listFontsReply{
-			sequence:  23,
-			fontNames: []string{"test", "test2"},
+		reply := &ListFontsReply{
+			Sequence:  23,
+			FontNames: []string{"test", "test2"},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 44)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 23)
@@ -520,13 +520,13 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetImage", func(t *testing.T) {
-		reply := &getImageReply{
-			sequence:  24,
-			depth:     24,
-			visualID:  1,
-			imageData: []byte{1, 2, 3, 4},
+		reply := &GetImageReply{
+			Sequence:  24,
+			Depth:     24,
+			VisualID:  1,
+			ImageData: []byte{1, 2, 3, 4},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 36)
 		expected[0] = 1
 		expected[1] = 24
@@ -540,14 +540,14 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("AllocColor", func(t *testing.T) {
-		reply := &allocColorReply{
-			sequence: 25,
-			red:      1,
-			green:    2,
-			blue:     3,
-			pixel:    4,
+		reply := &AllocColorReply{
+			Sequence: 25,
+			Red:      1,
+			Green:    2,
+			Blue:     3,
+			Pixel:    4,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 25)
@@ -561,12 +561,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("ListInstalledColormaps", func(t *testing.T) {
-		reply := &listInstalledColormapsReply{
-			sequence:     26,
-			numColormaps: 3,
-			colormaps:    []uint32{1, 2, 3},
+		reply := &ListInstalledColormapsReply{
+			Sequence:     26,
+			NumColormaps: 3,
+			Colormaps:    []uint32{1, 2, 3},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 44)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 26)
@@ -581,14 +581,14 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryColors", func(t *testing.T) {
-		reply := &queryColorsReply{
-			sequence: 27,
-			colors: []xColorItem{
+		reply := &QueryColorsReply{
+			Sequence: 27,
+			Colors: []XColorItem{
 				{Pixel: 0, Red: 1, Green: 2, Blue: 3, Flags: 0},
 				{Pixel: 0, Red: 4, Green: 5, Blue: 6, Flags: 0},
 			},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 48)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 27)
@@ -606,16 +606,16 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("LookupColor", func(t *testing.T) {
-		reply := &lookupColorReply{
-			sequence:   28,
-			red:        1,
-			green:      2,
-			blue:       3,
-			exactRed:   4,
-			exactGreen: 5,
-			exactBlue:  6,
+		reply := &LookupColorReply{
+			Sequence:   28,
+			Red:        1,
+			Green:      2,
+			Blue:       3,
+			ExactRed:   4,
+			ExactGreen: 5,
+			ExactBlue:  6,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 28)
@@ -631,12 +631,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryBestSize", func(t *testing.T) {
-		reply := &queryBestSizeReply{
-			sequence: 29,
-			width:    1,
-			height:   2,
+		reply := &QueryBestSizeReply{
+			Sequence: 29,
+			Width:    1,
+			Height:   2,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 29)
@@ -648,14 +648,14 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("QueryExtension", func(t *testing.T) {
-		reply := &queryExtensionReply{
-			sequence:    30,
-			present:     true,
-			majorOpcode: 1,
-			firstEvent:  2,
-			firstError:  3,
+		reply := &QueryExtensionReply{
+			Sequence:    30,
+			Present:     true,
+			MajorOpcode: 1,
+			FirstEvent:  2,
+			FirstError:  3,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 30)
@@ -669,10 +669,10 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("SetPointerMapping", func(t *testing.T) {
-		reply := &setPointerMappingReply{
-			sequence: 31,
+		reply := &SetPointerMappingReply{
+			Sequence: 31,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 31)
@@ -682,12 +682,12 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetPointerMapping", func(t *testing.T) {
-		reply := &getPointerMappingReply{
-			sequence: 32,
-			length:   4,
-			pMap:     []byte{1, 2, 3, 4},
+		reply := &GetPointerMappingReply{
+			Sequence: 32,
+			Length:   4,
+			PMap:     []byte{1, 2, 3, 4},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 36)
 		expected[0] = 1
 		expected[1] = 4
@@ -700,11 +700,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetKeyboardMapping", func(t *testing.T) {
-		reply := &getKeyboardMappingReply{
-			sequence: 33,
-			keySyms:  []uint32{1, 2, 3},
+		reply := &GetKeyboardMappingReply{
+			Sequence: 33,
+			KeySyms:  []uint32{1, 2, 3},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 44)
 		expected[0] = 1
 		expected[1] = 1
@@ -719,14 +719,14 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetScreenSaver", func(t *testing.T) {
-		reply := &getScreenSaverReply{
-			sequence:    34,
-			timeout:     1,
-			interval:    2,
-			preferBlank: 1,
-			allowExpose: 1,
+		reply := &GetScreenSaverReply{
+			Sequence:    34,
+			Timeout:     1,
+			Interval:    2,
+			PreferBlank: 1,
+			AllowExpose: 1,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 34)
@@ -740,17 +740,17 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("ListHosts", func(t *testing.T) {
-		reply := &listHostsReply{
-			sequence: 35,
-			numHosts: 1,
-			hosts: []Host{
+		reply := &ListHostsReply{
+			Sequence: 35,
+			NumHosts: 1,
+			Hosts: []Host{
 				{
 					Family: 1,
 					Data:   []byte{1, 2, 3, 4},
 				},
 			},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 40)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 35)
@@ -765,10 +765,10 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("SetModifierMapping", func(t *testing.T) {
-		reply := &setModifierMappingReply{
-			sequence: 36,
+		reply := &SetModifierMappingReply{
+			Sequence: 36,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 36)
@@ -778,11 +778,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetModifierMapping", func(t *testing.T) {
-		reply := &getModifierMappingReply{
-			sequence: 37,
-			keyCodes: []KeyCode{1, 2, 3, 4},
+		reply := &GetModifierMappingReply{
+			Sequence: 37,
+			KeyCodes: []KeyCode{1, 2, 3, 4},
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 36)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 37)
@@ -794,11 +794,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("SetPointerMapping", func(t *testing.T) {
-		reply := &setPointerMappingReply{
-			sequence: 31,
-			status:   1,
+		reply := &SetPointerMappingReply{
+			Sequence: 31,
+			Status:   1,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -809,11 +809,11 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("SetModifierMapping", func(t *testing.T) {
-		reply := &setModifierMappingReply{
-			sequence: 36,
-			status:   1,
+		reply := &SetModifierMappingReply{
+			Sequence: 36,
+			Status:   1,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		expected[1] = 1
@@ -824,13 +824,13 @@ func TestReplyMessages(t *testing.T) {
 	})
 
 	t.Run("GetPointerControl", func(t *testing.T) {
-		reply := &getPointerControlReply{
+		reply := &GetPointerControlReply{
 			Sequence:         1,
 			AccelNumerator:   2,
 			AccelDenominator: 3,
 			Threshold:        4,
 		}
-		encoded := reply.encodeMessage(binary.LittleEndian)
+		encoded := reply.EncodeMessage(binary.LittleEndian)
 		expected := make([]byte, 32)
 		expected[0] = 1
 		binary.LittleEndian.PutUint16(expected[2:4], 1)
@@ -840,14 +840,6 @@ func TestReplyMessages(t *testing.T) {
 		binary.LittleEndian.PutUint16(expected[12:14], 4)
 		if !bytes.Equal(encoded, expected) {
 			t.Errorf("GetPointerControlReply encoding failed. Got %v, want %v", encoded, expected)
-		}
-	})
-
-	t.Run("Setup", func(t *testing.T) {
-		s := newDefaultSetup()
-		b := s.marshal(binary.LittleEndian)
-		if len(b) == 0 {
-			t.Error("Setup marshaling failed")
 		}
 	})
 }
