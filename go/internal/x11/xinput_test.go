@@ -147,13 +147,15 @@ func TestXDeviceControl(t *testing.T) {
 	assert.Equal(t, uint32(1), resolutionState.Resolutions[0])
 
 	// Change device control (resolution)
-	changeControlReqBody := make([]byte, 12)
-	changeControlReqBody[0] = 2                               // device 2
-	client.byteOrder.PutUint16(changeControlReqBody[2:4], 1)  // control DEVICE_RESOLUTION
-	client.byteOrder.PutUint16(changeControlReqBody[4:6], 12) // length
-	changeControlReqBody[5] = 0                               // first_valuator
-	changeControlReqBody[6] = 1                               // num_valuators
-	client.byteOrder.PutUint32(changeControlReqBody[8:12], 500)
+	changeControlReqBody := make([]byte, 14)
+	changeControlReqBody[0] = 2 // device 2
+	// body[1] is padding (0)
+	client.byteOrder.PutUint16(changeControlReqBody[2:4], wire.DeviceResolution) // control DEVICE_RESOLUTION
+	client.byteOrder.PutUint16(changeControlReqBody[4:6], 8+4)                   // ControlLength = 8 (fixed part of control) + 4 (for 1 uint32 resolution)
+	changeControlReqBody[6] = 0                                                  // first_valuator
+	changeControlReqBody[7] = 1                                                  // num_valuators
+	// body[8:10] is padding (0,0)
+	client.byteOrder.PutUint32(changeControlReqBody[10:14], 500) // resolution value
 	changeControlReq := &wire.XInputRequest{MinorOpcode: wire.XChangeDeviceControl, Body: changeControlReqBody}
 	reply = s.handleRequest(client, changeControlReq, 3)
 	require.NotNil(t, reply)
@@ -224,9 +226,10 @@ func TestDeviceDontPropagateList(t *testing.T) {
 	// Change don't propagate list
 	changeListReqBody := make([]byte, 12)
 	client.byteOrder.PutUint32(changeListReqBody[0:4], 1) // window
-	changeListReqBody[4] = 0                              // mode AddToList
-	client.byteOrder.PutUint16(changeListReqBody[6:8], 1) // num_classes
-	client.byteOrder.PutUint32(changeListReqBody[8:12], 1234)
+	client.byteOrder.PutUint16(changeListReqBody[4:6], 1) // num_classes
+	changeListReqBody[6] = 0                              // mode AddToList
+	// body[7] is padding (0)
+	client.byteOrder.PutUint32(changeListReqBody[8:12], 1234) // class
 	changeListReq := &wire.XInputRequest{MinorOpcode: wire.XChangeDeviceDontPropagateList, Body: changeListReqBody}
 	s.handleRequest(client, changeListReq, 2)
 
@@ -263,9 +266,15 @@ func TestXAllowDeviceEvents(t *testing.T) {
 	// Grab the device
 	grabReqBody := make([]byte, 20)
 	client.byteOrder.PutUint32(grabReqBody[0:4], 1)   // grab_window
-	grabReqBody[11] = 2                               // device_id
-	client.byteOrder.PutUint16(grabReqBody[14:16], 1) // num_classes
-	client.byteOrder.PutUint32(grabReqBody[16:20], 0) // classes
+	client.byteOrder.PutUint32(grabReqBody[4:8], 0)   // time (0 for now)
+	grabReqBody[8] = 2                                // device_id
+	grabReqBody[9] = 0                                // owner_events (false)
+	grabReqBody[10] = 0                               // this_device_mode (Sync)
+	grabReqBody[11] = 0                               // other_device_mode (Sync)
+	client.byteOrder.PutUint16(grabReqBody[12:14], 1) // num_classes
+	// body[14:16] is padding
+	client.byteOrder.PutUint32(grabReqBody[16:20], 0) // classes (0 for now)
+
 	grabReq := &wire.XInputRequest{MinorOpcode: wire.XGrabDevice, Body: grabReqBody}
 	s.handleRequest(client, grabReq, 3)
 
@@ -385,9 +394,14 @@ func TestXGrabDevice(t *testing.T) {
 	// Grab the device
 	grabReqBody := make([]byte, 20)
 	client.byteOrder.PutUint32(grabReqBody[0:4], 1)   // grab_window
-	grabReqBody[11] = 2                               // device_id
-	client.byteOrder.PutUint16(grabReqBody[14:16], 1) // num_classes
-	client.byteOrder.PutUint32(grabReqBody[16:20], 0) // classes
+	client.byteOrder.PutUint32(grabReqBody[4:8], 0)   // time (0 for now)
+	grabReqBody[8] = 2                                // device_id
+	grabReqBody[9] = 0                                // owner_events (false)
+	grabReqBody[10] = 0                               // this_device_mode (Sync)
+	grabReqBody[11] = 0                               // other_device_mode (Sync)
+	client.byteOrder.PutUint16(grabReqBody[12:14], 1) // num_classes
+	// body[14:16] is padding
+	client.byteOrder.PutUint32(grabReqBody[16:20], wire.DeviceButtonPressMask) // classes (DeviceButtonPressMask)
 
 	grabReq := &wire.XInputRequest{MinorOpcode: wire.XGrabDevice, Body: grabReqBody}
 	reply := s.handleRequest(client, grabReq, 3)
@@ -410,8 +424,8 @@ func TestXGrabDevice(t *testing.T) {
 
 	// Ungrab the device
 	ungrabReqBody := make([]byte, 8)
-	client.byteOrder.PutUint32(ungrabReqBody[0:4], 0) // time
-	ungrabReqBody[5] = 2                              // device_id
+	ungrabReqBody[0] = 2                              // device_id
+	client.byteOrder.PutUint32(ungrabReqBody[4:8], 0) // time
 	ungrabReq := &wire.XInputRequest{MinorOpcode: wire.XUngrabDevice, Body: ungrabReqBody}
 	s.handleRequest(client, ungrabReq, 5)
 
