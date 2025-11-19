@@ -56,10 +56,100 @@ func (r *XInputRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
-func ParseXInputRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (*XInputRequest, error) {
-	return &XInputRequest{
-		MinorOpcode: data,
-		Body:        body,
+func ParseXInputRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (Request, error) {
+	switch data {
+	case XGetExtensionVersion:
+		return ParseGetExtensionVersionRequest(order, body, seq)
+	case XListInputDevices:
+		return ParseListInputDevicesRequest(order, body, seq)
+	case XOpenDevice:
+		return ParseOpenDeviceRequest(order, body, seq)
+	case XCloseDevice:
+		return ParseCloseDeviceRequest(order, body, seq)
+	case XSetDeviceMode:
+		return ParseSetDeviceModeRequest(order, body, seq)
+	case XSelectExtensionEvent:
+		return ParseSelectExtensionEventRequest(order, body, seq)
+	case XGetSelectedExtensionEvents:
+		return ParseGetSelectedExtensionEventsRequest(order, body, seq)
+	case XChangeDeviceDontPropagateList:
+		return ParseChangeDeviceDontPropagateListRequest(order, body, seq)
+	case XGetDeviceDontPropagateList:
+		return ParseGetDeviceDontPropagateListRequest(order, body, seq)
+	case XGetDeviceMotionEvents:
+		return ParseGetDeviceMotionEventsRequest(order, body, seq)
+	case XChangeKeyboardDevice:
+		return ParseChangeKeyboardDeviceRequest(order, body, seq)
+	case XChangePointerDevice:
+		return ParseChangePointerDeviceRequest(order, body, seq)
+	case XGrabDevice:
+		return ParseGrabDeviceRequest(order, body, seq)
+	case XUngrabDevice:
+		return ParseUngrabDeviceRequest(order, body, seq)
+	case XGrabDeviceKey:
+		return ParseGrabDeviceKeyRequest(order, body, seq)
+	case XUngrabDeviceKey:
+		return ParseUngrabDeviceKeyRequest(order, body, seq)
+	case XGrabDeviceButton:
+		return ParseGrabDeviceButtonRequest(order, body, seq)
+	case XUngrabDeviceButton:
+		return ParseUngrabDeviceButtonRequest(order, body, seq)
+	case XAllowDeviceEvents:
+		return ParseAllowDeviceEventsRequest(order, body, seq)
+	case XGetDeviceFocus:
+		return ParseGetDeviceFocusRequest(order, body, seq)
+	case XSetDeviceFocus:
+		return ParseSetDeviceFocusRequest(order, body, seq)
+	case XGetFeedbackControl:
+		return ParseGetFeedbackControlRequest(order, body, seq)
+	case XChangeFeedbackControl:
+		return ParseChangeFeedbackControlRequest(order, body, seq)
+	case XGetDeviceKeyMapping:
+		return ParseGetDeviceKeyMappingRequest(order, body, seq)
+	case XChangeDeviceKeyMapping:
+		return ParseChangeDeviceKeyMappingRequest(order, body, seq)
+	case XGetDeviceModifierMapping:
+		return ParseGetDeviceModifierMappingRequest(order, body, seq)
+	case XSetDeviceModifierMapping:
+		return ParseSetDeviceModifierMappingRequest(order, body, seq)
+	case XGetDeviceButtonMapping:
+		return ParseGetDeviceButtonMappingRequest(order, body, seq)
+	case XSetDeviceButtonMapping:
+		return ParseSetDeviceButtonMappingRequest(order, body, seq)
+	case XQueryDeviceState:
+		return ParseQueryDeviceStateRequest(order, body, seq)
+	case XSendExtensionEvent:
+		return ParseSendExtensionEventRequest(order, body, seq)
+	case XDeviceBell:
+		return ParseDeviceBellRequest(order, body, seq)
+	case XSetDeviceValuators:
+		return ParseSetDeviceValuatorsRequest(order, body, seq)
+	case XGetDeviceControl:
+		return ParseGetDeviceControlRequest(order, body, seq)
+	case XChangeDeviceControl:
+		return ParseChangeDeviceControlRequest(order, body, seq)
+	default:
+		return nil, NewError(RequestErrorCode, seq, 0, byte(XInputOpcode), ReqCode(data))
+	}
+}
+
+// GetExtensionVersion request
+type GetExtensionVersionRequest struct {
+	MajorVersion uint16
+	MinorVersion uint16
+}
+
+func (r *GetExtensionVersionRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseGetExtensionVersionRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetExtensionVersionRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetExtensionVersion)
+	}
+	return &GetExtensionVersionRequest{
+		MajorVersion: order.Uint16(body[0:2]),
+		MinorVersion: order.Uint16(body[2:4]),
 	}, nil
 }
 
@@ -84,6 +174,10 @@ func (r *GetExtensionVersionReply) EncodeMessage(order binary.ByteOrder) []byte 
 // ListInputDevices request
 type ListInputDevicesRequest struct{}
 
+func (r *ListInputDevicesRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseListInputDevicesRequest(order binary.ByteOrder, body []byte, seq uint16) (*ListInputDevicesRequest, error) {
 	if len(body) != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XListInputDevices)
@@ -94,6 +188,10 @@ func ParseListInputDevicesRequest(order binary.ByteOrder, body []byte, seq uint1
 // OpenDevice request
 type OpenDeviceRequest struct {
 	DeviceID byte
+}
+
+func (r *OpenDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseOpenDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*OpenDeviceRequest, error) {
@@ -133,6 +231,10 @@ type SetDeviceModeRequest struct {
 	Mode     byte
 }
 
+func (r *SetDeviceModeRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseSetDeviceModeRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceModeRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XSetDeviceMode)
@@ -164,6 +266,10 @@ type SetDeviceValuatorsRequest struct {
 	FirstValuator byte
 	NumValuators  byte
 	Valuators     []int32
+}
+
+func (r *SetDeviceValuatorsRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseSetDeviceValuatorsRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceValuatorsRequest, error) {
@@ -269,6 +375,10 @@ type GetDeviceControlRequest struct {
 	Control  uint16
 }
 
+func (r *GetDeviceControlRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseGetDeviceControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceControlRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetDeviceControl)
@@ -299,6 +409,10 @@ func (r *GetDeviceControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 type ChangeDeviceControlRequest struct {
 	DeviceID byte
 	Control  DeviceControl
+}
+
+func (r *ChangeDeviceControlRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseChangeDeviceControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceControlRequest, error) {
@@ -358,6 +472,10 @@ type GetSelectedExtensionEventsRequest struct {
 	Window uint32
 }
 
+func (r *GetSelectedExtensionEventsRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseGetSelectedExtensionEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetSelectedExtensionEventsRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetSelectedExtensionEvents)
@@ -403,6 +521,10 @@ type ChangeDeviceDontPropagateListRequest struct {
 	Classes []uint32
 }
 
+func (r *ChangeDeviceDontPropagateListRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseChangeDeviceDontPropagateListRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceDontPropagateListRequest, error) {
 	if len(body) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XChangeDeviceDontPropagateList)
@@ -425,6 +547,10 @@ func ParseChangeDeviceDontPropagateListRequest(order binary.ByteOrder, body []by
 // GetDeviceDontPropagateList request
 type GetDeviceDontPropagateListRequest struct {
 	Window uint32
+}
+
+func (r *GetDeviceDontPropagateListRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseGetDeviceDontPropagateListRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceDontPropagateListRequest, error) {
@@ -464,6 +590,10 @@ type AllowDeviceEventsRequest struct {
 	Mode     byte
 }
 
+func (r *AllowDeviceEventsRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseAllowDeviceEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*AllowDeviceEventsRequest, error) {
 	if len(body) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XAllowDeviceEvents)
@@ -478,6 +608,10 @@ func ParseAllowDeviceEventsRequest(order binary.ByteOrder, body []byte, seq uint
 // CloseDevice request
 type CloseDeviceRequest struct {
 	DeviceID byte
+}
+
+func (r *CloseDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseCloseDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*CloseDeviceRequest, error) {
@@ -512,6 +646,10 @@ type GrabDeviceRequest struct {
 	OtherDeviceMode byte
 	NumClasses      uint16
 	Classes         []uint32
+}
+
+func (r *GrabDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceRequest, error) {
@@ -557,6 +695,10 @@ func (r *GrabDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 type UngrabDeviceRequest struct {
 	DeviceID byte
 	Time     uint32
+}
+
+func (r *UngrabDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceRequest, error) {
@@ -697,6 +839,10 @@ type SelectExtensionEventRequest struct {
 	Classes []uint32
 }
 
+func (r *SelectExtensionEventRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseSelectExtensionEventRequest(order binary.ByteOrder, body []byte, seq uint16) (*SelectExtensionEventRequest, error) {
 	if len(body) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XSelectExtensionEvent)
@@ -722,6 +868,10 @@ type GetDeviceMotionEventsRequest struct {
 	DeviceID byte
 }
 
+func (r *GetDeviceMotionEventsRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseGetDeviceMotionEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceMotionEventsRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetDeviceMotionEvents)
@@ -738,6 +888,10 @@ type ChangeKeyboardDeviceRequest struct {
 	DeviceID byte
 }
 
+func (r *ChangeKeyboardDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseChangeKeyboardDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeKeyboardDeviceRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XChangeKeyboardDevice)
@@ -752,6 +906,10 @@ type ChangePointerDeviceRequest struct {
 	XAxis    byte
 	YAxis    byte
 	DeviceID byte
+}
+
+func (r *ChangePointerDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseChangePointerDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangePointerDeviceRequest, error) {
@@ -776,6 +934,10 @@ type GrabDeviceKeyRequest struct {
 	OtherDeviceMode byte
 	NumClasses      uint16
 	Classes         []uint32
+}
+
+func (r *GrabDeviceKeyRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseGrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceKeyRequest, error) {
@@ -811,6 +973,10 @@ type UngrabDeviceKeyRequest struct {
 	DeviceID   byte
 }
 
+func (r *UngrabDeviceKeyRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseUngrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceKeyRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XUngrabDeviceKey)
@@ -834,6 +1000,10 @@ type GrabDeviceButtonRequest struct {
 	OtherDeviceMode byte
 	NumClasses      uint16
 	Classes         []uint32
+}
+
+func (r *GrabDeviceButtonRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseGrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceButtonRequest, error) {
@@ -870,6 +1040,10 @@ type UngrabDeviceButtonRequest struct {
 	DeviceID   byte
 }
 
+func (r *UngrabDeviceButtonRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseUngrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceButtonRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XUngrabDeviceButton)
@@ -885,6 +1059,10 @@ func ParseUngrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uin
 // GetDeviceFocus request
 type GetDeviceFocusRequest struct {
 	DeviceID byte
+}
+
+func (r *GetDeviceFocusRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseGetDeviceFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceFocusRequest, error) {
@@ -904,6 +1082,10 @@ type SetDeviceFocusRequest struct {
 	DeviceID byte
 }
 
+func (r *SetDeviceFocusRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseSetDeviceFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceFocusRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XSetDeviceFocus)
@@ -921,6 +1103,10 @@ type GetFeedbackControlRequest struct {
 	DeviceID byte
 }
 
+func (r *GetFeedbackControlRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseGetFeedbackControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetFeedbackControlRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetFeedbackControl)
@@ -936,6 +1122,10 @@ type ChangeFeedbackControlRequest struct {
 	DeviceID  byte
 	ControlID byte
 	Control   []byte
+}
+
+func (r *ChangeFeedbackControlRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseChangeFeedbackControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeFeedbackControlRequest, error) {
@@ -957,6 +1147,10 @@ type GetDeviceKeyMappingRequest struct {
 	Count      byte
 }
 
+func (r *GetDeviceKeyMappingRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseGetDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceKeyMappingRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetDeviceKeyMapping)
@@ -975,6 +1169,10 @@ type ChangeDeviceKeyMappingRequest struct {
 	KeysymsPerKeycode byte
 	KeycodeCount     byte
 	Keysyms          []uint32
+}
+
+func (r *ChangeDeviceKeyMappingRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseChangeDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceKeyMappingRequest, error) {
@@ -1005,6 +1203,10 @@ type GetDeviceModifierMappingRequest struct {
 	DeviceID byte
 }
 
+func (r *GetDeviceModifierMappingRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseGetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceModifierMappingRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetDeviceModifierMapping)
@@ -1018,6 +1220,10 @@ func ParseGetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, s
 type SetDeviceModifierMappingRequest struct {
 	DeviceID byte
 	Keycodes []byte
+}
+
+func (r *SetDeviceModifierMappingRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseSetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceModifierMappingRequest, error) {
@@ -1041,6 +1247,10 @@ type GetDeviceButtonMappingRequest struct {
 	DeviceID byte
 }
 
+func (r *GetDeviceButtonMappingRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseGetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceButtonMappingRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetDeviceButtonMapping)
@@ -1054,6 +1264,10 @@ func ParseGetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq
 type SetDeviceButtonMappingRequest struct {
 	DeviceID byte
 	Map      []byte
+}
+
+func (r *SetDeviceButtonMappingRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseSetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceButtonMappingRequest, error) {
@@ -1076,6 +1290,10 @@ type QueryDeviceStateRequest struct {
 	DeviceID byte
 }
 
+func (r *QueryDeviceStateRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
 func ParseQueryDeviceStateRequest(order binary.ByteOrder, body []byte, seq uint16) (*QueryDeviceStateRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XQueryDeviceState)
@@ -1094,6 +1312,10 @@ type SendExtensionEventRequest struct {
 	NumEvents   byte
 	Events      []byte
 	Classes     []uint32
+}
+
+func (r *SendExtensionEventRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseSendExtensionEventRequest(order binary.ByteOrder, body []byte, seq uint16) (*SendExtensionEventRequest, error) {
@@ -1143,6 +1365,10 @@ type DeviceBellRequest struct {
 	FeedbackID     byte
 	FeedbackClass  byte
 	Percent        byte
+}
+
+func (r *DeviceBellRequest) OpCode() ReqCode {
+	return XInputOpcode
 }
 
 func ParseDeviceBellRequest(order binary.ByteOrder, body []byte, seq uint16) (*DeviceBellRequest, error) {

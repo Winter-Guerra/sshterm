@@ -1,1 +1,615 @@
-[]
+[
+  {
+    "raw": "0118080000000000000000000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "020003000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "0300020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0400020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0500020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0601020000000000",
+    "want": ""
+  },
+  {
+    "raw": "07000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "0800020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0900020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0a00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0b00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0c0003000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "0d01020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0e00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "0f00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "100103000400000041544f4d",
+    "want": ""
+  },
+  {
+    "raw": "1100020000000000",
+    "want": ""
+  },
+  {
+    "raw": "12000700010000000200000003000000080000000400000074657374",
+    "want": ""
+  },
+  {
+    "raw": "130003000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "140106000100000002000000030000000000000064000000",
+    "want": ""
+  },
+  {
+    "raw": "1500020000000000",
+    "want": ""
+  },
+  {
+    "raw": "16000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "1700020000000000",
+    "want": ""
+  },
+  {
+    "raw": "180006000100000002000000030000000400000005000000",
+    "want": ""
+  },
+  {
+    "raw": "19010b0001000000ffffffff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "want": ""
+  },
+  {
+    "raw": "1a0106000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "1b00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "1c0106000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "1d0103000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "1e000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "1f010400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "2000020000000000",
+    "want": ""
+  },
+  {
+    "raw": "21010400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "220703000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "2301020000000000",
+    "want": ""
+  },
+  {
+    "raw": "24000100",
+    "want": ""
+  },
+  {
+    "raw": "25000100",
+    "want": ""
+  },
+  {
+    "raw": "2600020000000000",
+    "want": ""
+  },
+  {
+    "raw": "27000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "28000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "290006000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "2a010400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "2b000100",
+    "want": ""
+  },
+  {
+
+    "raw": "2c000100",
+    "want": ""
+  },
+  {
+    "raw": "2d0004000100000004000000666f6e74",
+    "want": ""
+  },
+  {
+    "raw": "2e00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "2f00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "300003000100000041004200",
+    "want": ""
+  },
+  {
+    "raw": "31000300c80001002a000000",
+    "want": ""
+  },
+  {
+    "raw": "32000300c80001002a000000",
+    "want": ""
+  },
+  {
+    "raw": "3300040001000000042f746d70",
+    "want": ""
+  },
+  {
+    "raw": "34000100",
+    "want": ""
+  },
+  {
+    "raw": "35180400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "3600020000000000",
+    "want": ""
+  },
+  {
+    "raw": "37000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "380003000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "39000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "3a0003000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "3b00050000000000000000000102030400000000",
+    "want": ""
+  },
+  {
+    "raw": "3c00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "3d010400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "3e00080000000000000000000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "3f00080000000000000000000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "40000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "41000400000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "420006000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "430006000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "44000700000000000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "4500050000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "460006000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "47020700000000000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "480206000000000000000000000000000000000000000000",
+    "want": ""
+  },
+  {
+    "raw": "49000400010000000200000000000000",
+    "want": ""
+  },
+  {
+    "raw": "4a000400010000000200000000000000",
+    "want": ""
+  },
+  {
+    "raw": "4b040400010000000200000074657374",
+    "want": ""
+  },
+  {
+    "raw": "4c04060001000000020000007400650073007400",
+    "want": ""
+  },
+  {
+    "raw": "4d010400010000000200000003000000",
+    "want": ""
+  },
+  {
+    "raw": "4e00020000000000",
+    "want": ""
+  },
+  {
+    "raw": "4f0003000100000002000000",
+    "want": ""
+  },
+  {
+    "raw": "5000020000000000",
+    "want": ""
+  },
+  {
+    "raw": "5100020000000000",
+    "want": "\u0026wire.InstallColormapRequest{Cmap:0x0}"
+  },
+  {
+    "raw": "5200020000000000",
+    "want": "\u0026wire.UninstallColormapRequest{Cmap:0x0}"
+  },
+  {
+    "raw": "530004000100000004000000626c7565",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x53, code:0x10}}"
+  },
+  {
+    "raw": "550103000100000001000200",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x55, code:0x10}}"
+  },
+  {
+    "raw": "56010400010000000100020003000400",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x56, code:0x10}}"
+  },
+  {
+    "raw": "5700040001000000ffffffff01000000",
+    "want": "\u0026wire.AllocColorPlanesRequest{Contiguous:false, Cmap:0x1, Colors:0xffff, Reds:0xffff, Greens:0x1, Blues:0x0}}"
+  },
+  {
+    "raw": "5800050001000000010000000a0014001e000700",
+    "want": "\u0026wire.FreeColorsRequest{Cmap:0x1, PlaneMask:0x1, Pixels:[]uint32{0x14000a, 0x7001e}}"
+  },
+  {
+    "raw": "5907050001000000020000000300000072656400",
+    "want": "\u0026wire.StoreColorsRequest{Cmap:0x1, Items:[]wire.XColorItem{wire.XColorItem{Pixel:0x2, Red:0x3, Green:0x0, Blue:0x6572, Flags:0x64, ClientID:0x0}}}"
+  },
+  {
+    "raw": "5a0003000100000001000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x5a, code:0x10}}"
+  },
+  {
+    "raw": "5b0004000100000005000000677265656e",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x5b, code:0x10}}"
+  },
+  {
+    "raw": "5c0008000100000002000000030000000a0014001e00280032003c0005000f00",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x5c, code:0x10}}"
+  },
+  {
+    "raw": "5d000800010000000200000003000000410042000a0014001e00280032003c00",
+    "want": "\u0026wire.CreateCursorRequest{Cid:0x1, Source:0x2, Mask:0x3, ForeRed:0x41, ForeGreen:0x42, ForeBlue:0xa, BackRed:0x14, BackGreen:0x1e, BackBlue:0x28, X:0x32, Y:0x3c}"
+  },
+  {
+    "raw": "5e00020000000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x5e, code:0x10}}"
+  },
+  {
+    "raw": "5f000300010000006400c800",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x5f, code:0x10}}"
+  },
+  {
+    "raw": "600103000000000000000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x60, code:0x10}}"
+  },
+  {
+    "raw": "61000300050000005854455354",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x61, code:0x10}}"
+  },
+  {
+    "raw": "62000100",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x62, code:0x10}}"
+  },
+  {
+    "raw": "630207000a0201000102030405060708090a0b0c0d0e0f10",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x63, code:0x10}}"
+  },
+  {
+    "raw": "640002000a050000",
+    "want": "\u0026wire.ChangeKeyboardMappingRequest{KeyCodeCount:0x0, FirstKeyCode:0xa, KeySymsPerKeycode:0x5, KeySyms:[]uint32(nil)}"
+  },
+  {
+    "raw": "6500020000000000",
+    "want": "\u0026wire.GetKeyboardMappingRequest{FirstKeyCode:0x0, Count:0x0}"
+  },
+  {
+    "raw": "66000100",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x66, code:0x10}}"
+  },
+  {
+    "raw": "67320100",
+    "want": "\u0026wire.GetKeyboardControlRequest{}"
+  },
+  {
+    "raw": "6800020000000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x68, code:0x10}}"
+  },
+  {
+    "raw": "69000100",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x69, code:0x10}}"
+  },
+  {
+    "raw": "6a0003000a00140001020000",
+    "want": "\u0026wire.GetPointerControlRequest{}"
+  },
+  {
+    "raw": "6b000100",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x6b, code:0x10}}"
+  },
+  {
+    "raw": "6c00020000000000",
+    "want": "\u0026wire.GetScreenSaverRequest{}"
+  },
+  {
+    "raw": "6d000400000007003132372e302e302e31",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x6d, code:0x10}}"
+  },
+  {
+    "raw": "6e010100",
+    "want": "\u0026wire.ListHostsRequest{}"
+  },
+  {
+    "raw": "6f010100",
+    "want": "\u0026wire.SetAccessControlRequest{Mode:0x1}"
+  },
+  {
+    "raw": "7000020000000000",
+    "want": "\u0026wire.SetCloseDownModeRequest{Mode:0x0}"
+  },
+  {
+    "raw": "71000500010000000a0002000200000003000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x71, code:0x10}}"
+  },
+  {
+    "raw": "72010100",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x72, code:0x10}}"
+  },
+  {
+    "raw": "730102000300000001020300",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x73, code:0x10}}"
+  },
+  {
+    "raw": "74000100",
+    "want": "\u0026wire.SetPointerMappingRequest{Map:[]uint8{}}"
+  },
+  {
+    "raw": "750205000102030405060708090a0b0c0d0e0f10",
+    "want": "\u0026wire.GetPointerMappingRequest{}"
+  },
+  {
+    "raw": "76000100",
+    "want": "\u0026wire.SetModifierMappingRequest{KeyCodesPerModifier:0x0, KeyCodes:[]wire.KeyCode{}}"
+  },
+  {
+    "raw": "7f000100",
+    "want": "\u0026wire.NoOperationRequest{}"
+  },
+  {
+    "raw": "8301020002000000",
+    "want": "\u0026wire.GetExtensionVersionRequest{MajorVersion:0x2, MinorVersion:0x0}"
+  },
+  {
+    "raw": "83020100",
+    "want": "\u0026wire.ListInputDevicesRequest{}"
+  },
+  {
+    "raw": "8303020001000000",
+    "want": "\u0026wire.OpenDeviceRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "8304020001000000",
+    "want": "\u0026wire.CloseDeviceRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "8305020001020000",
+    "want": "\u0026wire.SetDeviceModeRequest{DeviceID:0x1, Mode:0x2}"
+  },
+  {
+    "raw": "830603000100000001000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x83, code:0x10}}"
+  },
+  {
+    "raw": "8307020001000000",
+    "want": "\u0026wire.GetSelectedExtensionEventsRequest{Window:0x1}"
+  },
+  {
+    "raw": "83080400010000000100010001000000",
+    "want": "\u0026wire.ChangeDeviceDontPropagateListRequest{Window:0x1, Mode:0x1, Classes:[]uint32{0x1}}"
+  },
+  {
+    "raw": "8309020001000000",
+    "want": "\u0026wire.GetDeviceDontPropagateListRequest{Window:0x1}"
+  },
+  {
+    "raw": "830a0400010000000200000003000000",
+    "want": "\u0026wire.GetDeviceMotionEventsRequest{Start:0x1, Stop:0x2, DeviceID:0x3}"
+  },
+  {
+    "raw": "830b020001000000",
+    "want": "\u0026wire.ChangeKeyboardDeviceRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "830c020001020300",
+    "want": "\u0026wire.ChangePointerDeviceRequest{XAxis:0x1, YAxis:0x2, DeviceID:0x3}"
+  },
+  {
+    "raw": "830d050001000000020000000101010000000000",
+    "want": "\u0026wire.GrabDeviceRequest{DeviceID:0x1, GrabWindow:0x1, Time:0x2, OwnerEvents:true, ThisDeviceMode:0x1, OtherDeviceMode:0x0, NumClasses:0x0, Classes:[]uint32{}}"
+  },
+  {
+    "raw": "830e03000100000001000000",
+    "want": "\u0026wire.UngrabDeviceRequest{DeviceID:0x1, Time:0x1}"
+  },
+  {
+    "raw": "830f05000100000000000102030405000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x83, code:0x10}}"
+  },
+  {
+    "raw": "83100400010000000200000001000000",
+    "want": "\u0026wire.UngrabDeviceKeyRequest{GrabWindow:0x1, Modifiers:0x2, Key:0x0, DeviceID:0x0}"
+  },
+  {
+    "raw": "8311050001000000020000000102030405000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x83, majorOp:0x11, code:0x10}}"
+  },
+  {
+    "raw": "83120400010000000200000001000000",
+    "want": "\u0026wire.UngrabDeviceButtonRequest{GrabWindow:0x1, Modifiers:0x2, Button:0x0, DeviceID:0x0}"
+  },
+  {
+    "raw": "831303000100000001000000",
+    "want": "\u0026wire.AllowDeviceEventsRequest{Time:0x1, DeviceID:0x1, Mode:0x0}"
+  },
+  {
+    "raw": "8314020001000000",
+    "want": "\u0026wire.GetDeviceFocusRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "83150400010000000200000003040000",
+    "want": "\u0026wire.SetDeviceFocusRequest{Focus:0x1, Time:0x2, RevertTo:0x3, DeviceID:0x4}"
+  },
+  {
+    "raw": "8316020001000000",
+    "want": "\u0026wire.GetFeedbackControlRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "831703000100000001000000",
+    "want": "\u0026wire.ChangeFeedbackControlRequest{Mask:0x1, DeviceID:0x1, ControlID:0x0, Control:[]uint8{}}"
+  },
+  {
+    "raw": "8318020001020300",
+    "want": "\u0026wire.GetDeviceKeyMappingRequest{DeviceID:0x1, FirstKey:0x2, Count:0x3}"
+  },
+  {
+    "raw": "831903000102010100000000",
+    "want": "\u0026wire.ChangeDeviceKeyMappingRequest{DeviceID:0x1, FirstKey:0x2, KeysymsPerKeycode:0x1, KeycodeCount:0x1, Keysyms:[]uint32{0x0}}"
+  },
+  {
+    "raw": "831a020001000000",
+    "want": "\u0026wire.GetDeviceModifierMappingRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "831b03000101000000000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x83, majorOp:0x1b, code:0x10}}"
+  },
+  {
+    "raw": "831c020001000000",
+    "want": "\u0026wire.GetDeviceButtonMappingRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "831d03000101000001000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x83, majorOp:0x1d, code:0x10}}"
+  },
+  {
+    "raw": "831e020001000000",
+    "want": "\u0026wire.QueryDeviceStateRequest{DeviceID:0x1}"
+  },
+  {
+    "raw": "831f0b0001000000010101000100000001000000000000000000000000000000000000000000000001000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x83, majorOp:0x1f, code:0x10}}"
+  },
+  {
+    "raw": "8320020001020304",
+    "want": "\u0026wire.DeviceBellRequest{DeviceID:0x1, FeedbackID:0x2, FeedbackClass:0x3, Percent:0x4}"
+  },
+  {
+    "raw": "832103000102010001000000",
+    "want": "\u0026wire.SetDeviceValuatorsRequest{DeviceID:0x1, FirstValuator:0x2, NumValuators:0x1, Valuators:[]int32{1}}"
+  },
+  {
+    "raw": "8322020001000100",
+    "want": "\u0026wire.GetDeviceControlRequest{DeviceID:0x1, Control:0x1}"
+  },
+  {
+    "raw": "83230500010001000c000101000001000000",
+    "want": "\u0026wire.LengthError{baseError:wire.baseError{seq:0x1, badValue:0x0, minorOp:0x0, majorOp:0x83, code:0x10}}"
+  }
+]

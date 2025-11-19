@@ -996,6 +996,10 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		return nil
 	}
 	debugf("X11DEBUG: handleRequest(%d) opcode: %d: %#v", seq, req.OpCode(), req)
+	if req.OpCode() == wire.XInputOpcode {
+		return s.handleXInputRequest(client, req, seq)
+	}
+
 	switch p := req.(type) {
 	case *wire.CreateWindowRequest:
 		xid := client.xID(uint32(p.Drawable))
@@ -2341,9 +2345,6 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			Sequence:         seq,
 			MaxRequestLength: 0x100000,
 		}
-
-	case *wire.XInputRequest:
-		return s.handleXInputRequest(client, p.MinorOpcode, p.Body, seq)
 
 	default:
 		debugf("Unknown X11 request opcode: %d", p.OpCode())

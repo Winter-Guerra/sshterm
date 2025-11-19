@@ -58,11 +58,12 @@ func TestRequestParsing(t *testing.T) {
 			continue
 		}
 		parsedReq, err := ParseRequest(binary.LittleEndian, req, 1, false)
+		var got string
 		if err != nil {
-			t.Errorf("#%d ParseRequest(%q): %v", i, tc.Raw, err)
-			continue
+			got = fmt.Sprintf("%#v", err)
+		} else {
+			got = fmt.Sprintf("%#v", parsedReq)
 		}
-		got := fmt.Sprintf("%#v", parsedReq)
 		if update {
 			testdata[i].Want = got
 			continue
@@ -729,18 +730,20 @@ func TestParseConvertSelectionRequest(t *testing.T) {
 
 func TestParseSendEventRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 44)
-	order.PutUint32(reqBody[4:8], 123)
-	order.PutUint32(reqBody[8:12], 456)
-	for i := 12; i < 44; i++ {
+	data := byte(1) // propagate = true
+	reqBody := make([]byte, 40) // destination (4) + event-mask (4) + event (32)
+	binary.LittleEndian.PutUint32(reqBody[0:4], 123) // destination
+	binary.LittleEndian.PutUint32(reqBody[4:8], 456) // event-mask
+	for i := 8; i < 40; i++ {
 		reqBody[i] = byte(i)
 	}
 
-	p, err := ParseSendEventRequest(order, reqBody, 1)
+	p, err := ParseSendEventRequest(order, data, reqBody, 1)
 	assert.NoError(t, err, "ParseSendEventRequest should not return an error")
 	assert.Equal(t, Window(123), p.Destination, "Destination should be parsed correctly")
 	assert.Equal(t, uint32(456), p.EventMask, "EventMask should be parsed correctly")
-	assert.Equal(t, reqBody[12:44], p.EventData, "EventData should be parsed correctly")
+	assert.Equal(t, reqBody[8:40], p.EventData, "EventData should be parsed correctly")
+	assert.True(t, p.Propagate, "Propagate should be true")
 }
 
 func TestParseGrabPointerRequest(t *testing.T) {

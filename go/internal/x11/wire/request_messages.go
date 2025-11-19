@@ -121,7 +121,7 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return ParseConvertSelectionRequest(order, body, seq)
 
 	case SendEvent:
-		return ParseSendEventRequest(order, body, seq)
+		return ParseSendEventRequest(order, data, body, seq)
 
 	case GrabPointer:
 		return ParseGrabPointerRequest(order, body, seq)
@@ -1204,14 +1204,15 @@ type SendEventRequest struct {
 
 func (SendEventRequest) OpCode() ReqCode { return SendEvent }
 
-func ParseSendEventRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SendEventRequest, error) {
-	if len(requestBody) != 44 {
+func ParseSendEventRequest(order binary.ByteOrder, propagate byte, requestBody []byte, seq uint16) (*SendEventRequest, error) {
+	if len(requestBody) != 40 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SendEvent)
 	}
 	req := &SendEventRequest{}
-	req.Destination = Window(order.Uint32(requestBody[4:8]))
-	req.EventMask = order.Uint32(requestBody[8:12])
-	req.EventData = requestBody[12:44]
+	req.Propagate = propagate != 0
+	req.Destination = Window(order.Uint32(requestBody[0:4]))
+	req.EventMask = order.Uint32(requestBody[4:8])
+	req.EventData = requestBody[8:40]
 	return req, nil
 }
 

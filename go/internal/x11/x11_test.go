@@ -904,8 +904,8 @@ func TestExtensionRequests(t *testing.T) {
 	}
 
 	// 4. Test XListInputDevices
-	xinputReq := &wire.XInputRequest{MinorOpcode: wire.XListInputDevices}
-	reply = server.handleRequest(client, xinputReq, 5)
+	listInputDevicesReq := &wire.ListInputDevicesRequest{} // Create the specific request type
+	reply = server.handleRequest(client, listInputDevicesReq, 5)
 	if reply == nil {
 		t.Fatal("XListInputDevices: handleRequest returned a nil reply")
 	}
