@@ -317,15 +317,12 @@ func (s *x11Server) handleXInputRequest(client *x11Client, minorOpcode byte, bod
 		}
 		s.deviceGrabs[req.DeviceID] = grab
 		return &wire.GrabDeviceReply{Sequence: seq, Status: wire.GrabSuccess}
-
 	case wire.XUngrabDevice:
 		req, err := wire.ParseUngrabDeviceRequest(client.byteOrder, body, seq)
 		if err != nil {
 			return err.(messageEncoder)
 		}
 		if grab, ok := s.deviceGrabs[req.DeviceID]; ok {
-			// In a real server, we'd check the grabbing client ID.
-			// Here we assume any client can ungrab.
 			if grab.window.client == client.id {
 				delete(s.deviceGrabs, req.DeviceID)
 			}

@@ -779,16 +779,16 @@ type GrabDeviceKeyRequest struct {
 }
 
 func ParseGrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceKeyRequest, error) {
-	if len(body) < 12 {
+	if len(body) < 13 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGrabDeviceKey)
 	}
 	numClasses := order.Uint16(body[4:6])
-	if len(body) != 12+int(numClasses)*4 {
+	if len(body) != 13+int(numClasses)*4 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGrabDeviceKey)
 	}
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
-		classes[i] = order.Uint32(body[12+i*4 : 16+i*4])
+		classes[i] = order.Uint32(body[13+i*4 : 17+i*4])
 	}
 	return &GrabDeviceKeyRequest{
 		GrabWindow:      Window(order.Uint32(body[0:4])),
@@ -797,8 +797,8 @@ func ParseGrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) 
 		ThisDeviceMode:  body[7],
 		OtherDeviceMode: body[8],
 		DeviceID:        body[9],
-		Key:             body[11],
-		Modifiers:       order.Uint16(body[8:10]),
+		Modifiers:       order.Uint16(body[10:12]),
+		Key:             body[12],
 		Classes:         classes,
 	}, nil
 }
@@ -837,17 +837,17 @@ type GrabDeviceButtonRequest struct {
 }
 
 func ParseGrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceButtonRequest, error) {
-	if len(body) < 12 {
+	if len(body) < 13 {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGrabDeviceButton)
 	}
 	numClasses := order.Uint16(body[4:6])
-	expectedLen := 12 + int(numClasses)*4
+	expectedLen := 13 + int(numClasses)*4
 	if len(body) != expectedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGrabDeviceButton)
 	}
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
-		classes[i] = order.Uint32(body[12+i*4 : 16+i*4])
+		classes[i] = order.Uint32(body[13+i*4 : 17+i*4])
 	}
 	return &GrabDeviceButtonRequest{
 		GrabWindow:      Window(order.Uint32(body[0:4])),
@@ -856,8 +856,8 @@ func ParseGrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint1
 		ThisDeviceMode:  body[7],
 		OtherDeviceMode: body[8],
 		DeviceID:        body[9],
-		Button:          body[11],
-		Modifiers:       order.Uint16(body[8:10]),
+		Modifiers:       order.Uint16(body[10:12]),
+		Button:          body[12],
 		Classes:         classes,
 	}, nil
 }
@@ -1097,25 +1097,39 @@ type SendExtensionEventRequest struct {
 }
 
 func ParseSendExtensionEventRequest(order binary.ByteOrder, body []byte, seq uint16) (*SendExtensionEventRequest, error) {
-	if len(body) < 8 {
+	// Base length before events and classes
+	fixedBaseLen := 12 // 4 (Destination) + 2 (NumClasses) + 1 (NumEvents) + 1 (DeviceID) + 1 (Propagate) + 3 (Padding)
+
+	if len(body) < fixedBaseLen {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XSendExtensionEvent)
 	}
-	numEvents := body[6]
+
+	destination := Window(order.Uint32(body[0:4]))
 	numClasses := order.Uint16(body[4:6])
-	expectedLen := 8 + int(numEvents)*32 + int(numClasses)*4
+	numEvents := body[6]
+	deviceID := body[7]
+	propagate := body[8] != 0
+
+	// Calculate expected total length
+	expectedLen := fixedBaseLen + int(numEvents)*32 + int(numClasses)*4
 	if len(body) != expectedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XSendExtensionEvent)
 	}
-	events := body[8 : 8+int(numEvents)*32]
-	classesStart := 8 + int(numEvents)*32
+
+	eventsStart := fixedBaseLen // Events start after the fixed part (including padding)
+	eventsEnd := eventsStart + int(numEvents)*32
+	events := body[eventsStart:eventsEnd]
+
+	classesStart := eventsEnd
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
 		classes[i] = order.Uint32(body[classesStart+i*4 : classesStart+(i+1)*4])
 	}
+
 	return &SendExtensionEventRequest{
-		Destination: Window(order.Uint32(body[0:4])),
-		DeviceID:    body[7],
-		Propagate:   body[8] != 0,
+		Destination: destination,
+		DeviceID:    deviceID,
+		Propagate:   propagate,
 		NumClasses:  numClasses,
 		NumEvents:   numEvents,
 		Events:      events,

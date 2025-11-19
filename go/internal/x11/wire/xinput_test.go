@@ -59,7 +59,6 @@ func TestParseGrabDeviceKeyRequest(t *testing.T) {
 		buf.WriteByte(5) // device_id
 		binary.Write(buf, binary.LittleEndian, uint16(0)) // modifiers
 		buf.WriteByte(10)   // key
-		buf.WriteByte(0)    // padding
 
 		req, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, buf.Bytes(), 1)
 		assert.NoError(t, err)
@@ -107,7 +106,6 @@ func TestParseGrabDeviceButtonRequest(t *testing.T) {
 		buf.WriteByte(5) // device_id
 		binary.Write(buf, binary.LittleEndian, uint16(1)) // modifiers
 		buf.WriteByte(10)   // button
-		buf.WriteByte(0)    // padding
 
 		req, err := ParseGrabDeviceButtonRequest(binary.LittleEndian, buf.Bytes(), 1)
 		assert.NoError(t, err)
