@@ -1,5 +1,13 @@
 # SSH Term Release Notes
 
+## v0.8.2
+
+* Update go dependencies:
+  * github.com/pkg/sftp v1.13.9 => v1.13.10
+  * golang.org/x/crypto v0.43.0 => v0.45.0
+  * golang.org/x/sys v0.37.0 => v0.38.0
+  * golang.org/x/term v0.36.0 => 0.37.0
+
 ## v0.8.1
 
 ### :wrench: Misc
