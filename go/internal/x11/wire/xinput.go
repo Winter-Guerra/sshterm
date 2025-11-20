@@ -44,6 +44,28 @@ const (
 	XSetDeviceValuators            = 33
 	XGetDeviceControl              = 34
 	XChangeDeviceControl           = 35
+	XIQueryPointer                 = 40
+	XIWarpPointer                  = 41
+	XIChangeCursor                 = 42
+	XIChangeHierarchy              = 43
+	XISetClientPointer             = 44
+	XIGetClientPointer             = 45
+	XISelectEvents                 = 46
+	XIQueryVersion                 = 47
+	XIQueryDevice                  = 48
+	XISetFocus                     = 49
+	XIGetFocus                     = 50
+	XIGrabDevice                   = 51
+	XIUngrabDevice                 = 52
+	XIAllowEvents                  = 53
+	XIPassiveGrabDevice            = 54
+	XIPassiveUngrabDevice          = 55
+	XIListProperties               = 56
+	XIChangeProperty               = 57
+	XIDeleteProperty               = 58
+	XIGetProperty                  = 59
+	XIGetSelectedEvents            = 60
+	XIBarrierReleasePointer        = 61
 )
 
 // XInput request types
@@ -128,6 +150,40 @@ func ParseXInputRequest(order binary.ByteOrder, data byte, body []byte, seq uint
 		return ParseGetDeviceControlRequest(order, body, seq)
 	case XChangeDeviceControl:
 		return ParseChangeDeviceControlRequest(order, body, seq)
+	case XIQueryVersion:
+		return ParseXIQueryVersionRequest(order, body, seq)
+	case XIWarpPointer:
+		return ParseXIWarpPointerRequest(order, body, seq)
+	case XIChangeCursor:
+		return ParseXIChangeCursorRequest(order, body, seq)
+	case XIChangeHierarchy:
+		return ParseXIChangeHierarchyRequest(order, body, seq)
+	case XISetClientPointer:
+		return ParseXISetClientPointerRequest(order, body, seq)
+	case XIGetClientPointer:
+		return ParseXIGetClientPointerRequest(order, body, seq)
+	case XISelectEvents:
+		return ParseXISelectEventsRequest(order, body, seq)
+	case XIQueryDevice:
+		return ParseXIQueryDeviceRequest(order, body, seq)
+	case XISetFocus:
+		return ParseXISetFocusRequest(order, body, seq)
+	case XIGetFocus:
+		return ParseXIGetFocusRequest(order, body, seq)
+	case XIGrabDevice:
+		return ParseXIGrabDeviceRequest(order, body, seq)
+	case XIUngrabDevice:
+		return ParseXIUngrabDeviceRequest(order, body, seq)
+	case XIAllowEvents:
+		return ParseXIAllowEventsRequest(order, body, seq)
+	case XIPassiveGrabDevice:
+		return ParseXIPassiveGrabDeviceRequest(order, body, seq)
+	case XIPassiveUngrabDevice:
+		return ParseXIPassiveUngrabDeviceRequest(order, body, seq)
+	case XIListProperties:
+		return ParseXIListPropertiesRequest(order, body, seq)
+	case XIChangeProperty:
+		return ParseXIChangePropertyRequest(order, body, seq)
 	default:
 		return nil, NewError(RequestErrorCode, seq, 0, byte(XInputOpcode), ReqCode(data))
 	}
@@ -150,6 +206,540 @@ func ParseGetExtensionVersionRequest(order binary.ByteOrder, body []byte, seq ui
 	return &GetExtensionVersionRequest{
 		MajorVersion: order.Uint16(body[0:2]),
 		MinorVersion: order.Uint16(body[2:4]),
+	}, nil
+}
+
+// XIWarpPointer request
+type XIWarpPointerRequest struct {
+	DeviceID  uint16
+	SrcWindow Window
+	DstWindow Window
+	SrcX      int32
+	SrcY      int32
+	SrcW      uint16
+	SrcH      uint16
+	DstX      int32
+	DstY      int32
+}
+
+func (r *XIWarpPointerRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIWarpPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIWarpPointerRequest, error) {
+	if len(body) != 32 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIWarpPointer)
+	}
+	// The protocol defines 'fp1616' fixed point numbers. We'll treat them as int32 for now,
+	// effectively ignoring the fractional part by taking the integer part.
+	return &XIWarpPointerRequest{
+		DeviceID:  order.Uint16(body[0:2]),
+		SrcWindow: Window(order.Uint32(body[4:8])),
+		DstWindow: Window(order.Uint32(body[8:12])),
+		SrcX:      int32(order.Uint32(body[12:16])),
+		SrcY:      int32(order.Uint32(body[16:20])),
+		SrcW:      order.Uint16(body[20:22]),
+		SrcH:      order.Uint16(body[22:24]),
+		DstX:      int32(order.Uint32(body[24:28])),
+		DstY:      int32(order.Uint32(body[28:32])),
+	}, nil
+}
+
+// XIChangeCursor request
+type XIChangeCursorRequest struct {
+	DeviceID uint16
+	Window   Window
+	Cursor   uint32
+}
+
+func (r *XIChangeCursorRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIChangeCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangeCursorRequest, error) {
+	if len(body) != 12 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeCursor)
+	}
+	return &XIChangeCursorRequest{
+		DeviceID: order.Uint16(body[0:2]),
+		Window:   Window(order.Uint32(body[4:8])),
+		Cursor:   order.Uint32(body[8:12]),
+	}, nil
+}
+
+// XIChangeHierarchy request
+type XIChangeHierarchyRequest struct {
+	NumChanges uint16
+	Changes    []XIChangeHierarchyChange
+}
+
+type XIChangeHierarchyChange interface {
+	Op() uint16
+}
+
+type XIAnyHierarchyChange struct {
+	Type   uint16
+	Length uint16
+}
+
+type XIAddMaster struct {
+	Type     uint16
+	Length   uint16
+	Name     string
+	SendCore bool
+	Enable   bool
+}
+
+func (c *XIAddMaster) Op() uint16 { return 1 }
+
+type XIRemoveMaster struct {
+	Type           uint16
+	Length         uint16
+	DeviceID       uint16
+	ReturnMode     byte
+	ReturnPointer  uint16
+	ReturnKeyboard uint16
+}
+
+func (c *XIRemoveMaster) Op() uint16 { return 2 }
+
+type XIAttachSlave struct {
+	Type     uint16
+	Length   uint16
+	DeviceID uint16
+	MasterID uint16
+}
+
+func (c *XIAttachSlave) Op() uint16 { return 3 }
+
+type XIDetachSlave struct {
+	Type     uint16
+	Length   uint16
+	DeviceID uint16
+}
+
+func (c *XIDetachSlave) Op() uint16 { return 4 }
+
+func (r *XIChangeHierarchyRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIChangeHierarchyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangeHierarchyRequest, error) {
+	if len(body) < 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+	}
+	numChanges := order.Uint16(body[0:2])
+	changes := make([]XIChangeHierarchyChange, 0, numChanges)
+	offset := 4
+	for i := 0; i < int(numChanges); i++ {
+		if len(body) < offset+4 {
+			return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+		}
+		changeType := order.Uint16(body[offset : offset+2])
+		length := order.Uint16(body[offset+2 : offset+4])
+		if len(body) < offset+int(length) {
+			return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+		}
+		changeBody := body[offset : offset+int(length)]
+		var change XIChangeHierarchyChange
+		switch changeType {
+		case 1: // XIAddMaster
+			return nil, NewError(ImplementationErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+		case 2: // XIRemoveMaster
+			return nil, NewError(ImplementationErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+		case 3: // XIAttachSlave
+			if len(changeBody) != 8 {
+				return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+			}
+			change = &XIAttachSlave{
+				Type:     changeType,
+				Length:   length,
+				DeviceID: order.Uint16(changeBody[4:6]),
+				MasterID: order.Uint16(changeBody[6:8]),
+			}
+		case 4: // XIDetachSlave
+			return nil, NewError(ImplementationErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+		default:
+			return nil, NewError(ValueErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+		}
+		changes = append(changes, change)
+		offset += int(length)
+	}
+	return &XIChangeHierarchyRequest{
+		NumChanges: numChanges,
+		Changes:    changes,
+	}, nil
+}
+
+// XISetClientPointer request
+type XISetClientPointerRequest struct {
+	DeviceID uint16
+	Window   Window
+}
+
+func (r *XISetClientPointerRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXISetClientPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISetClientPointerRequest, error) {
+	if len(body) != 8 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XISetClientPointer)
+	}
+	return &XISetClientPointerRequest{
+		DeviceID: order.Uint16(body[0:2]),
+		Window:   Window(order.Uint32(body[4:8])),
+	}, nil
+}
+
+// XIGetClientPointer request
+type XIGetClientPointerRequest struct {
+	Window Window
+}
+
+func (r *XIGetClientPointerRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIGetClientPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetClientPointerRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIGetClientPointer)
+	}
+	return &XIGetClientPointerRequest{
+		Window: Window(order.Uint32(body[0:4])),
+	}, nil
+}
+
+// XISelectEvents request
+type XISelectEventsRequest struct {
+	Window   Window
+	NumMasks uint16
+	Masks    []XIEventMask
+}
+
+type XIEventMask struct {
+	DeviceID uint16
+	MaskLen  uint16
+	Mask     []byte
+}
+
+func (r *XISelectEventsRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXISelectEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISelectEventsRequest, error) {
+	if len(body) < 8 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XISelectEvents)
+	}
+	window := Window(order.Uint32(body[0:4]))
+	numMasks := order.Uint16(body[4:6])
+	masks := make([]XIEventMask, 0, numMasks)
+	offset := 8
+	for i := 0; i < int(numMasks); i++ {
+		if len(body) < offset+4 {
+			return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XISelectEvents)
+		}
+		deviceID := order.Uint16(body[offset : offset+2])
+		maskLen := order.Uint16(body[offset+2 : offset+4])
+		maskBytes := int(maskLen) * 4
+		if len(body) < offset+4+maskBytes {
+			return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XISelectEvents)
+		}
+		mask := body[offset+4 : offset+4+maskBytes]
+		masks = append(masks, XIEventMask{
+			DeviceID: deviceID,
+			MaskLen:  maskLen,
+			Mask:     mask,
+		})
+		offset += 4 + maskBytes
+	}
+	return &XISelectEventsRequest{
+		Window:   window,
+		NumMasks: numMasks,
+		Masks:    masks,
+	}, nil
+}
+
+// XIQueryDevice request
+type XIQueryDeviceRequest struct {
+	DeviceID uint16
+}
+
+func (r *XIQueryDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIQueryDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIQueryDeviceRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIQueryDevice)
+	}
+	return &XIQueryDeviceRequest{
+		DeviceID: order.Uint16(body[0:2]),
+	}, nil
+}
+
+// XISetFocus request
+type XISetFocusRequest struct {
+	DeviceID uint16
+	Focus    Window
+	Time     uint32
+}
+
+func (r *XISetFocusRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXISetFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISetFocusRequest, error) {
+	if len(body) != 12 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XISetFocus)
+	}
+	return &XISetFocusRequest{
+		DeviceID: order.Uint16(body[0:2]),
+		Focus:    Window(order.Uint32(body[4:8])),
+		Time:     order.Uint32(body[8:12]),
+	}, nil
+}
+
+// XIGetFocus request
+type XIGetFocusRequest struct {
+	DeviceID uint16
+}
+
+func (r *XIGetFocusRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIGetFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetFocusRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIGetFocus)
+	}
+	return &XIGetFocusRequest{
+		DeviceID: order.Uint16(body[0:2]),
+	}, nil
+}
+
+// XIGrabDevice request
+type XIGrabDeviceRequest struct {
+	DeviceID         uint16
+	GrabWindow       Window
+	Time             uint32
+	Cursor           uint32
+	GrabMode         byte
+	PairedDeviceMode byte
+	OwnerEvents      bool
+	MaskLen          uint16
+	Mask             []byte
+}
+
+func (r *XIGrabDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGrabDeviceRequest, error) {
+	if len(body) < 20 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIGrabDevice)
+	}
+	maskLen := order.Uint16(body[18:20])
+	if len(body) != 20+int(maskLen)*4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIGrabDevice)
+	}
+	return &XIGrabDeviceRequest{
+		DeviceID:         order.Uint16(body[0:2]),
+		GrabWindow:       Window(order.Uint32(body[2:6])),
+		Time:             order.Uint32(body[6:10]),
+		Cursor:           order.Uint32(body[10:14]),
+		GrabMode:         body[14],
+		PairedDeviceMode: body[15],
+		OwnerEvents:      body[16] != 0,
+		MaskLen:          maskLen,
+		Mask:             body[20:],
+	}, nil
+}
+
+// XIUngrabDevice request
+type XIUngrabDeviceRequest struct {
+	DeviceID uint16
+	Time     uint32
+}
+
+func (r *XIUngrabDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIUngrabDeviceRequest, error) {
+	if len(body) != 8 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIUngrabDevice)
+	}
+	return &XIUngrabDeviceRequest{
+		DeviceID: order.Uint16(body[0:2]),
+		Time:     order.Uint32(body[4:8]),
+	}, nil
+}
+
+// XIAllowEvents request
+type XIAllowEventsRequest struct {
+	DeviceID   uint16
+	EventMode  byte
+	Time       uint32
+	TouchID    uint32
+	GrabWindow Window
+}
+
+func (r *XIAllowEventsRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIAllowEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIAllowEventsRequest, error) {
+	if len(body) != 16 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIAllowEvents)
+	}
+	return &XIAllowEventsRequest{
+		DeviceID:   order.Uint16(body[0:2]),
+		EventMode:  body[2],
+		Time:       order.Uint32(body[4:8]),
+		TouchID:    order.Uint32(body[8:12]),
+		GrabWindow: Window(order.Uint32(body[12:16])),
+	}, nil
+}
+
+// XIPassiveGrabDevice request
+type XIPassiveGrabDeviceRequest struct {
+	DeviceID         uint16
+	GrabWindow       Window
+	Time             uint32
+	Cursor           uint32
+	Detail           uint32
+	NumModifiers     uint16
+	GrabType         byte
+	GrabMode         byte
+	PairedDeviceMode byte
+	OwnerEvents      bool
+	Modifiers        []byte
+}
+
+func (r *XIPassiveGrabDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIPassiveGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIPassiveGrabDeviceRequest, error) {
+	if len(body) < 28 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIPassiveGrabDevice)
+	}
+	numModifiers := order.Uint16(body[20:22])
+	if len(body) != 28+int(numModifiers)*4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIPassiveGrabDevice)
+	}
+	return &XIPassiveGrabDeviceRequest{
+		DeviceID:         order.Uint16(body[0:2]),
+		GrabWindow:       Window(order.Uint32(body[4:8])),
+		Time:             order.Uint32(body[8:12]),
+		Cursor:           order.Uint32(body[12:16]),
+		Detail:           order.Uint32(body[16:20]),
+		NumModifiers:     numModifiers,
+		GrabType:         body[24],
+		GrabMode:         body[25],
+		PairedDeviceMode: body[26],
+		OwnerEvents:      body[27] != 0,
+		Modifiers:        body[28:],
+	}, nil
+}
+
+// XIPassiveUngrabDevice request
+type XIPassiveUngrabDeviceRequest struct {
+	DeviceID     uint16
+	GrabWindow   Window
+	Detail       uint32
+	NumModifiers uint16
+	GrabType     byte
+	Modifiers    []byte
+}
+
+func (r *XIPassiveUngrabDeviceRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIPassiveUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIPassiveUngrabDeviceRequest, error) {
+	if len(body) < 16 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIPassiveUngrabDevice)
+	}
+	numModifiers := order.Uint16(body[12:14])
+	if len(body) != 20+int(numModifiers)*4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIPassiveUngrabDevice)
+	}
+	return &XIPassiveUngrabDeviceRequest{
+		DeviceID:     order.Uint16(body[0:2]),
+		GrabWindow:   Window(order.Uint32(body[4:8])),
+		Detail:       order.Uint32(body[8:12]),
+		NumModifiers: numModifiers,
+		GrabType:     body[16],
+		Modifiers:    body[20:],
+	}, nil
+}
+
+// XIListProperties request
+type XIListPropertiesRequest struct {
+	DeviceID uint16
+}
+
+func (r *XIListPropertiesRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIListPropertiesRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIListPropertiesRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIListProperties)
+	}
+	return &XIListPropertiesRequest{
+		DeviceID: order.Uint16(body[0:2]),
+	}, nil
+}
+
+// XIChangeProperty request
+type XIChangePropertyRequest struct {
+	DeviceID uint16
+	Mode     byte
+	Format   byte
+	Property uint32
+	Type     uint32
+	NumItems uint32
+	Data     []byte
+}
+
+func (r *XIChangePropertyRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func pad(i int) int {
+	return (i + 3) & ^3
+}
+
+func ParseXIChangePropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangePropertyRequest, error) {
+	if len(body) < 16 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeProperty)
+	}
+	format := body[3]
+	numItems := order.Uint32(body[12:16])
+	var dataLen int
+	switch format {
+	case 8:
+		dataLen = int(numItems)
+	case 16:
+		dataLen = int(numItems) * 2
+	case 32:
+		dataLen = int(numItems) * 4
+	default:
+		return nil, NewError(ValueErrorCode, seq, 0, byte(XInputOpcode), XIChangeProperty)
+	}
+	if len(body) != 16+pad(dataLen) {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeProperty)
+	}
+	return &XIChangePropertyRequest{
+		DeviceID: order.Uint16(body[0:2]),
+		Mode:     body[2],
+		Format:   format,
+		Property: order.Uint32(body[4:8]),
+		Type:     order.Uint32(body[8:12]),
+		NumItems: numItems,
+		Data:     body[16 : 16+dataLen],
 	}, nil
 }
 
@@ -1142,9 +1732,9 @@ func ParseChangeFeedbackControlRequest(order binary.ByteOrder, body []byte, seq 
 
 // GetDeviceKeyMapping request
 type GetDeviceKeyMappingRequest struct {
-	DeviceID   byte
-	FirstKey   byte
-	Count      byte
+	DeviceID byte
+	FirstKey byte
+	Count    byte
 }
 
 func (r *GetDeviceKeyMappingRequest) OpCode() ReqCode {
@@ -1156,7 +1746,7 @@ func ParseGetDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq ui
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XGetDeviceKeyMapping)
 	}
 	return &GetDeviceKeyMappingRequest{
-		DeviceID:   body[0],
+		DeviceID: body[0],
 		FirstKey: body[1],
 		Count:    body[2],
 	}, nil
@@ -1164,11 +1754,11 @@ func ParseGetDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq ui
 
 // ChangeDeviceKeyMapping request
 type ChangeDeviceKeyMappingRequest struct {
-	DeviceID         byte
-	FirstKey         byte
+	DeviceID          byte
+	FirstKey          byte
 	KeysymsPerKeycode byte
-	KeycodeCount     byte
-	Keysyms          []uint32
+	KeycodeCount      byte
+	Keysyms           []uint32
 }
 
 func (r *ChangeDeviceKeyMappingRequest) OpCode() ReqCode {
@@ -1190,11 +1780,11 @@ func ParseChangeDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq
 		keysyms[i] = order.Uint32(body[4+i*4 : 8+i*4])
 	}
 	return &ChangeDeviceKeyMappingRequest{
-		DeviceID:         body[0],
-		FirstKey:         body[1],
+		DeviceID:          body[0],
+		FirstKey:          body[1],
 		KeysymsPerKeycode: keysymsPerKeycode,
-		KeycodeCount:     keycodeCount,
-		Keysyms:          keysyms,
+		KeycodeCount:      keycodeCount,
+		Keysyms:           keysyms,
 	}, nil
 }
 
@@ -1361,10 +1951,10 @@ func ParseSendExtensionEventRequest(order binary.ByteOrder, body []byte, seq uin
 
 // DeviceBell request
 type DeviceBellRequest struct {
-	DeviceID       byte
-	FeedbackID     byte
-	FeedbackClass  byte
-	Percent        byte
+	DeviceID      byte
+	FeedbackID    byte
+	FeedbackClass byte
+	Percent       byte
 }
 
 func (r *DeviceBellRequest) OpCode() ReqCode {
@@ -1376,9 +1966,33 @@ func ParseDeviceBellRequest(order binary.ByteOrder, body []byte, seq uint16) (*D
 		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XDeviceBell)
 	}
 	return &DeviceBellRequest{
-		DeviceID:       body[0],
-		FeedbackID:     body[1],
-		FeedbackClass:  body[2],
-		Percent:        body[3],
+		DeviceID:      body[0],
+		FeedbackID:    body[1],
+		FeedbackClass: body[2],
+		Percent:       body[3],
+	}, nil
+}
+
+//
+// XInput 2.0 requests
+//
+
+// XIQueryVersion request
+type XIQueryVersionRequest struct {
+	MajorVersion uint16
+	MinorVersion uint16
+}
+
+func (r *XIQueryVersionRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIQueryVersionRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIQueryVersionRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIQueryVersion)
+	}
+	return &XIQueryVersionRequest{
+		MajorVersion: order.Uint16(body[0:2]),
+		MinorVersion: order.Uint16(body[2:4]),
 	}, nil
 }
