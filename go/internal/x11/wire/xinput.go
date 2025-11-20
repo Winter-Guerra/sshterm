@@ -1029,23 +1029,23 @@ type KbdFeedbackState struct {
 }
 
 func (f *KbdFeedbackState) EncodeMessage(order binary.ByteOrder) []byte {
-	buf := new(bytes.Buffer)
-	buf.WriteByte(f.ClassID)
-	buf.WriteByte(f.ID)
-	order.PutUint16(buf.Bytes()[2:4], f.Len)
-	order.PutUint16(buf.Bytes()[4:6], f.Pitch)
-	order.PutUint16(buf.Bytes()[6:8], f.Duration)
-	order.PutUint32(buf.Bytes()[8:12], f.LedMask)
-	order.PutUint32(buf.Bytes()[12:16], f.LedValues)
+	buf := make([]byte, 44)
+	buf[0] = f.ClassID
+	buf[1] = f.ID
+	order.PutUint16(buf[2:4], f.Len)
+	order.PutUint16(buf[4:6], f.Pitch)
+	order.PutUint16(buf[6:8], f.Duration)
+	order.PutUint32(buf[8:12], f.LedMask)
+	order.PutUint32(buf[12:16], f.LedValues)
 	if f.GlobalAutoRepeat {
-		buf.WriteByte(1)
+		buf[16] = 1
 	} else {
-		buf.WriteByte(0)
+		buf[16] = 0
 	}
-	buf.WriteByte(f.Click)
-	buf.WriteByte(f.Percent)
-	buf.Write(f.AutoRepeats[:])
-	return buf.Bytes()
+	buf[17] = f.Click
+	buf[18] = f.Percent
+	copy(buf[19:], f.AutoRepeats[:])
+	return buf
 }
 
 type PtrFeedbackState struct {
@@ -1058,14 +1058,14 @@ type PtrFeedbackState struct {
 }
 
 func (f *PtrFeedbackState) EncodeMessage(order binary.ByteOrder) []byte {
-	buf := new(bytes.Buffer)
-	buf.WriteByte(f.ClassID)
-	buf.WriteByte(f.ID)
-	order.PutUint16(buf.Bytes()[2:4], f.Len)
-	order.PutUint16(buf.Bytes()[4:6], f.AccelNum)
-	order.PutUint16(buf.Bytes()[6:8], f.AccelDenom)
-	order.PutUint16(buf.Bytes()[8:10], f.Threshold)
-	return buf.Bytes()
+	buf := make([]byte, 12)
+	buf[0] = f.ClassID
+	buf[1] = f.ID
+	order.PutUint16(buf[2:4], f.Len)
+	order.PutUint16(buf[4:6], f.AccelNum)
+	order.PutUint16(buf[6:8], f.AccelDenom)
+	order.PutUint16(buf[8:10], f.Threshold)
+	return buf
 }
 
 // GetDeviceFocus reply
@@ -1651,16 +1651,18 @@ func (c *KeyClassInfo) EncodeMessage(order binary.ByteOrder) []byte {
 
 type ButtonClassInfo struct {
 	NumButtons uint16
+	State      [32]byte
 }
 
 func (c *ButtonClassInfo) ClassID() byte { return 1 }
-func (c *ButtonClassInfo) Length() int   { return 8 }
+func (c *ButtonClassInfo) Length() int   { return 8 + 32 }
 func (c *ButtonClassInfo) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
 	buf.WriteByte(c.ClassID())
 	buf.WriteByte(byte(c.Length()))
 	binary.Write(buf, order, c.NumButtons)
 	buf.Write([]byte{0, 0, 0, 0}) // padding
+	buf.Write(c.State[:])
 	return buf.Bytes()
 }
 

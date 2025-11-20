@@ -2362,7 +2362,7 @@ func (f *wasmX11Frontend) GetFeedbackControl(deviceID byte) []wire.FeedbackState
 	var feedbacks []wire.FeedbackState
 
 	switch deviceID {
-	case CorePointerDeviceID:
+	case wire.CorePointerDeviceID:
 		feedbacks = append(feedbacks, &wire.PtrFeedbackState{
 			ClassID:    wire.PtrFeedbackClass,
 			ID:         0,
@@ -2371,7 +2371,7 @@ func (f *wasmX11Frontend) GetFeedbackControl(deviceID byte) []wire.FeedbackState
 			AccelDenom: 1,
 			Threshold:  1,
 		})
-	case CoreKeyboardDeviceID:
+	case wire.CoreKeyboardDeviceID:
 		var autoRepeats [32]byte
 		for i := range autoRepeats {
 			autoRepeats[i] = 0xff // All keys auto-repeat by default
@@ -2479,23 +2479,24 @@ func (f *wasmX11Frontend) QueryDeviceState(deviceID byte) []wire.InputClassInfo 
 	var infos []wire.InputClassInfo
 
 	switch deviceID {
-	case CorePointerDeviceID:
+	case wire.CorePointerDeviceID:
 		// ButtonClassInfo
 		infos = append(infos, &wire.ButtonClassInfo{
 			NumButtons: 7,
-			Buttons:    [32]byte{},
 		})
 		// ValuatorClassInfo
 		infos = append(infos, &wire.ValuatorClassInfo{
-			NumValuators: 2,
-			Mode:         0, // Relative
-			Valuators:    []uint32{uint32(f.server.pointerX), uint32(f.server.pointerY)},
+			NumAxes:    2,
+			Mode:       0, // Relative
+			MotionSize: 0,
+			Axes:       []wire.ValuatorAxisInfo{},
 		})
-	case CoreKeyboardDeviceID:
+	case wire.CoreKeyboardDeviceID:
 		// KeyClassInfo
 		infos = append(infos, &wire.KeyClassInfo{
-			NumKeys: 248, // Standard number of keys
-			Keys:    [32]byte{},
+			NumKeys:    248, // Standard number of keys
+			MinKeycode: 8,
+			MaxKeycode: 255,
 		})
 	}
 
