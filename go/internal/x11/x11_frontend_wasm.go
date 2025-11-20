@@ -67,19 +67,19 @@ type cursorInfo struct {
 }
 
 type wasmX11Frontend struct {
-	document         js.Value
-	body             js.Value
-	windows          map[xID]*windowInfo    // Map to store window elements (div)
-	pixmaps          map[xID]*pixmapInfo    // Map to store pixmap elements (canvas)
-	gcs              map[xID]wire.GC        // Map to store graphics contexts (Go representation)
-	fonts            map[xID]*fontInfo      // Map to store opened fonts
-	cursors          map[xID]*cursorInfo    // Map to store cursor info
-	focusedWindowID  xID                    // Track the currently focused window
-	server           *x11Server             // To call back into the server for pointer updates
-	canvasOperations []CanvasOperation      // Store canvas operations for testing
-	atoms            map[string]uint32      // Map atom names to IDs
-	nextAtomID       uint32                 // Next available atom ID
-	cursorStyles     map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
+	document           js.Value
+	body               js.Value
+	windows            map[xID]*windowInfo    // Map to store window elements (div)
+	pixmaps            map[xID]*pixmapInfo    // Map to store pixmap elements (canvas)
+	gcs                map[xID]wire.GC        // Map to store graphics contexts (Go representation)
+	fonts              map[xID]*fontInfo      // Map to store opened fonts
+	cursors            map[xID]*cursorInfo    // Map to store cursor info
+	focusedWindowID    xID                    // Track the currently focused window
+	server             *x11Server             // To call back into the server for pointer updates
+	canvasOperations   []CanvasOperation      // Store canvas operations for testing
+	atoms              map[string]uint32      // Map atom names to IDs
+	nextAtomID         uint32                 // Next available atom ID
+	cursorStyles       map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
 	modifierMap        []wire.KeyCode
 	deviceModifierMaps map[byte][]byte
 	deviceButtonMaps   map[byte][]byte
@@ -181,20 +181,20 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 	document := js.Global().Get("document")
 	body := document.Get("body")
 	frontend := &wasmX11Frontend{
-		document:     document,
-		body:         body,
-		windows:      make(map[xID]*windowInfo),
-		pixmaps:      make(map[xID]*pixmapInfo),
-		gcs:          make(map[xID]wire.GC),
-		fonts:        make(map[xID]*fontInfo),
-		cursors:      make(map[xID]*cursorInfo),
-		server:       s,
-		atoms:           make(map[string]uint32),
-		nextAtomID:      1,
-		cursorStyles:    make(map[uint32]*cursorInfo),
+		document:           document,
+		body:               body,
+		windows:            make(map[xID]*windowInfo),
+		pixmaps:            make(map[xID]*pixmapInfo),
+		gcs:                make(map[xID]wire.GC),
+		fonts:              make(map[xID]*fontInfo),
+		cursors:            make(map[xID]*cursorInfo),
+		server:             s,
+		atoms:              make(map[string]uint32),
+		nextAtomID:         1,
+		cursorStyles:       make(map[uint32]*cursorInfo),
 		deviceModifierMaps: make(map[byte][]byte),
 		deviceButtonMaps:   make(map[byte][]byte),
-		deviceKeymaps:   make(map[byte]map[byte][]uint32),
+		deviceKeymaps:      make(map[byte]map[byte][]uint32),
 	}
 	frontend.initDefaultCursors()
 	frontend.initCanvasOperations()

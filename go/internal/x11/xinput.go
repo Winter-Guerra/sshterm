@@ -11,8 +11,8 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.GetExtensionVersionRequest:
 		return &wire.GetExtensionVersionReply{
 			Sequence:     seq,
-			MajorVersion: 1,
-			MinorVersion: 5,
+			MajorVersion: 2,
+			MinorVersion: 2,
 		}
 
 	case *wire.ListInputDevicesRequest:
