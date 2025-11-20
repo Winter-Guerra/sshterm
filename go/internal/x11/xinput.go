@@ -277,52 +277,134 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return nil
 
 	case *wire.GrabDeviceKeyRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGrabDeviceKey)
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		grab := &passiveDeviceGrab{
+			deviceID:  p.DeviceID,
+			key:       wire.KeyCode(p.Key),
+			modifiers: p.Modifiers,
+			owner:     p.OwnerEvents,
+			eventMask: p.Classes,
+		}
+		s.passiveDeviceGrabs[grabWindow] = append(s.passiveDeviceGrabs[grabWindow], grab)
+		return nil
 
 	case *wire.UngrabDeviceKeyRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XUngrabDeviceKey)
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		if grabs, ok := s.passiveDeviceGrabs[grabWindow]; ok {
+			newGrabs := make([]*passiveDeviceGrab, 0, len(grabs))
+			for _, grab := range grabs {
+				if !(grab.key == wire.KeyCode(p.Key) && (p.Modifiers == wire.AnyModifier || grab.modifiers == p.Modifiers)) {
+					newGrabs = append(newGrabs, grab)
+				}
+			}
+			s.passiveDeviceGrabs[grabWindow] = newGrabs
+		}
+		return nil
 
 	case *wire.GrabDeviceButtonRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGrabDeviceButton)
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		grab := &passiveDeviceGrab{
+			deviceID:  p.DeviceID,
+			button:    p.Button,
+			modifiers: p.Modifiers,
+			owner:     p.OwnerEvents,
+			eventMask: p.Classes,
+		}
+		s.passiveDeviceGrabs[grabWindow] = append(s.passiveDeviceGrabs[grabWindow], grab)
+		return nil
 
 	case *wire.UngrabDeviceButtonRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XUngrabDeviceButton)
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		if grabs, ok := s.passiveDeviceGrabs[grabWindow]; ok {
+			newGrabs := make([]*passiveDeviceGrab, 0, len(grabs))
+			for _, grab := range grabs {
+				if !(grab.button == p.Button && (p.Modifiers == wire.AnyModifier || grab.modifiers == p.Modifiers)) {
+					newGrabs = append(newGrabs, grab)
+				}
+			}
+			s.passiveDeviceGrabs[grabWindow] = newGrabs
+		}
+		return nil
 
 	case *wire.GetDeviceFocusRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGetDeviceFocus)
+		return &wire.GetDeviceFocusReply{
+			Sequence: seq,
+			Focus:    s.inputFocus.local,
+			RevertTo: 1, // RevertToParent
+		}
 
 	case *wire.SetDeviceFocusRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XSetDeviceFocus)
+		s.inputFocus = client.xID(uint32(p.Focus))
+		return nil
 
 	case *wire.GetFeedbackControlRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGetFeedbackControl)
+		feedbacks := s.frontend.GetFeedbackControl(p.DeviceID)
+		return &wire.GetFeedbackControlReply{
+			Sequence:  seq,
+			Feedbacks: feedbacks,
+			NumEvents: uint16(len(feedbacks)),
+		}
 
 	case *wire.ChangeFeedbackControlRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XChangeFeedbackControl)
+		s.frontend.ChangeFeedbackControl(p.DeviceID, p.ControlID, p.Mask, p.Control)
+		return nil
 
 	case *wire.GetDeviceKeyMappingRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGetDeviceKeyMapping)
+		keysymsPerKeycode, keysyms := s.frontend.GetDeviceKeyMapping(p.DeviceID, p.FirstKey, p.Count)
+		return &wire.GetDeviceKeyMappingReply{
+			Sequence:          seq,
+			KeysymsPerKeycode: keysymsPerKeycode,
+			Keysyms:           keysyms,
+		}
 
 	case *wire.ChangeDeviceKeyMappingRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XChangeDeviceKeyMapping)
+		s.frontend.ChangeDeviceKeyMapping(p.DeviceID, p.FirstKey, p.KeysymsPerKeycode, p.KeycodeCount, p.Keysyms)
+		return nil
 
 	case *wire.GetDeviceModifierMappingRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGetDeviceModifierMapping)
+		numKeycodesPerMod, keycodes := s.frontend.GetDeviceModifierMapping(p.DeviceID)
+		return &wire.GetDeviceModifierMappingReply{
+			Sequence:          seq,
+			NumKeycodesPerMod: numKeycodesPerMod,
+			Keycodes:          keycodes,
+		}
 
 	case *wire.SetDeviceModifierMappingRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XSetDeviceModifierMapping)
+		status := s.frontend.SetDeviceModifierMapping(p.DeviceID, p.Keycodes)
+		return &wire.SetDeviceModifierMappingReply{
+			Sequence: seq,
+			Status:   status,
+		}
 
 	case *wire.GetDeviceButtonMappingRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGetDeviceButtonMapping)
+		buttonMap := s.frontend.GetDeviceButtonMapping(p.DeviceID)
+		return &wire.GetDeviceButtonMappingReply{
+			Sequence: seq,
+			Map:      buttonMap,
+		}
 
 	case *wire.SetDeviceButtonMappingRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XSetDeviceButtonMapping)
+		status := s.frontend.SetDeviceButtonMapping(p.DeviceID, p.Map)
+		return &wire.SetDeviceButtonMappingReply{
+			Sequence: seq,
+			Status:   status,
+		}
 
 	case *wire.QueryDeviceStateRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XQueryDeviceState)
+		classes := s.frontend.QueryDeviceState(p.DeviceID)
+		return &wire.QueryDeviceStateReply{
+			Sequence:  seq,
+			Classes:   classes,
+			NumEvents: uint16(len(classes)),
+		}
 
 	case *wire.DeviceBellRequest:
-		return wire.NewError(wire.ImplementationErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XDeviceBell)
+		s.frontend.DeviceBell(p.DeviceID, p.FeedbackID, p.FeedbackClass, int8(p.Percent))
+		return nil
+
+	case *wire.XIChangeHierarchyRequest:
+		s.frontend.XIChangeHierarchy(p.Changes)
+		return nil
 
 	default:
 		return wire.NewError(wire.RequestErrorCode, seq, 0, 0, wire.XInputOpcode)

@@ -180,6 +180,68 @@ type MockX11Frontend struct {
 	SetPointerMappingCalls          [][]byte
 	keymap                          map[byte]uint32
 	modifierMap                     []wire.KeyCode
+	DeviceBellCalls                 [][]any
+	XIChangeHierarchyCalls          [][]any
+	ChangeFeedbackControlCalls      [][]any
+	ChangeDeviceKeyMappingCalls     [][]any
+	SetDeviceModifierMappingCalls   [][]any
+	SetDeviceButtonMappingCalls     [][]any
+	GetFeedbackControlCalls         [][]any
+	GetDeviceKeyMappingCalls        [][]any
+	GetDeviceModifierMappingCalls   [][]any
+	GetDeviceButtonMappingCalls     [][]any
+	QueryDeviceStateCalls           [][]any
+}
+
+func (m *MockX11Frontend) QueryDeviceState(deviceID byte) []wire.InputClassInfo {
+	m.QueryDeviceStateCalls = append(m.QueryDeviceStateCalls, []any{deviceID})
+	return nil
+}
+
+func (m *MockX11Frontend) GetDeviceButtonMapping(deviceID byte) []byte {
+	m.GetDeviceButtonMappingCalls = append(m.GetDeviceButtonMappingCalls, []any{deviceID})
+	return []byte{}
+}
+
+func (m *MockX11Frontend) GetDeviceModifierMapping(deviceID byte) (byte, []byte) {
+	m.GetDeviceModifierMappingCalls = append(m.GetDeviceModifierMappingCalls, []any{deviceID})
+	return 1, []byte{}
+}
+
+func (m *MockX11Frontend) GetDeviceKeyMapping(deviceID byte, firstKey byte, count byte) (byte, []uint32) {
+	m.GetDeviceKeyMappingCalls = append(m.GetDeviceKeyMappingCalls, []any{deviceID, firstKey, count})
+	return 1, []uint32{}
+}
+
+func (m *MockX11Frontend) GetFeedbackControl(deviceID byte) []wire.FeedbackState {
+	m.GetFeedbackControlCalls = append(m.GetFeedbackControlCalls, []any{deviceID})
+	return nil
+}
+
+func (m *MockX11Frontend) SetDeviceButtonMapping(deviceID byte, buttonMap []byte) byte {
+	m.SetDeviceButtonMappingCalls = append(m.SetDeviceButtonMappingCalls, []any{deviceID, buttonMap})
+	return 0
+}
+
+func (m *MockX11Frontend) SetDeviceModifierMapping(deviceID byte, keycodes []byte) byte {
+	m.SetDeviceModifierMappingCalls = append(m.SetDeviceModifierMappingCalls, []any{deviceID, keycodes})
+	return 0
+}
+
+func (m *MockX11Frontend) ChangeDeviceKeyMapping(deviceID byte, firstKey byte, keysymsPerKeycode byte, keycodeCount byte, keysyms []uint32) {
+	m.ChangeDeviceKeyMappingCalls = append(m.ChangeDeviceKeyMappingCalls, []any{deviceID, firstKey, keysymsPerKeycode, keycodeCount, keysyms})
+}
+
+func (m *MockX11Frontend) ChangeFeedbackControl(deviceID byte, feedbackID byte, mask uint32, control []byte) {
+	m.ChangeFeedbackControlCalls = append(m.ChangeFeedbackControlCalls, []any{deviceID, feedbackID, mask, control})
+}
+
+func (m *MockX11Frontend) XIChangeHierarchy(changes []wire.XIChangeHierarchyChange) {
+	m.XIChangeHierarchyCalls = append(m.XIChangeHierarchyCalls, []any{changes})
+}
+
+func (m *MockX11Frontend) DeviceBell(deviceID byte, feedbackID byte, feedbackClass byte, percent int8) {
+	m.DeviceBellCalls = append(m.DeviceBellCalls, []any{deviceID, feedbackID, feedbackClass, percent})
 }
 
 type setInputFocusCall struct {

@@ -9,6 +9,20 @@ import (
 
 // XInput minor opcodes from XIproto.h
 const (
+	CorePointerDeviceID = 2
+	CoreKeyboardDeviceID = 3
+
+	KeyClass    = 0
+	ButtonClass = 1
+	ValuatorClass = 2
+
+	KbdFeedbackClass  = 0
+	PtrFeedbackClass  = 1
+	IntFeedbackClass  = 2
+	StringFeedbackClass = 3
+	BellFeedbackClass = 4
+	LedFeedbackClass  = 5
+
 	XGetExtensionVersion           = 1
 	XListInputDevices              = 2
 	XOpenDevice                    = 3
@@ -366,7 +380,14 @@ func ParseXIChangeHierarchyRequest(order binary.ByteOrder, body []byte, seq uint
 				MasterID: order.Uint16(changeBody[6:8]),
 			}
 		case 4: // XIDetachSlave
-			return nil, NewError(ImplementationErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+			if len(changeBody) != 8 {
+				return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+			}
+			change = &XIDetachSlave{
+				Type:     changeType,
+				Length:   length,
+				DeviceID: order.Uint16(changeBody[4:6]),
+			}
 		default:
 			return nil, NewError(ValueErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
 		}
@@ -902,6 +923,172 @@ func ParseOpenDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*O
 	return &OpenDeviceRequest{
 		DeviceID: body[0],
 	}, nil
+}
+
+// QueryDeviceState reply
+type QueryDeviceStateReply struct {
+	Sequence  uint16
+	NumEvents uint16
+	Classes   []InputClassInfo
+}
+
+func (r *QueryDeviceStateReply) EncodeMessage(order binary.ByteOrder) []byte {
+	var classBytes []byte
+	for _, c := range r.Classes {
+		classBytes = append(classBytes, c.EncodeMessage(order)...)
+	}
+	length := (len(classBytes) + 3) / 4
+
+	reply := make([]byte, 32+len(classBytes))
+	reply[0] = 1 // Reply
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], uint32(length))
+	reply[8] = byte(len(r.Classes))
+	copy(reply[32:], classBytes)
+	return reply
+}
+
+// GetDeviceButtonMapping reply
+type GetDeviceButtonMappingReply struct {
+	Sequence uint16
+	Map      []byte
+}
+
+func (r *GetDeviceButtonMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
+	length := len(r.Map)
+	reply := make([]byte, 32+length)
+	reply[0] = 1 // Reply
+	reply[1] = byte(length)
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], uint32((length+3)/4))
+	copy(reply[32:], r.Map)
+	return reply
+}
+
+// GetDeviceModifierMapping reply
+type GetDeviceModifierMappingReply struct {
+	Sequence            uint16
+	NumKeycodesPerMod byte
+	Keycodes            []byte
+}
+
+func (r *GetDeviceModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
+	length := len(r.Keycodes)
+	reply := make([]byte, 32+length)
+	reply[0] = 1 // Reply
+	reply[1] = r.NumKeycodesPerMod
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], uint32((length+3)/4))
+	copy(reply[32:], r.Keycodes)
+	return reply
+}
+
+// GetFeedbackControl reply
+type GetFeedbackControlReply struct {
+	ReplyType byte
+	Unused    byte
+	Sequence  uint16
+	Length    uint32
+	NumEvents uint16
+	Padding   [22]byte
+	Feedbacks []FeedbackState
+}
+
+func (r *GetFeedbackControlReply) EncodeMessage(order binary.ByteOrder) []byte {
+	var feedbackBytes []byte
+	for _, f := range r.Feedbacks {
+		feedbackBytes = append(feedbackBytes, f.EncodeMessage(order)...)
+	}
+	length := (len(feedbackBytes) + 3) / 4
+
+	reply := make([]byte, 32+len(feedbackBytes))
+	reply[0] = 1 // Reply
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], uint32(length))
+	order.PutUint16(reply[8:10], r.NumEvents)
+	copy(reply[32:], feedbackBytes)
+	return reply
+}
+
+type FeedbackState interface {
+	EncodeMessage(order binary.ByteOrder) []byte
+}
+
+type KbdFeedbackState struct {
+	ClassID          byte
+	ID               byte
+	Len              uint16
+	Pitch            uint16
+	Duration         uint16
+	LedMask          uint32
+	LedValues        uint32
+	GlobalAutoRepeat bool
+	Click            byte
+	Percent          byte
+	AutoRepeats      [32]byte
+}
+
+func (f *KbdFeedbackState) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(f.ClassID)
+	buf.WriteByte(f.ID)
+	order.PutUint16(buf.Bytes()[2:4], f.Len)
+	order.PutUint16(buf.Bytes()[4:6], f.Pitch)
+	order.PutUint16(buf.Bytes()[6:8], f.Duration)
+	order.PutUint32(buf.Bytes()[8:12], f.LedMask)
+	order.PutUint32(buf.Bytes()[12:16], f.LedValues)
+	if f.GlobalAutoRepeat {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	buf.WriteByte(f.Click)
+	buf.WriteByte(f.Percent)
+	buf.Write(f.AutoRepeats[:])
+	return buf.Bytes()
+}
+
+type PtrFeedbackState struct {
+	ClassID    byte
+	ID         byte
+	Len        uint16
+	AccelNum   uint16
+	AccelDenom uint16
+	Threshold  uint16
+}
+
+func (f *PtrFeedbackState) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(f.ClassID)
+	buf.WriteByte(f.ID)
+	order.PutUint16(buf.Bytes()[2:4], f.Len)
+	order.PutUint16(buf.Bytes()[4:6], f.AccelNum)
+	order.PutUint16(buf.Bytes()[6:8], f.AccelDenom)
+	order.PutUint16(buf.Bytes()[8:10], f.Threshold)
+	return buf.Bytes()
+}
+
+// GetDeviceFocus reply
+type GetDeviceFocusReply struct {
+	ReplyType byte
+	Unused    byte
+	Sequence  uint16
+	Length    uint32
+	Focus     uint32
+	Time      uint32
+	RevertTo  byte
+	Padding   [15]byte
+}
+
+func (r *GetDeviceFocusReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0) // length
+	order.PutUint32(reply[8:12], r.Focus)
+	order.PutUint32(reply[12:16], r.Time)
+	reply[16] = r.RevertTo
+	return reply
 }
 
 // OpenDevice reply
@@ -1863,6 +2050,28 @@ func ParseGetDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq ui
 	}, nil
 }
 
+// GetDeviceKeyMapping reply
+type GetDeviceKeyMappingReply struct {
+	Sequence          uint16
+	KeysymsPerKeycode byte
+	Keysyms           []uint32
+}
+
+func (r *GetDeviceKeyMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
+	length := len(r.Keysyms) * 4
+	reply := make([]byte, 32+length)
+	reply[0] = 1 // Reply
+	reply[1] = r.KeysymsPerKeycode
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], uint32(length/4))
+	offset := 32
+	for _, keysym := range r.Keysyms {
+		order.PutUint32(reply[offset:offset+4], keysym)
+		offset += 4
+	}
+	return reply
+}
+
 // ChangeDeviceKeyMapping request
 type ChangeDeviceKeyMappingRequest struct {
 	DeviceID          byte
@@ -1943,6 +2152,25 @@ func ParseSetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, s
 	}, nil
 }
 
+// SetDeviceModifierMapping reply
+type SetDeviceModifierMappingReply struct {
+	ReplyType byte
+	Unused    byte
+	Sequence  uint16
+	Length    uint32
+	Status    byte
+	Padding   [23]byte
+}
+
+func (r *SetDeviceModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	reply[1] = r.Status
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0)
+	return reply
+}
+
 // GetDeviceButtonMapping request
 type GetDeviceButtonMappingRequest struct {
 	DeviceID byte
@@ -1984,6 +2212,25 @@ func ParseSetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq
 		DeviceID: body[0],
 		Map:      body[4:],
 	}, nil
+}
+
+// SetDeviceButtonMapping reply
+type SetDeviceButtonMappingReply struct {
+	ReplyType byte
+	Unused    byte
+	Sequence  uint16
+	Length    uint32
+	Status    byte
+	Padding   [23]byte
+}
+
+func (r *SetDeviceButtonMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	reply[1] = r.Status
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0)
+	return reply
 }
 
 // QueryDeviceState request

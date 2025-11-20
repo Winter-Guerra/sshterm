@@ -73,6 +73,29 @@ func TestParseGrabDeviceKeyRequest(t *testing.T) {
 		assert.Equal(t, uint16(0), req.Modifiers)
 		assert.Equal(t, classes, req.Classes)
 	})
+
+	t.Run("invalid length", func(t *testing.T) {
+		_, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, []byte{1, 2, 3}, 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
+	})
+
+	t.Run("body length mismatch", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, uint32(123)) // grab_window
+		binary.Write(buf, binary.LittleEndian, uint16(2))   // num_classes = 2
+		buf.WriteByte(1) // owner_events
+		buf.WriteByte(1) // this_device_mode
+		buf.WriteByte(0) // other_device_mode
+		buf.WriteByte(5) // device_id
+		binary.Write(buf, binary.LittleEndian, uint16(0)) // modifiers
+		buf.WriteByte(10)   // key
+		binary.Write(buf, binary.LittleEndian, uint32(10))  // only one class
+
+		_, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, buf.Bytes(), 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
+	})
 }
 
 func TestParseUngrabDeviceKeyRequest(t *testing.T) {
@@ -91,6 +114,12 @@ func TestParseUngrabDeviceKeyRequest(t *testing.T) {
 		assert.Equal(t, uint16(1), req.Modifiers)
 		assert.Equal(t, byte(5), req.DeviceID)
 		assert.Equal(t, byte(10), req.Key)
+	})
+
+	t.Run("invalid length", func(t *testing.T) {
+		_, err := ParseUngrabDeviceKeyRequest(binary.LittleEndian, []byte{1, 2, 3}, 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
 	})
 }
 
@@ -563,5 +592,26 @@ func TestParseDeviceBellRequest(t *testing.T) {
 		assert.Equal(t, byte(10), req.FeedbackID)
 		assert.Equal(t, byte(1), req.FeedbackClass)
 		assert.Equal(t, byte(50), req.Percent)
+	})
+}
+
+func TestParseXIChangeHierarchyRequest(t *testing.T) {
+	t.Run("valid request with detach slave", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, uint16(1)) // num_changes
+		binary.Write(buf, binary.LittleEndian, uint16(0)) // padding
+		binary.Write(buf, binary.LittleEndian, uint16(4)) // type = XIDetachSlave
+		binary.Write(buf, binary.LittleEndian, uint16(8)) // length
+		binary.Write(buf, binary.LittleEndian, uint16(5)) // deviceid
+		binary.Write(buf, binary.LittleEndian, uint16(0)) // padding
+
+		req, err := ParseXIChangeHierarchyRequest(binary.LittleEndian, buf.Bytes(), 1)
+		assert.NoError(t, err)
+		assert.NotNil(t, req)
+		assert.Equal(t, uint16(1), req.NumChanges)
+		assert.Len(t, req.Changes, 1)
+		detach, ok := req.Changes[0].(*XIDetachSlave)
+		assert.True(t, ok, "Expected XIDetachSlave change")
+		assert.Equal(t, uint16(5), detach.DeviceID)
 	})
 }

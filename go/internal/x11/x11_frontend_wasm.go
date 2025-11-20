@@ -80,7 +80,10 @@ type wasmX11Frontend struct {
 	atoms            map[string]uint32      // Map atom names to IDs
 	nextAtomID       uint32                 // Next available atom ID
 	cursorStyles     map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
-	modifierMap      []wire.KeyCode
+	modifierMap        []wire.KeyCode
+	deviceModifierMaps map[byte][]byte
+	deviceButtonMaps   map[byte][]byte
+	deviceKeymaps      map[byte]map[byte][]uint32
 }
 
 func (w *wasmX11Frontend) showMessage(message string) {
@@ -186,9 +189,12 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 		fonts:        make(map[xID]*fontInfo),
 		cursors:      make(map[xID]*cursorInfo),
 		server:       s,
-		atoms:        make(map[string]uint32),
-		nextAtomID:   1,
-		cursorStyles: make(map[uint32]*cursorInfo),
+		atoms:           make(map[string]uint32),
+		nextAtomID:      1,
+		cursorStyles:    make(map[uint32]*cursorInfo),
+		deviceModifierMaps: make(map[byte][]byte),
+		deviceButtonMaps:   make(map[byte][]byte),
+		deviceKeymaps:   make(map[byte]map[byte][]uint32),
 	}
 	frontend.initDefaultCursors()
 	frontend.initCanvasOperations()
@@ -2307,6 +2313,193 @@ func (w *wasmX11Frontend) GetModifierMapping() ([]wire.KeyCode, error) {
 		return make([]wire.KeyCode, 8), nil
 	}
 	return w.modifierMap, nil
+}
+
+func (f *wasmX11Frontend) DeviceBell(deviceID byte, feedbackID byte, feedbackClass byte, percent int8) {
+	f.Bell(percent)
+}
+
+func (f *wasmX11Frontend) XIChangeHierarchy(changes []wire.XIChangeHierarchyChange) {
+	debugf("X11: XIChangeHierarchy (not implemented)")
+}
+
+func (f *wasmX11Frontend) ChangeFeedbackControl(deviceID byte, feedbackID byte, mask uint32, control []byte) {
+	debugf("X11: ChangeFeedbackControl (not implemented)")
+}
+
+func (f *wasmX11Frontend) ChangeDeviceKeyMapping(deviceID byte, firstKey byte, keysymsPerKeycode byte, keycodeCount byte, keysyms []uint32) {
+	if _, ok := f.deviceKeymaps[deviceID]; !ok {
+		f.deviceKeymaps[deviceID] = make(map[byte][]uint32)
+	}
+	keysymIndex := 0
+	for i := 0; i < int(keycodeCount); i++ {
+		keycode := firstKey + byte(i)
+		if keysymIndex+int(keysymsPerKeycode) > len(keysyms) {
+			debugf("X11: ChangeDeviceKeyMapping: not enough keysyms provided.")
+			break
+		}
+		f.deviceKeymaps[deviceID][keycode] = keysyms[keysymIndex : keysymIndex+int(keysymsPerKeycode)]
+		keysymIndex += int(keysymsPerKeycode)
+	}
+	debugf("X11: ChangeDeviceKeyMapping deviceID=%d, firstKey=%d, keycodeCount=%d", deviceID, firstKey, keycodeCount)
+}
+
+func (f *wasmX11Frontend) SetDeviceModifierMapping(deviceID byte, keycodes []byte) byte {
+	f.deviceModifierMaps[deviceID] = keycodes
+	debugf("X11: SetDeviceModifierMapping deviceID=%d, keycodes=%v", deviceID, keycodes)
+	return 0
+}
+
+func (f *wasmX11Frontend) SetDeviceButtonMapping(deviceID byte, buttonMap []byte) byte {
+	f.deviceButtonMaps[deviceID] = buttonMap
+	debugf("X11: SetDeviceButtonMapping deviceID=%d, map=%v", deviceID, buttonMap)
+	return 0
+}
+
+func (f *wasmX11Frontend) GetFeedbackControl(deviceID byte) []wire.FeedbackState {
+	debugf("X11: GetFeedbackControl deviceID=%d", deviceID)
+
+	var feedbacks []wire.FeedbackState
+
+	switch deviceID {
+	case CorePointerDeviceID:
+		feedbacks = append(feedbacks, &wire.PtrFeedbackState{
+			ClassID:    wire.PtrFeedbackClass,
+			ID:         0,
+			Len:        12,
+			AccelNum:   1,
+			AccelDenom: 1,
+			Threshold:  1,
+		})
+	case CoreKeyboardDeviceID:
+		var autoRepeats [32]byte
+		for i := range autoRepeats {
+			autoRepeats[i] = 0xff // All keys auto-repeat by default
+		}
+		feedbacks = append(feedbacks, &wire.KbdFeedbackState{
+			ClassID:          wire.KbdFeedbackClass,
+			ID:               0,
+			Len:              44,
+			Pitch:            440,
+			Duration:         100,
+			LedMask:          0,
+			LedValues:        0,
+			GlobalAutoRepeat: true,
+			Click:            0,
+			Percent:          50,
+			AutoRepeats:      autoRepeats,
+		})
+	}
+
+	return feedbacks
+}
+
+func (f *wasmX11Frontend) GetDeviceKeyMapping(deviceID byte, firstKey byte, count byte) (byte, []uint32) {
+	deviceMap, ok := f.deviceKeymaps[deviceID]
+	if !ok {
+		// Device not found, return default mapping.
+		keysyms := make([]uint32, count)
+		for i := 0; i < int(count); i++ {
+			// By default, keysym is same as keycode
+			keysyms[i] = uint32(firstKey + byte(i))
+		}
+		debugf("X11: GetDeviceKeyMapping deviceID=%d (no map), returning default", deviceID)
+		return 1, keysyms
+	}
+
+	var keysymsPerKeycode byte = 1
+	found := false
+	for i := 0; i < int(count); i++ {
+		keycode := firstKey + byte(i)
+		if ks, ok := deviceMap[keycode]; ok {
+			keysymsPerKeycode = byte(len(ks))
+			if keysymsPerKeycode == 0 {
+				keysymsPerKeycode = 1
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		for _, ks := range deviceMap {
+			keysymsPerKeycode = byte(len(ks))
+			if keysymsPerKeycode == 0 {
+				keysymsPerKeycode = 1
+			}
+			break
+		}
+	}
+
+	keysyms := make([]uint32, 0, int(count)*int(keysymsPerKeycode))
+	for i := 0; i < int(count); i++ {
+		keycode := firstKey + byte(i)
+		ks, ok := deviceMap[keycode]
+		if ok {
+			paddedKs := make([]uint32, keysymsPerKeycode)
+			copy(paddedKs, ks)
+			keysyms = append(keysyms, paddedKs...)
+		} else {
+			for j := 0; j < int(keysymsPerKeycode); j++ {
+				keysyms = append(keysyms, 0)
+			}
+		}
+	}
+
+	debugf("X11: GetDeviceKeyMapping deviceID=%d, firstKey=%d, count=%d -> keysymsPerKeycode=%d, len(keysyms)=%d", deviceID, firstKey, count, keysymsPerKeycode, len(keysyms))
+	return keysymsPerKeycode, keysyms
+}
+
+func (f *wasmX11Frontend) GetDeviceModifierMapping(deviceID byte) (byte, []byte) {
+	keycodes, ok := f.deviceModifierMaps[deviceID]
+	if !ok {
+		// No specific mapping, return default. The protocol states this is a variable-length reply.
+		// A common default is 8 modifiers, each with 0 keycodes assigned initially.
+		debugf("X11: GetDeviceModifierMapping deviceID=%d (no map), returning default", deviceID)
+		return 8, []byte{}
+	}
+	numKeycodesPerModifier := len(keycodes) / 8
+	debugf("X11: GetDeviceModifierMapping deviceID=%d, num_keycodes=%d", deviceID, len(keycodes))
+	return byte(numKeycodesPerModifier), keycodes
+}
+
+func (f *wasmX11Frontend) GetDeviceButtonMapping(deviceID byte) []byte {
+	buttonMap, ok := f.deviceButtonMaps[deviceID]
+	if !ok {
+		// Return a default 1-to-1 mapping if none is set.
+		debugf("X11: GetDeviceButtonMapping deviceID=%d (no map), returning default", deviceID)
+		return []byte{1, 2, 3, 4, 5, 6, 7} // Default for 7 buttons
+	}
+	debugf("X11: GetDeviceButtonMapping deviceID=%d, map=%v", deviceID, buttonMap)
+	return buttonMap
+}
+
+func (f *wasmX11Frontend) QueryDeviceState(deviceID byte) []wire.InputClassInfo {
+	debugf("X11: QueryDeviceState deviceID=%d", deviceID)
+
+	var infos []wire.InputClassInfo
+
+	switch deviceID {
+	case CorePointerDeviceID:
+		// ButtonClassInfo
+		infos = append(infos, &wire.ButtonClassInfo{
+			NumButtons: 7,
+			Buttons:    [32]byte{},
+		})
+		// ValuatorClassInfo
+		infos = append(infos, &wire.ValuatorClassInfo{
+			NumValuators: 2,
+			Mode:         0, // Relative
+			Valuators:    []uint32{uint32(f.server.pointerX), uint32(f.server.pointerY)},
+		})
+	case CoreKeyboardDeviceID:
+		// KeyClassInfo
+		infos = append(infos, &wire.KeyClassInfo{
+			NumKeys: 248, // Standard number of keys
+			Keys:    [32]byte{},
+		})
+	}
+
+	return infos
 }
 
 func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []wire.PolyTextItem) {

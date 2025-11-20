@@ -130,6 +130,17 @@ type X11FrontendAPI interface {
 	ForceScreenSaver(mode byte)
 	SetModifierMapping(keyCodesPerModifier byte, keyCodes []wire.KeyCode) (byte, error)
 	GetModifierMapping() ([]wire.KeyCode, error)
+	DeviceBell(deviceID byte, feedbackID byte, feedbackClass byte, percent int8)
+	XIChangeHierarchy(changes []wire.XIChangeHierarchyChange)
+	ChangeFeedbackControl(deviceID byte, feedbackID byte, mask uint32, control []byte)
+	ChangeDeviceKeyMapping(deviceID byte, firstKey byte, keysymsPerKeycode byte, keycodeCount byte, keysyms []uint32)
+	SetDeviceModifierMapping(deviceID byte, keycodes []byte) byte
+	SetDeviceButtonMapping(deviceID byte, buttonMap []byte) byte
+	GetFeedbackControl(deviceID byte) []wire.FeedbackState
+	GetDeviceKeyMapping(deviceID byte, firstKey byte, count byte) (byte, []uint32)
+	GetDeviceModifierMapping(deviceID byte) (byte, []byte)
+	GetDeviceButtonMapping(deviceID byte) []byte
+	QueryDeviceState(deviceID byte) []wire.InputClassInfo
 }
 
 type XError interface {
@@ -211,6 +222,7 @@ type x11Server struct {
 	keyboardGrabEventMask uint32
 	inputFocus            xID
 	passiveGrabs          map[xID][]*passiveGrab
+	passiveDeviceGrabs    map[xID][]*passiveDeviceGrab
 	deviceGrabs           map[byte]*deviceGrab // device id -> grab info
 	authProtocol          string
 	authCookie            []byte
@@ -227,6 +239,15 @@ type passiveGrab struct {
 	owner     bool
 	eventMask uint16
 	cursor    xID
+}
+
+type passiveDeviceGrab struct {
+	deviceID  byte
+	key       wire.KeyCode
+	button    byte
+	modifiers uint16
+	owner     bool
+	eventMask []uint32
 }
 
 type deviceGrab struct {
@@ -2472,6 +2493,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					clients:         make(map[uint32]*x11Client),
 					nextClientID:    1,
 					passiveGrabs:    make(map[xID][]*passiveGrab),
+					passiveDeviceGrabs: make(map[xID][]*passiveDeviceGrab),
 					deviceGrabs:     make(map[byte]*deviceGrab),
 					authProtocol:    authProtocol,
 					authCookie:      authCookie,
