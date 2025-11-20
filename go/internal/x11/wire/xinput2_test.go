@@ -60,6 +60,134 @@ func TestParseXIChangeProperty(t *testing.T) {
 		assert.Equal(t, uint32(1), xiReq.NumItems)
 		assert.Equal(t, []byte{5}, xiReq.Data)
 	})
+
+	t.Run("invalid request", func(t *testing.T) {
+		body := []byte{0}
+		_, err := ParseXInputRequest(binary.LittleEndian, XIChangeProperty, body, 1)
+		var target Error
+		require.ErrorAs(t, err, &target)
+		assert.Equal(t, byte(LengthErrorCode), target.Code())
+	})
+}
+
+func TestParseXIDeleteProperty(t *testing.T) {
+	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
+	// 5.19. XIDeleteProperty
+	t.Run("valid request", func(t *testing.T) {
+		body := []byte{
+			2, 0, // deviceid
+			0, 0, // pad
+			3, 0, 0, 0, // property
+		}
+		require.Len(t, body, 8)
+
+		req, err := ParseXInputRequest(binary.LittleEndian, XIDeleteProperty, body, 1)
+		require.NoError(t, err)
+		xiReq, ok := req.(*XIDeletePropertyRequest)
+		require.True(t, ok)
+		assert.Equal(t, uint16(2), xiReq.DeviceID)
+		assert.Equal(t, uint32(3), xiReq.Property)
+	})
+
+	t.Run("invalid request", func(t *testing.T) {
+		body := []byte{0}
+		_, err := ParseXInputRequest(binary.LittleEndian, XIDeleteProperty, body, 1)
+		var target Error
+		require.ErrorAs(t, err, &target)
+		assert.Equal(t, byte(LengthErrorCode), target.Code())
+	})
+}
+
+func TestParseXIGetProperty(t *testing.T) {
+	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
+	// 5.20. XIGetProperty
+	t.Run("valid request", func(t *testing.T) {
+		body := []byte{
+			2, 0, // deviceid
+			0,    // delete
+			0,    // pad
+			1, 0, 0, 0, // property
+			2, 0, 0, 0, // type
+			3, 0, 0, 0, // offset
+			4, 0, 0, 0, // len
+		}
+		require.Len(t, body, 20)
+
+		req, err := ParseXInputRequest(binary.LittleEndian, XIGetProperty, body, 1)
+		require.NoError(t, err)
+		xiReq, ok := req.(*XIGetPropertyRequest)
+		require.True(t, ok)
+		assert.Equal(t, uint16(2), xiReq.DeviceID)
+		assert.False(t, xiReq.Delete)
+		assert.Equal(t, uint32(1), xiReq.Property)
+		assert.Equal(t, uint32(2), xiReq.Type)
+		assert.Equal(t, uint32(3), xiReq.Offset)
+		assert.Equal(t, uint32(4), xiReq.Len)
+	})
+
+	t.Run("invalid request", func(t *testing.T) {
+		body := []byte{0}
+		_, err := ParseXInputRequest(binary.LittleEndian, XIGetProperty, body, 1)
+		var target Error
+		require.ErrorAs(t, err, &target)
+		assert.Equal(t, byte(LengthErrorCode), target.Code())
+	})
+}
+
+func TestParseXIGetSelectedEvents(t *testing.T) {
+	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
+	// 5.21. XIGetSelectedEvents
+	t.Run("valid request", func(t *testing.T) {
+		body := []byte{
+			1, 0, 0, 0, // window
+		}
+		require.Len(t, body, 4)
+
+		req, err := ParseXInputRequest(binary.LittleEndian, XIGetSelectedEvents, body, 1)
+		require.NoError(t, err)
+		xiReq, ok := req.(*XIGetSelectedEventsRequest)
+		require.True(t, ok)
+		assert.Equal(t, Window(1), xiReq.Window)
+	})
+
+	t.Run("invalid request", func(t *testing.T) {
+		body := []byte{0}
+		_, err := ParseXInputRequest(binary.LittleEndian, XIGetSelectedEvents, body, 1)
+		var target Error
+		require.ErrorAs(t, err, &target)
+		assert.Equal(t, byte(LengthErrorCode), target.Code())
+	})
+}
+
+func TestParseXIBarrierReleasePointer(t *testing.T) {
+	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
+	// 5.22. XIBarrierReleasePointer
+	t.Run("valid request", func(t *testing.T) {
+		body := []byte{
+			1, 0, // num_barriers
+			0, 0, // pad
+			2, 0, 0, 0, // barrier
+			3, 0, 0, 0, // eventid
+		}
+		require.Len(t, body, 12)
+
+		req, err := ParseXInputRequest(binary.LittleEndian, XIBarrierReleasePointer, body, 1)
+		require.NoError(t, err)
+		xiReq, ok := req.(*XIBarrierReleasePointerRequest)
+		require.True(t, ok)
+		assert.Equal(t, uint32(1), xiReq.NumBarriers)
+		require.Len(t, xiReq.Barriers, 1)
+		assert.Equal(t, uint32(2), xiReq.Barriers[0].Barrier)
+		assert.Equal(t, uint32(3), xiReq.Barriers[0].EventID)
+	})
+
+	t.Run("invalid request", func(t *testing.T) {
+		body := []byte{0}
+		_, err := ParseXInputRequest(binary.LittleEndian, XIBarrierReleasePointer, body, 1)
+		var target Error
+		require.ErrorAs(t, err, &target)
+		assert.Equal(t, byte(LengthErrorCode), target.Code())
+	})
 }
 
 func TestParseXIListProperties(t *testing.T) {

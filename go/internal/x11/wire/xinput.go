@@ -184,6 +184,14 @@ func ParseXInputRequest(order binary.ByteOrder, data byte, body []byte, seq uint
 		return ParseXIListPropertiesRequest(order, body, seq)
 	case XIChangeProperty:
 		return ParseXIChangePropertyRequest(order, body, seq)
+	case XIDeleteProperty:
+		return ParseXIDeletePropertyRequest(order, body, seq)
+	case XIGetProperty:
+		return ParseXIGetPropertyRequest(order, body, seq)
+	case XIGetSelectedEvents:
+		return ParseXIGetSelectedEventsRequest(order, body, seq)
+	case XIBarrierReleasePointer:
+		return ParseXIBarrierReleasePointerRequest(order, body, seq)
 	default:
 		return nil, NewError(RequestErrorCode, seq, 0, byte(XInputOpcode), ReqCode(data))
 	}
@@ -740,6 +748,109 @@ func ParseXIChangePropertyRequest(order binary.ByteOrder, body []byte, seq uint1
 		Type:     order.Uint32(body[8:12]),
 		NumItems: numItems,
 		Data:     body[16 : 16+dataLen],
+	}, nil
+}
+
+// XIDeleteProperty request
+type XIDeletePropertyRequest struct {
+	DeviceID uint16
+	Property uint32
+}
+
+func (r *XIDeletePropertyRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIDeletePropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIDeletePropertyRequest, error) {
+	if len(body) != 8 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIDeleteProperty)
+	}
+	return &XIDeletePropertyRequest{
+		DeviceID: order.Uint16(body[0:2]),
+		Property: order.Uint32(body[4:8]),
+	}, nil
+}
+
+// XIGetProperty request
+type XIGetPropertyRequest struct {
+	DeviceID uint16
+	Delete   bool
+	Property uint32
+	Type     uint32
+	Offset   uint32
+	Len      uint32
+}
+
+func (r *XIGetPropertyRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIGetPropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetPropertyRequest, error) {
+	if len(body) != 20 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIGetProperty)
+	}
+	return &XIGetPropertyRequest{
+		DeviceID: order.Uint16(body[0:2]),
+		Delete:   body[2] != 0,
+		Property: order.Uint32(body[4:8]),
+		Type:     order.Uint32(body[8:12]),
+		Offset:   order.Uint32(body[12:16]),
+		Len:      order.Uint32(body[16:20]),
+	}, nil
+}
+
+// XIGetSelectedEvents request
+type XIGetSelectedEventsRequest struct {
+	Window Window
+}
+
+func (r *XIGetSelectedEventsRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIGetSelectedEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetSelectedEventsRequest, error) {
+	if len(body) != 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIGetSelectedEvents)
+	}
+	return &XIGetSelectedEventsRequest{
+		Window: Window(order.Uint32(body[0:4])),
+	}, nil
+}
+
+// XIBarrierReleasePointer request
+type XIBarrierReleasePointerRequest struct {
+	NumBarriers uint32
+	Barriers    []XIBarrier
+}
+
+type XIBarrier struct {
+	Barrier uint32
+	EventID uint32
+}
+
+func (r *XIBarrierReleasePointerRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func ParseXIBarrierReleasePointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIBarrierReleasePointerRequest, error) {
+	if len(body) < 4 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIBarrierReleasePointer)
+	}
+	numBarriers := order.Uint32(body[0:4])
+	if len(body) != 4+int(numBarriers)*8 {
+		return nil, NewError(LengthErrorCode, seq, 0, byte(XInputOpcode), XIBarrierReleasePointer)
+	}
+	barriers := make([]XIBarrier, numBarriers)
+	for i := 0; i < int(numBarriers); i++ {
+		offset := 4 + i*8
+		barriers[i] = XIBarrier{
+			Barrier: order.Uint32(body[offset : offset+4]),
+			EventID: order.Uint32(body[offset+4 : offset+8]),
+		}
+	}
+	return &XIBarrierReleasePointerRequest{
+		NumBarriers: numBarriers,
+		Barriers:    barriers,
 	}, nil
 }
 
