@@ -670,28 +670,34 @@ func ParseQueryFontReply(order binary.ByteOrder, b []byte) (*QueryFontReply, err
 	if len(b) < 60+8*int(numFontProps)+12*int(numCharInfos) {
 		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
 	}
-	charInfos := make([]XCharInfo, numCharInfos)
-	offset := 60 + 8*int(numFontProps)
-	for i := 0; i < int(numCharInfos); i++ {
-		charInfos[i] = XCharInfo{
-			LeftSideBearing:  int16(order.Uint16(b[offset:])),
-			RightSideBearing: int16(order.Uint16(b[offset+2:])),
-			CharacterWidth:   order.Uint16(b[offset+4:]),
-			Ascent:           int16(order.Uint16(b[offset+6:])),
-			Descent:          int16(order.Uint16(b[offset+8:])),
-			Attributes:       order.Uint16(b[offset+10:]),
+	var charInfos []XCharInfo
+	if numCharInfos > 0 {
+		charInfos = make([]XCharInfo, numCharInfos)
+		offset := 60 + 8*int(numFontProps)
+		for i := 0; i < int(numCharInfos); i++ {
+			charInfos[i] = XCharInfo{
+				LeftSideBearing:  int16(order.Uint16(b[offset:])),
+				RightSideBearing: int16(order.Uint16(b[offset+2:])),
+				CharacterWidth:   order.Uint16(b[offset+4:]),
+				Ascent:           int16(order.Uint16(b[offset+6:])),
+				Descent:          int16(order.Uint16(b[offset+8:])),
+				Attributes:       order.Uint16(b[offset+10:]),
+			}
+			offset += 12
 		}
-		offset += 12
 	}
 
-	fontProps := make([]FontProp, numFontProps)
-	offset = 60
-	for i := 0; i < int(numFontProps); i++ {
-		fontProps[i] = FontProp{
-			Name:  order.Uint32(b[offset:]),
-			Value: order.Uint32(b[offset+4:]),
+	var fontProps []FontProp
+	if numFontProps > 0 {
+		fontProps = make([]FontProp, numFontProps)
+		offset := 60
+		for i := 0; i < int(numFontProps); i++ {
+			fontProps[i] = FontProp{
+				Name:  order.Uint32(b[offset:]),
+				Value: order.Uint32(b[offset+4:]),
+			}
+			offset += 8
 		}
-		offset += 8
 	}
 
 	r := &QueryFontReply{

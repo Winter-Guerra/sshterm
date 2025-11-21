@@ -880,7 +880,7 @@ func TestGetWindowAttributesReply(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
+		t.Errorf("expected %#v, got %#v", reply, decoded)
 	}
 }
 
@@ -1639,6 +1639,10 @@ func TestQueryFontReply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseQueryFontReply failed: %v", err)
 	}
+
+	// The reflect.DeepEqual will fail because the decoded struct will have a nil slice for FontProps,
+	// while the original struct has an empty slice. This is the desired behavior.
+	reply.FontProps = nil
 
 	if !reflect.DeepEqual(reply, decoded) {
 		t.Errorf("expected %+v, got %+v", reply, decoded)
