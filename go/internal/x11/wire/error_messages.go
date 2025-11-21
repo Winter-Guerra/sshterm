@@ -58,6 +58,18 @@ func (e *baseError) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+func ParseError(buf []byte, order binary.ByteOrder) (Error, error) {
+	if len(buf) < 32 {
+		return nil, fmt.Errorf("error message too short: %d", len(buf))
+	}
+	code := buf[1]
+	seq := order.Uint16(buf[2:4])
+	badValue := order.Uint32(buf[4:8])
+	minorOp := byte(order.Uint16(buf[8:10]))
+	majorOp := ReqCode(buf[10])
+	return NewError(code, seq, badValue, minorOp, majorOp), nil
+}
+
 // RequestError: 1
 type RequestError struct {
 	baseError

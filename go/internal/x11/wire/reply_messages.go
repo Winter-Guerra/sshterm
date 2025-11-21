@@ -23,6 +23,10 @@ func BoolToByte(b bool) byte {
 	return 0
 }
 
+func ByteToBool(b byte) bool {
+	return b != 0
+}
+
 // GetWindowAttributes: 3
 type GetWindowAttributesReply struct {
 	ReplyType          byte

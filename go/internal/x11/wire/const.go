@@ -156,7 +156,18 @@ const (
 )
 
 const (
-	ColormapNotifyCode byte = 13
+	KeyPress         byte = 2
+	KeyRelease       byte = 3
+	ButtonPress      byte = 4
+	ButtonRelease    byte = 5
+	MotionNotify     byte = 6
+	EnterNotify      byte = 7
+	LeaveNotify      byte = 8
+	Expose           byte = 12
+	ColormapNotifyCode byte = 32
+	ConfigureNotify  byte = 22
+	ClientMessage    byte = 33
+	SelectionNotify  byte = 31
 )
 
 // XInput event types
@@ -165,6 +176,31 @@ const (
 	DeviceButtonRelease = 3
 	DeviceKeyPress      = 4
 	DeviceKeyRelease    = 5
+	DeviceMotionNotify  = 6
+	ProximityIn         = 8
+	ProximityOut        = 9
+)
+
+const (
+	GraphicsExposure    byte = 13
+	NoExposure          byte = 14
+	VisibilityNotify    byte = 15
+	CreateNotify        byte = 16
+	DestroyNotify       byte = 17
+	UnmapNotify         byte = 18
+	MapNotify           byte = 19
+	MapRequest          byte = 20
+	ReparentNotify      byte = 21
+	ConfigureRequest    byte = 23
+	GravityNotify       byte = 24
+	ResizeRequest       byte = 25
+	CirculateNotify     byte = 26
+	CirculateRequest    byte = 27
+	PropertyNotify      byte = 28
+	SelectionClear      byte = 29
+	SelectionRequest    byte = 30
+	MappingNotify       byte = 34
+	GenericEvent        byte = 35
 )
 
 const (

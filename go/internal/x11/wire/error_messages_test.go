@@ -51,6 +51,26 @@ func TestErrors(t *testing.T) {
 			if !bytes.Equal(encoded, expected) {
 				t.Errorf("error encoding failed. Got %v, want %v", encoded, expected)
 			}
+
+			decoded, err2 := ParseError(encoded, binary.LittleEndian)
+			if err2 != nil {
+				t.Fatal(err2)
+			}
+			if decoded.Code() != tc.errorCode {
+				t.Errorf("expected error code %d, got %d", tc.errorCode, decoded.Code())
+			}
+			if decoded.Sequence() != 1 {
+				t.Errorf("expected sequence 1, got %d", decoded.Sequence())
+			}
+			if decoded.BadValue() != 2 {
+				t.Errorf("expected bad value 2, got %d", decoded.BadValue())
+			}
+			if decoded.MinorOp() != 3 {
+				t.Errorf("expected minor op 3, got %d", decoded.MinorOp())
+			}
+			if decoded.MajorOp() != 4 {
+				t.Errorf("expected major op 4, got %d", decoded.MajorOp())
+			}
 		})
 	}
 
