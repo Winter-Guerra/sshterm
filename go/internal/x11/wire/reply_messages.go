@@ -5,7 +5,71 @@ package wire
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 )
+
+type ServerMessage interface {
+	EncodeMessage(order binary.ByteOrder) []byte
+}
+
+func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMessage {
+	ch := make(chan ServerMessage, 1)
+	go func() {
+		defer close(ch)
+		for {
+			header := make([]byte, 32)
+			if _, err := io.ReadFull(conn, header); err != nil {
+				if err != io.EOF {
+					debugf("X11: failed to read server message header: %v", err)
+				}
+				return
+			}
+
+			msgType := header[0]
+			sequenceNumber := order.Uint16(header[2:4])
+
+			debugf("X11 received server message: type=%d, sequence=%d", msgType, sequenceNumber)
+
+			switch msgType {
+			case 0:
+				p, err := ParseError(header, order)
+				if err != nil {
+					debugf("X11 ReadServerMessages: ParseError(%x): %v", header, err)
+					continue
+				}
+				ch <- p
+			case 1:
+				replyLength := 4 * order.Uint32(header[4:8])
+				// TODO: Check length
+				msg := append(header, make([]byte, replyLength)...)
+				if _, err := io.ReadFull(conn, msg[32:]); err != nil {
+					debugf("X11: failed to read remaining server message: %v", err)
+					return
+				}
+				p, err := ParseReply(msg, order)
+				if err != nil {
+					debugf("X11 ReadServerMessages: ParseReply(%x): %v", header, err)
+					continue
+				}
+				ch <- p
+			default:
+				p, err := ParseEvent(header, order)
+				if err != nil {
+					debugf("X11 ReadServerMessages: ParseEvent(%x): %v", header, err)
+					continue
+				}
+				ch <- p
+			}
+		}
+	}()
+
+	return ch
+}
+
+func ParseReply(msg []byte, order binary.ByteOrder) (ServerMessage, error) {
+	// TODO: Implement
+	return nil, nil
+}
 
 type XCharInfo struct {
 	LeftSideBearing  int16

@@ -184,9 +184,9 @@ func (e *DestroyNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 
 // UnmapNotify: 18
 type UnmapNotifyEvent struct {
-	Sequence    uint16
-	Event       uint32
-	Window      uint32
+	Sequence      uint16
+	Event         uint32
+	Window        uint32
 	FromConfigure bool
 }
 
@@ -465,11 +465,11 @@ func (e *MappingNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 
 // GenericEvent: 35
 type GenericEventData struct {
-	Sequence    uint16
-	Extension   byte
-	EventType   uint16
-	Length      uint32
-	EventData   []byte
+	Sequence  uint16
+	Extension byte
+	EventType uint16
+	Length    uint32
+	EventData []byte
 }
 
 func (e *GenericEventData) EncodeMessage(order binary.ByteOrder) []byte {
@@ -482,7 +482,6 @@ func (e *GenericEventData) EncodeMessage(order binary.ByteOrder) []byte {
 	copy(event[12:32], e.EventData)
 	return event
 }
-
 
 func (e *DeviceMotionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
