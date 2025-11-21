@@ -874,6 +874,54 @@ type GetExtensionVersionReply struct {
 	MinorVersion uint16
 }
 
+type GetDeviceMotionEventsReply struct {
+	Sequence uint16
+	NEvents  uint32
+	Events   []TimeCoord
+}
+
+type ChangeKeyboardDeviceReply struct {
+	Sequence uint16
+	Status   byte
+}
+
+func (r *GetDeviceMotionEventsReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32+len(r.Events)*8)
+	reply[0] = 1 // Reply type
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], uint32(len(r.Events)*2))
+	order.PutUint32(reply[8:12], r.NEvents)
+	for i, event := range r.Events {
+		order.PutUint32(reply[32+i*8:], event.Time)
+		order.PutUint16(reply[32+i*8+4:], uint16(event.X))
+		order.PutUint16(reply[32+i*8+6:], uint16(event.Y))
+	}
+	return reply
+}
+
+func (r *ChangeKeyboardDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	reply[1] = r.Status
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0)
+	return reply
+}
+
+func (r *ChangePointerDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	reply[1] = r.Status
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0)
+	return reply
+}
+
+type ChangePointerDeviceReply struct {
+	Sequence uint16
+	Status   byte
+}
+
 func (r *GetExtensionVersionReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply
@@ -1931,7 +1979,17 @@ type DeviceInfo struct {
 }
 
 func (d DeviceInfo) EncodeMessage(order binary.ByteOrder) []byte {
-	return nil
+	buf := new(bytes.Buffer)
+	buf.WriteByte(d.Header.DeviceID)
+	buf.WriteByte(d.Header.Use)
+	binary.Write(buf, order, d.Header.DeviceType)
+	buf.WriteByte(d.Header.NumClasses)
+	buf.WriteByte(byte(len(d.Header.Name)))
+	buf.WriteString(d.Header.Name)
+	for _, class := range d.Classes {
+		buf.Write(class.EncodeMessage(order))
+	}
+	return buf.Bytes()
 }
 
 type ListInputDevicesReply struct {
@@ -2041,6 +2099,100 @@ func (r *ListInputDevicesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint32(reply[4:8], uint32((len(finalDeviceData)+3)/4)) // length
 	copy(reply[32:], finalDeviceData)
 	return reply
+}
+
+func ParseListInputDevicesReply(order binary.ByteOrder, b []byte) (*ListInputDevicesReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	nDevices := b[1]
+	devices := make([]*DeviceInfo, nDevices)
+	offset := 32
+	for i := 0; i < int(nDevices); i++ {
+		if len(b) < offset+8 {
+			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		}
+		nameLen := int(b[offset+7])
+		if len(b) < offset+8+nameLen {
+			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		}
+		name := string(b[offset+8 : offset+8+nameLen])
+		header := DeviceHeader{
+			DeviceID:   b[offset],
+			DeviceType: Atom(order.Uint32(b[offset+2 : offset+6])),
+			NumClasses: b[offset+6],
+			Use:        b[offset+1],
+			Name:       name,
+		}
+		offset += 8 + nameLen + PadLen(nameLen)
+		classes := make([]InputClassInfo, header.NumClasses)
+		for j := 0; j < int(header.NumClasses); j++ {
+			if len(b) < offset+2 {
+				return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			}
+			class, length := parseInputClassInfo(order, b[offset:])
+			if len(b) < offset+length {
+				return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			}
+			classes[j] = class
+			offset += length
+		}
+		devices[i] = &DeviceInfo{
+			Header:  header,
+			Classes: classes,
+		}
+	}
+	return &ListInputDevicesReply{
+		Sequence: order.Uint16(b[2:4]),
+		Devices:  devices,
+		NDevices: nDevices,
+	}, nil
+}
+
+func ParseGetDeviceMotionEventsReply(order binary.ByteOrder, b []byte) (*GetDeviceMotionEventsReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	nEvents := order.Uint32(b[8:12])
+	if len(b) < 32+int(nEvents)*8 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	events := make([]TimeCoord, nEvents)
+	for i := 0; i < int(nEvents); i++ {
+		events[i] = TimeCoord{
+			Time: order.Uint32(b[32+i*8:]),
+			X:    int16(order.Uint16(b[32+i*8+4:])),
+			Y:    int16(order.Uint16(b[32+i*8+6:])),
+		}
+	}
+	r := &GetDeviceMotionEventsReply{
+		Sequence: order.Uint16(b[2:4]),
+		NEvents:  nEvents,
+		Events:   events,
+	}
+	return r, nil
+}
+
+func ParseChangeKeyboardDeviceReply(order binary.ByteOrder, b []byte) (*ChangeKeyboardDeviceReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &ChangeKeyboardDeviceReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
+}
+
+func ParseChangePointerDeviceReply(order binary.ByteOrder, b []byte) (*ChangePointerDeviceReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &ChangePointerDeviceReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
 }
 
 //

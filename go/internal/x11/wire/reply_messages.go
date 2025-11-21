@@ -6,10 +6,22 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"sync"
 )
 
 type ServerMessage interface {
 	EncodeMessage(order binary.ByteOrder) []byte
+}
+
+var (
+	sequenceToOpcode = make(map[uint16]ReqCode)
+	seqMutex         sync.Mutex
+)
+
+func ExpectReply(sequence uint16, opcode ReqCode) {
+	seqMutex.Lock()
+	defer seqMutex.Unlock()
+	sequenceToOpcode[sequence] = opcode
 }
 
 func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMessage {
@@ -40,13 +52,23 @@ func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMes
 				ch <- p
 			case 1:
 				replyLength := 4 * order.Uint32(header[4:8])
-				// TODO: Check length
 				msg := append(header, make([]byte, replyLength)...)
 				if _, err := io.ReadFull(conn, msg[32:]); err != nil {
 					debugf("X11: failed to read remaining server message: %v", err)
 					return
 				}
-				p, err := ParseReply(msg, order)
+				seqMutex.Lock()
+				opcode, ok := sequenceToOpcode[sequenceNumber]
+				if ok {
+					delete(sequenceToOpcode, sequenceNumber)
+				}
+				seqMutex.Unlock()
+				if !ok {
+					debugf("X11: unknown sequence number %d", sequenceNumber)
+					continue
+				}
+
+				p, err := ParseReply(opcode, msg, order)
 				if err != nil {
 					debugf("X11 ReadServerMessages: ParseReply(%x): %v", header, err)
 					continue
@@ -66,9 +88,115 @@ func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMes
 	return ch
 }
 
-func ParseReply(msg []byte, order binary.ByteOrder) (ServerMessage, error) {
-	// TODO: Implement
-	return nil, nil
+type replyParser func(order binary.ByteOrder, b []byte) (ServerMessage, error)
+
+var replyParsers = map[ReqCode]replyParser{
+	GetWindowAttributes:    func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetWindowAttributesReply(order, b) },
+	GetGeometry:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetGeometryReply(order, b) },
+	InternAtom:             func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseInternAtomReply(order, b) },
+	GetAtomName:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetAtomNameReply(order, b) },
+	GetProperty:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetPropertyReply(order, b) },
+	ListProperties:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListPropertiesReply(order, b) },
+	QueryTextExtents:       func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryTextExtentsReply(order, b) },
+	GetMotionEvents:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetMotionEventsReply(order, b) },
+	GetSelectionOwner:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetSelectionOwnerReply(order, b) },
+	GrabPointer:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGrabPointerReply(order, b) },
+	GrabKeyboard:           func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGrabKeyboardReply(order, b) },
+	QueryPointer:           func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryPointerReply(order, b) },
+	TranslateCoords:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseTranslateCoordsReply(order, b) },
+	GetInputFocus:          func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetInputFocusReply(order, b) },
+	QueryFont:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryFontReply(order, b) },
+	ListFonts:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListFontsReply(order, b) },
+	GetImage:               func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetImageReply(order, b) },
+	AllocColor:             func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocColorReply(order, b) },
+	AllocNamedColor:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocNamedColorReply(order, b) },
+	ListInstalledColormaps: func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListInstalledColormapsReply(order, b) },
+	QueryColors:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryColorsReply(order, b) },
+	LookupColor:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseLookupColorReply(order, b) },
+	QueryBestSize:          func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryBestSizeReply(order, b) },
+	QueryExtension:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryExtensionReply(order, b) },
+	GetKeyboardMapping:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetKeyboardMappingReply(order, b) },
+	GetKeyboardControl:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetKeyboardControlReply(order, b) },
+	GetPointerMapping:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetPointerMappingReply(order, b) },
+	SetPointerMapping:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseSetPointerMappingReply(order, b) },
+	GetModifierMapping:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetModifierMappingReply(order, b) },
+	SetModifierMapping:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseSetModifierMappingReply(order, b) },
+	GetScreenSaver:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetScreenSaverReply(order, b) },
+	ListHosts:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListHostsReply(order, b) },
+	QueryKeymap:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryKeymapReply(order, b) },
+	GetFontPath:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetFontPathReply(order, b) },
+	ListFontsWithInfo:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListFontsWithInfoReply(order, b) },
+	QueryTree:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryTreeReply(order, b) },
+	AllocColorCells:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocColorCellsReply(order, b) },
+	AllocColorPlanes:       func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocColorPlanesReply(order, b) },
+	ListExtensions:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListExtensionsReply(order, b) },
+	GetPointerControl:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetPointerControlReply(order, b) },
+	XInputOpcode:           func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return parseXInputReply(order, b) },
+	BigRequestsOpcode: func(order binary.ByteOrder, b []byte) (ServerMessage, error) {
+		return &BigRequestsEnableReply{
+			Sequence:         order.Uint16(b[2:4]),
+			MaxRequestLength: order.Uint32(b[8:12]),
+		}, nil
+	},
+}
+
+func ParseReply(opcode ReqCode, msg []byte, order binary.ByteOrder) (ServerMessage, error) {
+	parser, ok := replyParsers[opcode]
+	if !ok {
+		return nil, NewError(RequestErrorCode, 0, 0, byte(opcode), 0)
+	}
+	return parser(order, msg)
+}
+
+func parseXInputReply(order binary.ByteOrder, b []byte) (ServerMessage, error) {
+	minorOpcode := b[8]
+	switch minorOpcode {
+	case XGetExtensionVersion:
+		return ParseGetExtensionVersionReply(order, b)
+	case XListInputDevices:
+		return ParseListInputDevicesReply(order, b)
+	case XOpenDevice:
+		return ParseOpenDeviceReply(order, b)
+	case XCloseDevice:
+		return ParseCloseDeviceReply(order, b)
+	case XSetDeviceMode:
+		return ParseSetDeviceModeReply(order, b)
+	case XGetSelectedExtensionEvents:
+		return ParseGetSelectedExtensionEventsReply(order, b)
+	case XGetDeviceDontPropagateList:
+		return ParseGetDeviceDontPropagateListReply(order, b)
+	case XGetDeviceMotionEvents:
+		return ParseGetDeviceMotionEventsReply(order, b)
+	case XChangeKeyboardDevice:
+		return ParseChangeKeyboardDeviceReply(order, b)
+	case XChangePointerDevice:
+		return ParseChangePointerDeviceReply(order, b)
+	case XGrabDevice:
+		return ParseGrabDeviceReply(order, b)
+	case XGetDeviceFocus:
+		return ParseGetDeviceFocusReply(order, b)
+	case XGetFeedbackControl:
+		return ParseGetFeedbackControlReply(order, b)
+	case XGetDeviceKeyMapping:
+		return ParseGetDeviceKeyMappingReply(order, b)
+	case XGetDeviceModifierMapping:
+		return ParseGetDeviceModifierMappingReply(order, b)
+	case XSetDeviceModifierMapping:
+		return ParseSetDeviceModifierMappingReply(order, b)
+	case XGetDeviceButtonMapping:
+		return ParseGetDeviceButtonMappingReply(order, b)
+	case XSetDeviceButtonMapping:
+		return ParseSetDeviceButtonMappingReply(order, b)
+	case XQueryDeviceState:
+		return ParseQueryDeviceStateReply(order, b)
+	case XSetDeviceValuators:
+		return ParseSetDeviceValuatorsReply(order, b)
+	case XGetDeviceControl:
+		return ParseGetDeviceControlReply(order, b)
+	case XChangeDeviceControl:
+		return ParseChangeDeviceControlReply(order, b)
+	}
+	return nil, NewError(RequestErrorCode, 0, 0, byte(XInputOpcode), ReqCode(minorOpcode))
 }
 
 type XCharInfo struct {
@@ -186,7 +314,6 @@ func (r *GetGeometryReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[16:18], r.Width)
 	order.PutUint16(reply[18:20], r.Height)
 	order.PutUint16(reply[20:22], r.BorderWidth)
-	// reply[22:32] is padding
 	return reply
 }
 

@@ -636,6 +636,64 @@ func TestGetExtensionVersionReply(t *testing.T) {
 	}
 }
 
+func TestGetDeviceMotionEventsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceMotionEventsReply{
+		Sequence: 1,
+		NEvents:  2,
+		Events: []TimeCoord{
+			{Time: 1, X: 2, Y: 3},
+			{Time: 4, X: 5, Y: 6},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceMotionEventsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceMotionEventsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestParseListInputDevicesReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ListInputDevicesReply{
+		Sequence: 1,
+		NDevices: 1,
+		Devices: []*DeviceInfo{
+			{
+				Header: DeviceHeader{
+					DeviceID:   2,
+					DeviceType: 3,
+					NumClasses: 1,
+					Use:        4,
+					Name:       "test",
+				},
+				Classes: []InputClassInfo{
+					&KeyClassInfo{
+						NumKeys:    10,
+						MinKeycode: 8,
+						MaxKeycode: 255,
+					},
+				},
+			},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseListInputDevicesReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseListInputDevicesReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
 func TestQueryDeviceStateReply(t *testing.T) {
 	order := binary.LittleEndian
 	reply := &QueryDeviceStateReply{

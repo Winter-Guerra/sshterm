@@ -9,6 +9,53 @@ import (
 	"testing"
 )
 
+func TestReadServerMessages(t *testing.T) {
+	order := binary.LittleEndian
+	buf := new(bytes.Buffer)
+	// Write an error
+	err := NewError(RequestErrorCode, 2, 3, 4, 5)
+	buf.Write(err.EncodeMessage(order))
+	// Write a reply
+	reply := &GetGeometryReply{
+		Sequence: 1,
+		Depth:    2,
+		Root:     3,
+	}
+	ExpectReply(1, GetGeometry)
+	buf.Write(reply.EncodeMessage(order))
+	// Write an event
+	event := &KeyEvent{
+		Opcode:     KeyPress,
+		Detail:     1,
+		Sequence:   2,
+		Time:       3,
+		Root:       4,
+		Event:      5,
+		Child:      6,
+		RootX:      7,
+		RootY:      8,
+		EventX:     9,
+		EventY:     10,
+		State:      11,
+		SameScreen: true,
+	}
+	buf.Write(event.EncodeMessage(order))
+
+	ch := ReadServerMessages(buf, order)
+	msg1 := <-ch
+	if _, ok := msg1.(Error); !ok {
+		t.Errorf("expected Error, got %T", msg1)
+	}
+	msg2 := <-ch
+	if _, ok := msg2.(*GetGeometryReply); !ok {
+		t.Errorf("expected GetGeometryReply, got %T", msg2)
+	}
+	msg3 := <-ch
+	if _, ok := msg3.(*KeyEvent); !ok {
+		t.Errorf("expected KeyEvent, got %T", msg3)
+	}
+}
+
 func TestReplyMessages(t *testing.T) {
 	t.Run("GetKeyboardControl", func(t *testing.T) {
 		reply := &GetKeyboardControlReply{
@@ -901,6 +948,82 @@ func TestGetGeometryReply(t *testing.T) {
 	decoded, err := ParseGetGeometryReply(order, encoded)
 	if err != nil {
 		t.Fatalf("ParseGetGeometryReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestBigRequestsEnableReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &BigRequestsEnableReply{
+		Sequence:         1,
+		MaxRequestLength: 1234,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseReply(BigRequestsOpcode, encoded, order)
+	if err != nil {
+		t.Fatalf("ParseBigRequestsEnableReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestParseGetDeviceMotionEventsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceMotionEventsReply{
+		Sequence: 1,
+		NEvents:  2,
+		Events: []TimeCoord{
+			{Time: 1, X: 2, Y: 3},
+			{Time: 4, X: 5, Y: 6},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceMotionEventsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceMotionEventsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestParseChangeKeyboardDeviceReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ChangeKeyboardDeviceReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseChangeKeyboardDeviceReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseChangeKeyboardDeviceReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestParseChangePointerDeviceReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ChangePointerDeviceReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseChangePointerDeviceReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseChangePointerDeviceReply failed: %v", err)
 	}
 
 	if !reflect.DeepEqual(reply, decoded) {
