@@ -5,6 +5,7 @@ package wire
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
 	"testing"
 )
 
@@ -468,6 +469,7 @@ func TestReplyMessages(t *testing.T) {
 			AllCharsExist:  true,
 			FontAscent:     10,
 			FontDescent:    2,
+		NumCharInfos:   1,
 			CharInfos: []XCharInfo{
 				{1, 2, 3, 4, 5, 6},
 			},
@@ -846,4 +848,818 @@ func TestReplyMessages(t *testing.T) {
 
 func int32ToUint32(i int32) uint32 {
 	return uint32(i)
+}
+
+func TestGetWindowAttributesReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetWindowAttributesReply{
+		ReplyType:          1,
+		BackingStore:       2,
+		Sequence:           3,
+		Length:             3,
+		VisualID:           5,
+		Class:              6,
+		BitGravity:         7,
+		WinGravity:         8,
+		BackingPlanes:      9,
+		BackingPixel:       10,
+		SaveUnder:          1,
+		MapIsInstalled:     1,
+		MapState:           2,
+		OverrideRedirect:   1,
+		Colormap:           11,
+		AllEventMasks:      12,
+		YourEventMask:      13,
+		DoNotPropagateMask: 14,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetWindowAttributesReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetWindowAttributesReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetGeometryReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetGeometryReply{
+		Sequence:    1,
+		Depth:       2,
+		Root:        3,
+		X:           4,
+		Y:           5,
+		Width:       6,
+		Height:      7,
+		BorderWidth: 8,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetGeometryReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetGeometryReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestInternAtomReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &InternAtomReply{
+		Sequence: 1,
+		Atom:     2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseInternAtomReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseInternAtomReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetAtomNameReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetAtomNameReply{
+		Sequence:   1,
+		NameLength: 4,
+		Name:       "ATOM",
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetAtomNameReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetAtomNameReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetPropertyReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetPropertyReply{
+		Sequence:              1,
+		Format:                8,
+		PropertyType:          2,
+		BytesAfter:            3,
+		ValueLenInFormatUnits: 4,
+		Value:                 []byte{1, 2, 3, 4},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetPropertyReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetPropertyReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestListPropertiesReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ListPropertiesReply{
+		Sequence:      1,
+		NumProperties: 2,
+		Atoms:         []uint32{1, 2},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseListPropertiesReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseListPropertiesReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryTextExtentsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryTextExtentsReply{
+		Sequence:       1,
+		DrawDirection:  2,
+		FontAscent:     3,
+		FontDescent:    4,
+		OverallAscent:  5,
+		OverallDescent: 6,
+		OverallWidth:   7,
+		OverallLeft:    8,
+		OverallRight:   9,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryTextExtentsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryTextExtentsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetMotionEventsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetMotionEventsReply{
+		Sequence: 1,
+		NEvents:  2,
+		Events: []TimeCoord{
+			{Time: 1, X: 2, Y: 3},
+			{Time: 4, X: 5, Y: 6},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetMotionEventsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetMotionEventsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetSelectionOwnerReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetSelectionOwnerReply{
+		Sequence: 1,
+		Owner:    2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetSelectionOwnerReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetSelectionOwnerReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGrabPointerReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GrabPointerReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGrabPointerReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGrabPointerReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGrabKeyboardReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GrabKeyboardReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGrabKeyboardReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGrabKeyboardReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryPointerReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryPointerReply{
+		Sequence:   1,
+		SameScreen: true,
+		Root:       2,
+		Child:      3,
+		RootX:      4,
+		RootY:      5,
+		WinX:       6,
+		WinY:       7,
+		Mask:       8,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryPointerReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryPointerReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestTranslateCoordsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &TranslateCoordsReply{
+		Sequence:   1,
+		SameScreen: true,
+		Child:      2,
+		DstX:       3,
+		DstY:       4,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseTranslateCoordsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseTranslateCoordsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetInputFocusReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetInputFocusReply{
+		Sequence: 1,
+		RevertTo: 2,
+		Focus:    3,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetInputFocusReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetInputFocusReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestListFontsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ListFontsReply{
+		Sequence:  1,
+		FontNames: []string{"font1", "font2"},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseListFontsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseListFontsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetImageReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetImageReply{
+		Sequence:  1,
+		Depth:     2,
+		VisualID:  3,
+		ImageData: []byte{1, 2, 3, 4},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetImageReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetImageReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestAllocColorReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &AllocColorReply{
+		Sequence: 1,
+		Red:      2,
+		Green:    3,
+		Blue:     4,
+		Pixel:    5,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseAllocColorReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseAllocColorReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestAllocNamedColorReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &AllocNamedColorReply{
+		Sequence: 1,
+		Red:      2,
+		Green:    3,
+		Blue:     4,
+		Pixel:    5,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseAllocNamedColorReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseAllocNamedColorReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestListInstalledColormapsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ListInstalledColormapsReply{
+		Sequence:     1,
+		NumColormaps: 2,
+		Colormaps:    []uint32{1, 2},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseListInstalledColormapsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseListInstalledColormapsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryColorsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryColorsReply{
+		Sequence: 1,
+		Colors: []XColorItem{
+			{Red: 2, Green: 3, Blue: 4},
+			{Red: 7, Green: 8, Blue: 9},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryColorsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryColorsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestLookupColorReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &LookupColorReply{
+		Sequence:   1,
+		Red:        2,
+		Green:      3,
+		Blue:       4,
+		ExactRed:   5,
+		ExactGreen: 6,
+		ExactBlue:  7,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseLookupColorReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseLookupColorReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryBestSizeReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryBestSizeReply{
+		Sequence: 1,
+		Width:    2,
+		Height:   3,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryBestSizeReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryBestSizeReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryExtensionReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryExtensionReply{
+		Sequence:    1,
+		Present:     true,
+		MajorOpcode: 2,
+		FirstEvent:  3,
+		FirstError:  4,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryExtensionReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryExtensionReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestSetPointerMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &SetPointerMappingReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseSetPointerMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseSetPointerMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetPointerMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetPointerMappingReply{
+		Sequence: 1,
+		Length:   4,
+		PMap:     []byte{1, 2, 3, 4},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetPointerMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetPointerMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetKeyboardMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetKeyboardMappingReply{
+		Sequence:          1,
+		KeySymsPerKeycode: 1,
+		KeySyms:           []uint32{1, 2},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetKeyboardMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetKeyboardMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetKeyboardControlReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetKeyboardControlReply{
+		Sequence:         1,
+		KeyClickPercent:  2,
+		BellPercent:      3,
+		BellPitch:        4,
+		BellDuration:     5,
+		LedMask:          6,
+		GlobalAutoRepeat: 1,
+		AutoRepeats:      [32]byte{1, 2, 3},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetKeyboardControlReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetKeyboardControlReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetScreenSaverReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetScreenSaverReply{
+		Sequence:    1,
+		Timeout:     2,
+		Interval:    3,
+		PreferBlank: 4,
+		AllowExpose: 5,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetScreenSaverReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetScreenSaverReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestListHostsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ListHostsReply{
+		Sequence: 1,
+		NumHosts: 1,
+		Hosts: []Host{
+			{Family: 1, Data: []byte{1, 2, 3, 4}},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseListHostsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseListHostsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestSetModifierMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &SetModifierMappingReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseSetModifierMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseSetModifierMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetModifierMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetModifierMappingReply{
+		Sequence:            1,
+		KeyCodesPerModifier: 2,
+		KeyCodes:            []KeyCode{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetModifierMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetModifierMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryKeymapReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryKeymapReply{
+		Sequence: 1,
+		Keys:     [32]byte{1, 2, 3},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryKeymapReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryKeymapReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetFontPathReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetFontPathReply{
+		Sequence: 1,
+		NPaths:   2,
+		Paths:    []string{"path1", "path2"},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetFontPathReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetFontPathReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryTreeReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryTreeReply{
+		Sequence:    1,
+		Root:        2,
+		Parent:      3,
+		NumChildren: 2,
+		Children:    []uint32{4, 5},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryTreeReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryTreeReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestAllocColorCellsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &AllocColorCellsReply{
+		Sequence: 1,
+		NPixels:  2,
+		NMasks:   2,
+		Pixels:   []uint32{1, 2},
+		Masks:    []uint32{3, 4},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseAllocColorCellsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseAllocColorCellsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestAllocColorPlanesReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &AllocColorPlanesReply{
+		Sequence:  1,
+		NPixels:   2,
+		RedMask:   3,
+		GreenMask: 4,
+		BlueMask:  5,
+		Pixels:    []uint32{1, 2},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseAllocColorPlanesReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseAllocColorPlanesReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetPointerControlReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetPointerControlReply{
+		Sequence:         1,
+		AccelNumerator:   2,
+		AccelDenominator: 3,
+		Threshold:        4,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetPointerControlReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetPointerControlReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryFontReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryFontReply{
+		Sequence:       1,
+		MinCharOrByte2: 1,
+		MaxCharOrByte2: 2,
+		DefaultChar:    3,
+		DrawDirection:  1,
+		MinByte1:       1,
+		MaxByte1:       2,
+		AllCharsExist:  true,
+		FontAscent:     10,
+		FontDescent:    2,
+		NumCharInfos:   1,
+		CharInfos: []XCharInfo{
+			{1, 2, 3, 4, 5, 6},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryFontReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryFontReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestListExtensionsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ListExtensionsReply{
+		Sequence: 1,
+		NNames:   2,
+		Names:    []string{"ext1", "ext2"},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseListExtensionsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseListExtensionsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
 }

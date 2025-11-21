@@ -5,6 +5,7 @@ package wire
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -614,4 +615,333 @@ func TestParseXIChangeHierarchyRequest(t *testing.T) {
 		assert.True(t, ok, "Expected XIDetachSlave change")
 		assert.Equal(t, uint16(5), detach.DeviceID)
 	})
+}
+
+func TestGetExtensionVersionReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetExtensionVersionReply{
+		Sequence:     1,
+		MajorVersion: 2,
+		MinorVersion: 3,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetExtensionVersionReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetExtensionVersionReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestQueryDeviceStateReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &QueryDeviceStateReply{
+		Sequence:  1,
+		NumEvents: 1,
+		Classes: []InputClassInfo{
+			&KeyClassInfo{
+				NumKeys:    10,
+				MinKeycode: 8,
+				MaxKeycode: 255,
+			},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseQueryDeviceStateReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseQueryDeviceStateReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetDeviceButtonMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceButtonMappingReply{
+		Sequence: 1,
+		Map:      []byte{1, 2, 3, 4},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceButtonMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceButtonMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetDeviceModifierMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceModifierMappingReply{
+		Sequence:          1,
+		NumKeycodesPerMod: 2,
+		Keycodes:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceModifierMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceModifierMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetDeviceFocusReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceFocusReply{
+		Sequence: 1,
+		Focus:    2,
+		Time:     3,
+		RevertTo: 4,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceFocusReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceFocusReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestOpenDeviceReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &OpenDeviceReply{
+		Sequence: 1,
+		Classes: []InputClassInfo{
+			&KeyClassInfo{
+				NumKeys:    10,
+				MinKeycode: 8,
+				MaxKeycode: 255,
+			},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseOpenDeviceReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseOpenDeviceReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestSetDeviceModeReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &SetDeviceModeReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseSetDeviceModeReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceModeReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestSetDeviceValuatorsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &SetDeviceValuatorsReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseSetDeviceValuatorsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceValuatorsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetDeviceControlReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceControlReply{
+		Sequence: 1,
+		Control: &DeviceResolutionState{
+			NumValuators:   2,
+			Resolutions:    []uint32{1, 2},
+			MinResolutions: []uint32{1, 2},
+			MaxResolutions: []uint32{1, 2},
+		},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceControlReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceControlReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestChangeDeviceControlReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &ChangeDeviceControlReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseChangeDeviceControlReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseChangeDeviceControlReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetSelectedExtensionEventsReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetSelectedExtensionEventsReply{
+		Sequence:          1,
+		ThisClientClasses: []uint32{1, 2},
+		AllClientsClasses: []uint32{3, 4},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetSelectedExtensionEventsReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetSelectedExtensionEventsReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetDeviceDontPropagateListReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceDontPropagateListReply{
+		Sequence: 1,
+		Classes:  []uint32{1, 2},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceDontPropagateListReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceDontPropagateListReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestCloseDeviceReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &CloseDeviceReply{
+		Sequence: 1,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseCloseDeviceReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseCloseDeviceReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGrabDeviceReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GrabDeviceReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGrabDeviceReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGrabDeviceReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestGetDeviceKeyMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &GetDeviceKeyMappingReply{
+		Sequence:          1,
+		KeysymsPerKeycode: 2,
+		Keysyms:           []uint32{1, 2},
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseGetDeviceKeyMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceKeyMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestSetDeviceModifierMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &SetDeviceModifierMappingReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseSetDeviceModifierMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceModifierMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
+}
+
+func TestSetDeviceButtonMappingReply(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &SetDeviceButtonMappingReply{
+		Sequence: 1,
+		Status:   2,
+	}
+
+	encoded := reply.EncodeMessage(order)
+	decoded, err := ParseSetDeviceButtonMappingReply(order, encoded)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceButtonMappingReply failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(reply, decoded) {
+		t.Errorf("expected %+v, got %+v", reply, decoded)
+	}
 }

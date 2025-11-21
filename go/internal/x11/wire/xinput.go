@@ -885,6 +885,18 @@ func (r *GetExtensionVersionReply) EncodeMessage(order binary.ByteOrder) []byte 
 	return reply
 }
 
+func ParseGetExtensionVersionReply(order binary.ByteOrder, b []byte) (*GetExtensionVersionReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &GetExtensionVersionReply{
+		Sequence:     order.Uint16(b[2:4]),
+		MajorVersion: order.Uint16(b[8:10]),
+		MinorVersion: order.Uint16(b[10:12]),
+	}
+	return r, nil
+}
+
 // ListInputDevices request
 type ListInputDevicesRequest struct{}
 
@@ -940,6 +952,68 @@ func (r *QueryDeviceStateReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+func parseInputClassInfo(order binary.ByteOrder, b []byte) (InputClassInfo, int) {
+	classID := b[0]
+	length := int(b[1])
+	switch classID {
+	case KeyClass:
+		return &KeyClassInfo{
+			NumKeys:    order.Uint16(b[2:4]),
+			MinKeycode: b[4],
+			MaxKeycode: b[5],
+		}, length
+	case ButtonClass:
+		info := &ButtonClassInfo{
+			NumButtons: order.Uint16(b[2:4]),
+		}
+		copy(info.State[:], b[8:40])
+		return info, length
+	case ValuatorClass:
+		numAxes := b[2]
+		axes := make([]ValuatorAxisInfo, numAxes)
+		for i := 0; i < int(numAxes); i++ {
+			axes[i] = ValuatorAxisInfo{
+				Resolution: order.Uint32(b[8+i*12:]),
+				Min:        int32(order.Uint32(b[8+i*12+4:])),
+				Max:        int32(order.Uint32(b[8+i*12+8:])),
+			}
+		}
+		return &ValuatorClassInfo{
+			NumAxes:    numAxes,
+			Mode:       b[3],
+			MotionSize: order.Uint32(b[4:8]),
+			Axes:       axes,
+		}, length
+	}
+	return nil, 0
+}
+
+func ParseQueryDeviceStateReply(order binary.ByteOrder, b []byte) (*QueryDeviceStateReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	numClasses := b[8]
+	classes := make([]InputClassInfo, numClasses)
+	offset := 32
+	for i := 0; i < int(numClasses); i++ {
+		if len(b) < offset+2 {
+			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		}
+		class, length := parseInputClassInfo(order, b[offset:])
+		if len(b) < offset+length {
+			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		}
+		classes[i] = class
+		offset += length
+	}
+	r := &QueryDeviceStateReply{
+		Sequence:  order.Uint16(b[2:4]),
+		NumEvents: uint16(numClasses),
+		Classes:   classes,
+	}
+	return r, nil
+}
+
 // GetDeviceButtonMapping reply
 type GetDeviceButtonMappingReply struct {
 	Sequence uint16
@@ -955,6 +1029,21 @@ func (r *GetDeviceButtonMappingReply) EncodeMessage(order binary.ByteOrder) []by
 	order.PutUint32(reply[4:8], uint32((length+3)/4))
 	copy(reply[32:], r.Map)
 	return reply
+}
+
+func ParseGetDeviceButtonMappingReply(order binary.ByteOrder, b []byte) (*GetDeviceButtonMappingReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	length := b[1]
+	if len(b) < 32+int(length) {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &GetDeviceButtonMappingReply{
+		Sequence: order.Uint16(b[2:4]),
+		Map:      b[32 : 32+length],
+	}
+	return r, nil
 }
 
 // GetDeviceModifierMapping reply
@@ -973,6 +1062,23 @@ func (r *GetDeviceModifierMappingReply) EncodeMessage(order binary.ByteOrder) []
 	order.PutUint32(reply[4:8], uint32((length+3)/4))
 	copy(reply[32:], r.Keycodes)
 	return reply
+}
+
+func ParseGetDeviceModifierMappingReply(order binary.ByteOrder, b []byte) (*GetDeviceModifierMappingReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	numKeycodesPerMod := b[1]
+	if len(b) < 32+int(numKeycodesPerMod)*8 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	keycodes := b[32 : 32+int(numKeycodesPerMod)*8]
+	r := &GetDeviceModifierMappingReply{
+		Sequence:          order.Uint16(b[2:4]),
+		NumKeycodesPerMod: numKeycodesPerMod,
+		Keycodes:          keycodes,
+	}
+	return r, nil
 }
 
 // GetFeedbackControl reply
@@ -1000,6 +1106,52 @@ func (r *GetFeedbackControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[8:10], r.NumEvents)
 	copy(reply[32:], feedbackBytes)
 	return reply
+}
+
+func ParseGetFeedbackControlReply(order binary.ByteOrder, b []byte) (*GetFeedbackControlReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	numEvents := order.Uint16(b[8:10])
+	feedbacks := make([]FeedbackState, numEvents)
+	offset := 32
+	for i := 0; i < int(numEvents); i++ {
+		classID := b[offset]
+		length := int(order.Uint16(b[offset+2 : offset+4]))
+		switch classID {
+		case KbdFeedbackClass:
+			state := &KbdFeedbackState{
+				ClassID:          classID,
+				ID:               b[offset+1],
+				Len:              uint16(length),
+				Pitch:            order.Uint16(b[offset+4:]),
+				Duration:         order.Uint16(b[offset+6:]),
+				LedMask:          order.Uint32(b[offset+8:]),
+				LedValues:        order.Uint32(b[offset+12:]),
+				GlobalAutoRepeat: b[offset+16] != 0,
+				Click:            b[offset+17],
+				Percent:          b[offset+18],
+			}
+			copy(state.AutoRepeats[:], b[offset+19:offset+51])
+			feedbacks[i] = state
+		case PtrFeedbackClass:
+			feedbacks[i] = &PtrFeedbackState{
+				ClassID:    classID,
+				ID:         b[offset+1],
+				Len:        uint16(length),
+				AccelNum:   order.Uint16(b[offset+4:]),
+				AccelDenom: order.Uint16(b[offset+6:]),
+				Threshold:  order.Uint16(b[offset+8:]),
+			}
+		}
+		offset += length
+	}
+	r := &GetFeedbackControlReply{
+		Sequence:  order.Uint16(b[2:4]),
+		NumEvents: numEvents,
+		Feedbacks: feedbacks,
+	}
+	return r, nil
 }
 
 type FeedbackState interface {
@@ -1083,6 +1235,19 @@ func (r *GetDeviceFocusReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+func ParseGetDeviceFocusReply(order binary.ByteOrder, b []byte) (*GetDeviceFocusReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &GetDeviceFocusReply{
+		Sequence: order.Uint16(b[2:4]),
+		Focus:    order.Uint32(b[8:12]),
+		Time:     order.Uint32(b[12:16]),
+		RevertTo: b[16],
+	}
+	return r, nil
+}
+
 // OpenDevice reply
 type OpenDeviceReply struct {
 	Sequence uint16
@@ -1103,6 +1268,31 @@ func (r *OpenDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint32(reply[4:8], uint32((len(classesBytes)+3)/4)) // length
 	copy(reply[32:], classesBytes)
 	return reply
+}
+
+func ParseOpenDeviceReply(order binary.ByteOrder, b []byte) (*OpenDeviceReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	numClasses := b[1]
+	classes := make([]InputClassInfo, numClasses)
+	offset := 32
+	for i := 0; i < int(numClasses); i++ {
+		if len(b) < offset+2 {
+			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		}
+		class, length := parseInputClassInfo(order, b[offset:])
+		if len(b) < offset+length {
+			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		}
+		classes[i] = class
+		offset += length
+	}
+	r := &OpenDeviceReply{
+		Sequence: order.Uint16(b[2:4]),
+		Classes:  classes,
+	}
+	return r, nil
 }
 
 // SetDeviceMode request
@@ -1138,6 +1328,17 @@ func (r *SetDeviceModeReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // length
 	return reply
+}
+
+func ParseSetDeviceModeReply(order binary.ByteOrder, b []byte) (*SetDeviceModeReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &SetDeviceModeReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
 }
 
 // SetDeviceValuators request
@@ -1185,6 +1386,17 @@ func (r *SetDeviceValuatorsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // length
 	return reply
+}
+
+func ParseSetDeviceValuatorsReply(order binary.ByteOrder, b []byte) (*SetDeviceValuatorsReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &SetDeviceValuatorsReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
 }
 
 // Device Control constants
@@ -1285,6 +1497,45 @@ func (r *GetDeviceControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+func ParseGetDeviceControlReply(order binary.ByteOrder, b []byte) (*GetDeviceControlReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	if len(b) < 34 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	controlID := order.Uint16(b[32:34])
+	var control DeviceControlState
+	switch controlID {
+	case DeviceResolution:
+		if len(b) < 40+int(b[36])*12 {
+			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		}
+		numValuators := b[36]
+		resolutions := make([]uint32, numValuators)
+		minResolutions := make([]uint32, numValuators)
+		maxResolutions := make([]uint32, numValuators)
+		for i := 0; i < int(numValuators); i++ {
+			resolutions[i] = order.Uint32(b[40+i*4:])
+			minResolutions[i] = order.Uint32(b[40+int(numValuators)*4+i*4:])
+			maxResolutions[i] = order.Uint32(b[40+int(numValuators)*8+i*4:])
+		}
+		control = &DeviceResolutionState{
+			NumValuators:   numValuators,
+			Resolutions:    resolutions,
+			MinResolutions: minResolutions,
+			MaxResolutions: maxResolutions,
+		}
+	default:
+		// Do nothing
+	}
+	r := &GetDeviceControlReply{
+		Sequence: order.Uint16(b[2:4]),
+		Control:  control,
+	}
+	return r, nil
+}
+
 // ChangeDeviceControl request
 type ChangeDeviceControlRequest struct {
 	DeviceID byte
@@ -1347,6 +1598,17 @@ func (r *ChangeDeviceControlReply) EncodeMessage(order binary.ByteOrder) []byte 
 	return reply
 }
 
+func ParseChangeDeviceControlReply(order binary.ByteOrder, b []byte) (*ChangeDeviceControlReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &ChangeDeviceControlReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
+}
+
 // GetSelectedExtensionEvents request
 type GetSelectedExtensionEventsRequest struct {
 	Window uint32
@@ -1392,6 +1654,34 @@ func (r *GetSelectedExtensionEventsReply) EncodeMessage(order binary.ByteOrder) 
 		offset += 4
 	}
 	return reply
+}
+
+func ParseGetSelectedExtensionEventsReply(order binary.ByteOrder, b []byte) (*GetSelectedExtensionEventsReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	thisClientLen := order.Uint16(b[8:10])
+	allClientsLen := order.Uint16(b[10:12])
+	if len(b) < 32+int(thisClientLen)*4+int(allClientsLen)*4 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	thisClientClasses := make([]uint32, thisClientLen)
+	allClientsClasses := make([]uint32, allClientsLen)
+	offset := 32
+	for i := 0; i < int(thisClientLen); i++ {
+		thisClientClasses[i] = order.Uint32(b[offset : offset+4])
+		offset += 4
+	}
+	for i := 0; i < int(allClientsLen); i++ {
+		allClientsClasses[i] = order.Uint32(b[offset : offset+4])
+		offset += 4
+	}
+	r := &GetSelectedExtensionEventsReply{
+		Sequence:          order.Uint16(b[2:4]),
+		ThisClientClasses: thisClientClasses,
+		AllClientsClasses: allClientsClasses,
+	}
+	return r, nil
 }
 
 // ChangeDeviceDontPropagateList request
@@ -1463,6 +1753,27 @@ func (r *GetDeviceDontPropagateListReply) EncodeMessage(order binary.ByteOrder) 
 	return reply
 }
 
+func ParseGetDeviceDontPropagateListReply(order binary.ByteOrder, b []byte) (*GetDeviceDontPropagateListReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	numClasses := order.Uint16(b[8:10])
+	if len(b) < 32+int(numClasses)*4 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	classes := make([]uint32, numClasses)
+	offset := 32
+	for i := 0; i < int(numClasses); i++ {
+		classes[i] = order.Uint32(b[offset : offset+4])
+		offset += 4
+	}
+	r := &GetDeviceDontPropagateListReply{
+		Sequence: order.Uint16(b[2:4]),
+		Classes:  classes,
+	}
+	return r, nil
+}
+
 // AllowDeviceEvents request
 type AllowDeviceEventsRequest struct {
 	Time     uint32
@@ -1514,6 +1825,16 @@ func (r *CloseDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // length
 	return reply
+}
+
+func ParseCloseDeviceReply(order binary.ByteOrder, b []byte) (*CloseDeviceReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &CloseDeviceReply{
+		Sequence: order.Uint16(b[2:4]),
+	}
+	return r, nil
 }
 
 // GrabDevice request
@@ -1569,6 +1890,17 @@ func (r *GrabDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // length
 	return reply
+}
+
+func ParseGrabDeviceReply(order binary.ByteOrder, b []byte) (*GrabDeviceReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &GrabDeviceReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
 }
 
 // UngrabDevice request
@@ -2066,6 +2398,29 @@ func (r *GetDeviceKeyMappingReply) EncodeMessage(order binary.ByteOrder) []byte 
 	return reply
 }
 
+func ParseGetDeviceKeyMappingReply(order binary.ByteOrder, b []byte) (*GetDeviceKeyMappingReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	keysymsPerKeycode := b[1]
+	length := order.Uint32(b[4:8])
+	if len(b) < 32+int(length)*4 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	keysyms := make([]uint32, length)
+	offset := 32
+	for i := 0; i < int(length); i++ {
+		keysyms[i] = order.Uint32(b[offset : offset+4])
+		offset += 4
+	}
+	r := &GetDeviceKeyMappingReply{
+		Sequence:          order.Uint16(b[2:4]),
+		KeysymsPerKeycode: keysymsPerKeycode,
+		Keysyms:           keysyms,
+	}
+	return r, nil
+}
+
 // ChangeDeviceKeyMapping request
 type ChangeDeviceKeyMappingRequest struct {
 	DeviceID          byte
@@ -2165,6 +2520,17 @@ func (r *SetDeviceModifierMappingReply) EncodeMessage(order binary.ByteOrder) []
 	return reply
 }
 
+func ParseSetDeviceModifierMappingReply(order binary.ByteOrder, b []byte) (*SetDeviceModifierMappingReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &SetDeviceModifierMappingReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
+}
+
 // GetDeviceButtonMapping request
 type GetDeviceButtonMappingRequest struct {
 	DeviceID byte
@@ -2225,6 +2591,17 @@ func (r *SetDeviceButtonMappingReply) EncodeMessage(order binary.ByteOrder) []by
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0)
 	return reply
+}
+
+func ParseSetDeviceButtonMappingReply(order binary.ByteOrder, b []byte) (*SetDeviceButtonMappingReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+	}
+	r := &SetDeviceButtonMappingReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
 }
 
 // QueryDeviceState request
