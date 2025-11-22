@@ -4,7 +4,6 @@ package wire
 
 import (
 	"encoding/binary"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -387,9 +386,7 @@ func TestListInputDevicesRequest(t *testing.T) {
 		t.Fatalf("ParseListInputDevicesRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestOpenDeviceRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -403,9 +400,7 @@ func TestOpenDeviceRequest(t *testing.T) {
 		t.Fatalf("ParseOpenDeviceRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestSelectExtensionEventRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -420,9 +415,7 @@ func TestSelectExtensionEventRequest(t *testing.T) {
 		t.Fatalf("ParseSelectExtensionEventRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGetDeviceMotionEventsRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -438,9 +431,7 @@ func TestGetDeviceMotionEventsRequest(t *testing.T) {
 		t.Fatalf("ParseGetDeviceMotionEventsRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestChangeKeyboardDeviceRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -454,9 +445,7 @@ func TestChangeKeyboardDeviceRequest(t *testing.T) {
 		t.Fatalf("ParseChangeKeyboardDeviceRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestChangePointerDeviceRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -472,9 +461,7 @@ func TestChangePointerDeviceRequest(t *testing.T) {
 		t.Fatalf("ParseChangePointerDeviceRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGrabDeviceKeyRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -496,9 +483,7 @@ func TestGrabDeviceKeyRequest(t *testing.T) {
 		t.Fatalf("ParseGrabDeviceKeyRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestUngrabDeviceKeyRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -515,9 +500,7 @@ func TestUngrabDeviceKeyRequest(t *testing.T) {
 		t.Fatalf("ParseUngrabDeviceKeyRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGrabDeviceButtonRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -539,9 +522,7 @@ func TestGrabDeviceButtonRequest(t *testing.T) {
 		t.Fatalf("ParseGrabDeviceButtonRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestUngrabDeviceButtonRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -558,9 +539,7 @@ func TestUngrabDeviceButtonRequest(t *testing.T) {
 		t.Fatalf("ParseUngrabDeviceButtonRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestAllowDeviceEventsRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -576,9 +555,7 @@ func TestAllowDeviceEventsRequest(t *testing.T) {
 		t.Fatalf("ParseAllowDeviceEventsRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGetDeviceFocusRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -592,9 +569,7 @@ func TestGetDeviceFocusRequest(t *testing.T) {
 		t.Fatalf("ParseGetDeviceFocusRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestSetDeviceFocusRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -611,9 +586,7 @@ func TestSetDeviceFocusRequest(t *testing.T) {
 		t.Fatalf("ParseSetDeviceFocusRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGetFeedbackControlRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -627,9 +600,7 @@ func TestGetFeedbackControlRequest(t *testing.T) {
 		t.Fatalf("ParseGetFeedbackControlRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestChangeFeedbackControlRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -646,9 +617,7 @@ func TestChangeFeedbackControlRequest(t *testing.T) {
 		t.Fatalf("ParseChangeFeedbackControlRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGetDeviceKeyMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -664,9 +633,7 @@ func TestGetDeviceKeyMappingRequest(t *testing.T) {
 		t.Fatalf("ParseGetDeviceKeyMappingRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestChangeDeviceKeyMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -684,9 +651,7 @@ func TestChangeDeviceKeyMappingRequest(t *testing.T) {
 		t.Fatalf("ParseChangeDeviceKeyMappingRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGetDeviceModifierMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -700,9 +665,7 @@ func TestGetDeviceModifierMappingRequest(t *testing.T) {
 		t.Fatalf("ParseGetDeviceModifierMappingRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestSetDeviceModifierMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -717,9 +680,7 @@ func TestSetDeviceModifierMappingRequest(t *testing.T) {
 		t.Fatalf("ParseSetDeviceModifierMappingRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestGetDeviceButtonMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -733,9 +694,7 @@ func TestGetDeviceButtonMappingRequest(t *testing.T) {
 		t.Fatalf("ParseGetDeviceButtonMappingRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestSetDeviceButtonMappingRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -750,9 +709,7 @@ func TestSetDeviceButtonMappingRequest(t *testing.T) {
 		t.Fatalf("ParseSetDeviceButtonMappingRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestQueryDeviceStateRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -766,9 +723,7 @@ func TestQueryDeviceStateRequest(t *testing.T) {
 		t.Fatalf("ParseQueryDeviceStateRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestSendExtensionEventRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -788,9 +743,7 @@ func TestSendExtensionEventRequest(t *testing.T) {
 		t.Fatalf("ParseSendExtensionEventRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }
 func TestDeviceBellRequest(t *testing.T) {
 	order := binary.LittleEndian
@@ -807,7 +760,5 @@ func TestDeviceBellRequest(t *testing.T) {
 		t.Fatalf("ParseDeviceBellRequest failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(request, decoded) {
-		t.Errorf("expected %+v, got %+v", request, decoded)
-	}
+	assert.Equal(t, request, decoded)
 }

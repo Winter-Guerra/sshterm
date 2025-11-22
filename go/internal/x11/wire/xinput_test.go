@@ -5,7 +5,6 @@ package wire
 import (
 	"bytes"
 	"encoding/binary"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -458,13 +457,8 @@ func TestGetExtensionVersionReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetExtensionVersionReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetExtensionVersionReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetDeviceMotionEventsReply(t *testing.T) {
@@ -480,13 +474,8 @@ func TestGetDeviceMotionEventsReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetDeviceMotionEventsReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetDeviceMotionEventsReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestParseListInputDevicesReply(t *testing.T) {
@@ -516,13 +505,8 @@ func TestParseListInputDevicesReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseListInputDevicesReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseListInputDevicesReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestQueryDeviceStateReply(t *testing.T) {
@@ -541,13 +525,8 @@ func TestQueryDeviceStateReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseQueryDeviceStateReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseQueryDeviceStateReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetDeviceButtonMappingReply(t *testing.T) {
@@ -559,13 +538,8 @@ func TestGetDeviceButtonMappingReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetDeviceButtonMappingReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetDeviceButtonMappingReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetDeviceModifierMappingReply(t *testing.T) {
@@ -578,13 +552,8 @@ func TestGetDeviceModifierMappingReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetDeviceModifierMappingReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetDeviceModifierMappingReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetDeviceFocusReply(t *testing.T) {
@@ -598,13 +567,8 @@ func TestGetDeviceFocusReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetDeviceFocusReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetDeviceFocusReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestOpenDeviceReply(t *testing.T) {
@@ -622,13 +586,8 @@ func TestOpenDeviceReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseOpenDeviceReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseOpenDeviceReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestSetDeviceModeReply(t *testing.T) {
@@ -640,13 +599,8 @@ func TestSetDeviceModeReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseSetDeviceModeReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseSetDeviceModeReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestSetDeviceValuatorsReply(t *testing.T) {
@@ -658,13 +612,8 @@ func TestSetDeviceValuatorsReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseSetDeviceValuatorsReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseSetDeviceValuatorsReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetDeviceControlReply(t *testing.T) {
@@ -681,13 +630,8 @@ func TestGetDeviceControlReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetDeviceControlReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetDeviceControlReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestChangeDeviceControlReply(t *testing.T) {
@@ -699,13 +643,8 @@ func TestChangeDeviceControlReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseChangeDeviceControlReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseChangeDeviceControlReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetSelectedExtensionEventsReply(t *testing.T) {
@@ -718,13 +657,8 @@ func TestGetSelectedExtensionEventsReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetSelectedExtensionEventsReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetSelectedExtensionEventsReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetDeviceDontPropagateListReply(t *testing.T) {
@@ -736,13 +670,8 @@ func TestGetDeviceDontPropagateListReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetDeviceDontPropagateListReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetDeviceDontPropagateListReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestCloseDeviceReply(t *testing.T) {
@@ -753,13 +682,8 @@ func TestCloseDeviceReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseCloseDeviceReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseCloseDeviceReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGrabDeviceReply(t *testing.T) {
@@ -771,13 +695,8 @@ func TestGrabDeviceReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGrabDeviceReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGrabDeviceReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestGetDeviceKeyMappingReply(t *testing.T) {
@@ -790,13 +709,8 @@ func TestGetDeviceKeyMappingReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseGetDeviceKeyMappingReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseGetDeviceKeyMappingReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestSetDeviceModifierMappingReply(t *testing.T) {
@@ -808,13 +722,8 @@ func TestSetDeviceModifierMappingReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseSetDeviceModifierMappingReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseSetDeviceModifierMappingReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 
 func TestSetDeviceButtonMappingReply(t *testing.T) {
@@ -826,13 +735,8 @@ func TestSetDeviceButtonMappingReply(t *testing.T) {
 
 	encoded := reply.EncodeMessage(order)
 	decoded, err := ParseSetDeviceButtonMappingReply(order, encoded)
-	if err != nil {
-		t.Fatalf("ParseSetDeviceButtonMappingReply failed: %v", err)
-	}
-
-	if !reflect.DeepEqual(reply, decoded) {
-		t.Errorf("expected %+v, got %+v", reply, decoded)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, reply, decoded)
 }
 func TestParseSelectExtensionEventRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {

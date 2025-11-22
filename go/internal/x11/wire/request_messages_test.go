@@ -3,7 +3,6 @@
 package wire
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -207,12 +206,11 @@ func TestParseImageText8Request(t *testing.T) {
 	order := binary.LittleEndian
 	req := &ImageText8Request{
 		Drawable: Drawable(1),
-		GC:       GContext(2),
+		Gc:       GContext(2),
 		X:        10,
 		Y:        20,
-		Text:     "Hello",
+		Text:     []byte("Hello"),
 	}
-	req.N = byte(len(req.Text))
 
 	encoded := req.EncodeMessage(order)
 	p, err := ParseImageText8Request(order, encoded[1], encoded[4:], 1)
@@ -1468,12 +1466,11 @@ func TestParseImageText16Request(t *testing.T) {
 	order := binary.LittleEndian
 	req := &ImageText16Request{
 		Drawable: Drawable(1),
-		GC:       GContext(2),
+		Gc:       GContext(2),
 		X:        10,
 		Y:        20,
 		Text:     []uint16{'H', 'e', 'l', 'l', 'o'},
 	}
-	req.N = byte(len(req.Text))
 
 	encoded := req.EncodeMessage(order)
 	p, err := ParseImageText16Request(order, encoded[1], encoded[4:], 1)
