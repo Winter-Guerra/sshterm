@@ -4,7 +4,6 @@ package x11
 
 import (
 	"bytes"
-	"encoding/binary"
 	"testing"
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
@@ -94,16 +93,16 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	}
 
 	// 4. Decode the reply from the buffer
-	var parsedReply wire.GetWindowAttributesReply
-	err := binary.Read(clientBuffer, binary.LittleEndian, &parsedReply)
+	replyMsg, err := wire.ParseReply(req.OpCode(), clientBuffer.Bytes(), client.byteOrder)
 	if err != nil {
-		t.Fatalf("Failed to read reply from buffer: %v", err)
+		t.Fatalf("Failed to parse reply from buffer: %v", err)
+	}
+	parsedReply, ok := replyMsg.(*wire.GetWindowAttributesReply)
+	if !ok {
+		t.Fatalf("Expected *wire.GetWindowAttributesReply, got %T", replyMsg)
 	}
 
 	// 5. Assert the reply fields match the window attributes
-	if parsedReply.ReplyType != 1 {
-		t.Errorf("Expected ReplyType 1, got %d", parsedReply.ReplyType)
-	}
 	if parsedReply.BackingStore != wire.NotUseful {
 		t.Errorf("Expected BackingStore %d, got %d", wire.NotUseful, parsedReply.BackingStore)
 	}
@@ -512,26 +511,17 @@ func TestWindowHierarchyRequests(t *testing.T) {
 		t.Fatalf("QueryTree: failed to write reply to buffer: %v", err)
 	}
 
-	var header struct {
-		ReplyType   byte
-		Unused      byte
-		Sequence    uint16
-		Length      uint32
-		Root        uint32
-		Parent      uint32
-		NumChildren uint16
-		Padding     [14]byte
+	replyMsg, err := wire.ParseReply(queryTreeReq.OpCode(), clientBuffer.Bytes(), client.byteOrder)
+	if err != nil {
+		t.Fatalf("QueryTree: failed to parse reply: %v", err)
 	}
-	if err := binary.Read(clientBuffer, binary.LittleEndian, &header); err != nil {
-		t.Fatalf("QueryTree: failed to read reply header: %v", err)
-	}
-	children := make([]uint32, header.NumChildren)
-	if err := binary.Read(clientBuffer, binary.LittleEndian, &children); err != nil {
-		t.Fatalf("QueryTree: failed to read reply children: %v", err)
+	queryTreeReply, ok := replyMsg.(*wire.QueryTreeReply)
+	if !ok {
+		t.Fatalf("QueryTree: expected *wire.QueryTreeReply, got %T", replyMsg)
 	}
 
-	if header.NumChildren != 1 || children[0] != childID.local {
-		t.Errorf("QueryTree: incorrect children returned. Got %d children: %v", header.NumChildren, children)
+	if queryTreeReply.NumChildren != 1 || queryTreeReply.Children[0] != childID.local {
+		t.Errorf("QueryTree: incorrect children returned. Got %d children: %v", queryTreeReply.NumChildren, queryTreeReply.Children)
 	}
 
 	// 5. Test DestroySubwindows
@@ -823,24 +813,18 @@ func TestKeyboardMappingRequests(t *testing.T) {
 		t.Fatalf("GetKeyboardMapping: failed to write reply to buffer: %v", err)
 	}
 
-	var getHeader struct {
-		ReplyType         byte
-		KeySymsPerKeycode byte
-		Sequence          uint16
-		Length            uint32
-		Padding           [24]byte
+	replyMsg, err := wire.ParseReply(getReq.OpCode(), clientBuffer.Bytes(), client.byteOrder)
+	if err != nil {
+		t.Fatalf("GetKeyboardMapping: failed to parse reply: %v", err)
 	}
-	if err := binary.Read(clientBuffer, binary.LittleEndian, &getHeader); err != nil {
-		t.Fatalf("GetKeyboardMapping: failed to read reply header: %v", err)
-	}
-	keySyms := make([]uint32, getHeader.Length)
-	if err := binary.Read(clientBuffer, binary.LittleEndian, &keySyms); err != nil {
-		t.Fatalf("GetKeyboardMapping: failed to read reply keysyms: %v", err)
+	getReply, ok := replyMsg.(*wire.GetKeyboardMappingReply)
+	if !ok {
+		t.Fatalf("GetKeyboardMapping: expected *wire.GetKeyboardMappingReply, got %T", replyMsg)
 	}
 
 	expectedKeySyms := []uint32{0x0031, 0x0032} // XK_1, XK_2
-	if len(keySyms) != 2 || keySyms[0] != expectedKeySyms[0] || keySyms[1] != expectedKeySyms[1] {
-		t.Errorf("GetKeyboardMapping: incorrect keysyms returned. Expected %v, got %v", expectedKeySyms, keySyms)
+	if len(getReply.KeySyms) != 2 || getReply.KeySyms[0] != expectedKeySyms[0] || getReply.KeySyms[1] != expectedKeySyms[1] {
+		t.Errorf("GetKeyboardMapping: incorrect keysyms returned. Expected %v, got %v", expectedKeySyms, getReply.KeySyms)
 	}
 
 	// 2. Test ChangeKeyboardMappingRequest

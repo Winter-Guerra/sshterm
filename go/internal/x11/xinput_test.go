@@ -3,7 +3,6 @@
 package x11
 
 import (
-	"encoding/binary"
 	"testing"
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
@@ -158,10 +157,13 @@ func TestSetDeviceModifierMappingRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	var modReply wire.SetDeviceModifierMappingReply
-	err := binary.Read(clientBuffer, client.byteOrder, &modReply)
-	assert.NoError(t, err, "Failed to decode SetDeviceModifierMappingReply")
-	assert.Equal(t, byte(0), modReply.Status, "Expected success status")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	if assert.NoError(t, err, "Failed to parse SetDeviceModifierMappingReply") {
+		modReply, ok := replyMsg.(*wire.SetDeviceModifierMappingReply)
+		if assert.True(t, ok, "Expected *wire.SetDeviceModifierMappingReply, got %T", replyMsg) {
+			assert.Equal(t, byte(0), modReply.Status, "Expected success status")
+		}
+	}
 
 	assert.Len(t, mockFrontend.SetDeviceModifierMappingCalls, 1, "Expected SetDeviceModifierMapping to be called on the frontend")
 	call := mockFrontend.SetDeviceModifierMappingCalls[0]
@@ -183,9 +185,10 @@ func TestSetDeviceButtonMappingRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	var buttonReply wire.SetDeviceButtonMappingReply
-	err := binary.Read(clientBuffer, client.byteOrder, &buttonReply)
-	assert.NoError(t, err, "Failed to decode SetDeviceButtonMappingReply")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse SetDeviceButtonMappingReply")
+	buttonReply, ok := replyMsg.(*wire.SetDeviceButtonMappingReply)
+	assert.True(t, ok, "Expected *wire.SetDeviceButtonMappingReply, got %T", replyMsg)
 	assert.Equal(t, byte(0), buttonReply.Status, "Expected success status")
 
 	assert.Len(t, mockFrontend.SetDeviceButtonMappingCalls, 1, "Expected SetDeviceButtonMapping to be called on the frontend")
@@ -207,17 +210,10 @@ func TestGetFeedbackControlRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	// Manually decode the reply header since binary.Read doesn't work with interfaces
-	var header struct {
-		ReplyType byte
-		Unused    byte
-		Sequence  uint16
-		Length    uint32
-		NumEvents uint16
-		Padding   [22]byte
-	}
-	err := binary.Read(clientBuffer, client.byteOrder, &header)
-	assert.NoError(t, err, "Failed to decode GetFeedbackControlReply header")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse GetFeedbackControlReply")
+	_, ok := replyMsg.(*wire.GetFeedbackControlReply)
+	assert.True(t, ok, "Expected *wire.GetFeedbackControlReply, got %T", replyMsg)
 
 	assert.Len(t, mockFrontend.GetFeedbackControlCalls, 1, "Expected GetFeedbackControl to be called on the frontend")
 	call := mockFrontend.GetFeedbackControlCalls[0]
@@ -239,15 +235,12 @@ func TestGetDeviceKeyMappingRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	var header struct {
-		ReplyType         byte
-		KeysymsPerKeycode byte
-		Sequence          uint16
-		Length            uint32
-		Padding           [24]byte
-	}
-	err := binary.Read(clientBuffer, client.byteOrder, &header)
-	assert.NoError(t, err, "Failed to decode GetDeviceKeyMappingReply header")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse GetDeviceKeyMappingReply")
+	getReply, ok := replyMsg.(*wire.GetDeviceKeyMappingReply)
+	assert.True(t, ok, "Expected *wire.GetDeviceKeyMappingReply, got %T", replyMsg)
+	assert.Equal(t, byte(1), getReply.KeysymsPerKeycode, "KeysymsPerKeycode mismatch")
+	assert.Len(t, getReply.Keysyms, 2, "Keysyms length mismatch")
 
 	assert.Len(t, mockFrontend.GetDeviceKeyMappingCalls, 1, "Expected GetDeviceKeyMapping to be called on the frontend")
 	call := mockFrontend.GetDeviceKeyMappingCalls[0]
@@ -269,15 +262,10 @@ func TestGetDeviceModifierMappingRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	var header struct {
-		ReplyType         byte
-		NumKeycodesPerMod byte
-		Sequence          uint16
-		Length            uint32
-		Padding           [24]byte
-	}
-	err := binary.Read(clientBuffer, client.byteOrder, &header)
-	assert.NoError(t, err, "Failed to decode GetDeviceModifierMappingReply header")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse GetDeviceModifierMappingReply")
+	_, ok := replyMsg.(*wire.GetDeviceModifierMappingReply)
+	assert.True(t, ok, "Expected *wire.GetDeviceModifierMappingReply, got %T", replyMsg)
 
 	assert.Len(t, mockFrontend.GetDeviceModifierMappingCalls, 1, "Expected GetDeviceModifierMapping to be called on the frontend")
 	call := mockFrontend.GetDeviceModifierMappingCalls[0]
@@ -297,15 +285,10 @@ func TestGetDeviceButtonMappingRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	var header struct {
-		ReplyType byte
-		MapSize   byte
-		Sequence  uint16
-		Length    uint32
-		Padding   [24]byte
-	}
-	err := binary.Read(clientBuffer, client.byteOrder, &header)
-	assert.NoError(t, err, "Failed to decode GetDeviceButtonMappingReply header")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse GetDeviceButtonMappingReply")
+	_, ok := replyMsg.(*wire.GetDeviceButtonMappingReply)
+	assert.True(t, ok, "Expected *wire.GetDeviceButtonMappingReply, got %T", replyMsg)
 
 	assert.Len(t, mockFrontend.GetDeviceButtonMappingCalls, 1, "Expected GetDeviceButtonMapping to be called on the frontend")
 	call := mockFrontend.GetDeviceButtonMappingCalls[0]
@@ -325,16 +308,10 @@ func TestQueryDeviceStateRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	var header struct {
-		ReplyType  byte
-		Unused     byte
-		Sequence   uint16
-		Length     uint32
-		NumClasses byte
-		Padding    [23]byte
-	}
-	err := binary.Read(clientBuffer, client.byteOrder, &header)
-	assert.NoError(t, err, "Failed to decode QueryDeviceStateReply header")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse QueryDeviceStateReply")
+	_, ok := replyMsg.(*wire.QueryDeviceStateReply)
+	assert.True(t, ok, "Expected *wire.QueryDeviceStateReply, got %T", replyMsg)
 
 	assert.Len(t, mockFrontend.QueryDeviceStateCalls, 1, "Expected QueryDeviceState to be called on the frontend")
 	call := mockFrontend.QueryDeviceStateCalls[0]
@@ -362,9 +339,10 @@ func TestGetSetDeviceFocusRequest(t *testing.T) {
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
 
-	var focusReply wire.GetDeviceFocusReply
-	err := binary.Read(clientBuffer, client.byteOrder, &focusReply)
-	assert.NoError(t, err, "Failed to decode GetDeviceFocusReply")
+	replyMsg, err := wire.ParseReply(wire.XInputOpcode, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse GetDeviceFocusReply")
+	focusReply, ok := replyMsg.(*wire.GetDeviceFocusReply)
+	assert.True(t, ok, "Expected *wire.GetDeviceFocusReply, got %T", replyMsg)
 
 	assert.Equal(t, focusWindowID.local, focusReply.Focus, "GetDeviceFocus returned incorrect focus window")
 }

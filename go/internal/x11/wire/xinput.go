@@ -3426,9 +3426,10 @@ type SetDeviceModifierMappingReply struct {
 func (r *SetDeviceModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply
-	reply[1] = r.Status
+	reply[1] = byte(XSetDeviceModifierMapping)
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0)
+	reply[8] = r.Status
 	return reply
 }
 
