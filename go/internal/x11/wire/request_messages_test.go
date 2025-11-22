@@ -204,40 +204,20 @@ func TestRequestParsingErrors(t *testing.T) {
 }
 
 func TestParseImageText8Request(t *testing.T) {
-	// ImageText8 request: drawable, gc, x, y, text
-	drawable := uint32(1)
-	gc := uint32(2)
-	x := int16(10)
-	y := int16(20)
-	text := []byte("Hello")
-	pad := PadLen(12 + len(text))
+	order := binary.LittleEndian
+	req := &ImageText8Request{
+		Drawable: Drawable(1),
+		GC:       GContext(2),
+		X:        10,
+		Y:        20,
+		Text:     "Hello",
+	}
+	req.N = byte(len(req.Text))
 
-	payload := make([]byte, 12+len(text)+pad)
-	binary.LittleEndian.PutUint32(payload[0:4], drawable)
-	binary.LittleEndian.PutUint32(payload[4:8], gc)
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-	copy(payload[12:], text)
-	t.Logf("payload: %v (%d) %q (%d)", payload, len(payload), text, pad)
-
-	p, err := ParseImageText8Request(binary.LittleEndian, byte(len(text)), payload, 1)
+	encoded := req.EncodeMessage(order)
+	p, err := ParseImageText8Request(order, encoded[1], encoded[4:], 1)
 	assert.NoError(t, err, "ParseImageText8Request should not return an error")
-
-	if p.Drawable != Drawable(drawable) {
-		t.Errorf("Expected drawable %d, got %d", drawable, p.Drawable)
-	}
-	if p.Gc != GContext(gc) {
-		t.Errorf("Expected gc %d, got %d", gc, p.Gc)
-	}
-	if p.X != x {
-		t.Errorf("Expected x %d, got %d", x, p.X)
-	}
-	if p.Y != y {
-		t.Errorf("Expected y %d, got %d", y, p.Y)
-	}
-	if !bytes.Equal(p.Text, text) {
-		t.Errorf("Expected text %s, got %s", text, p.Text)
-	}
+	assert.Equal(t, req, p)
 }
 
 
@@ -1483,4 +1463,20 @@ func TestParseCreateCursorRequest(t *testing.T) {
 	assert.Equal(t, uint16(60), p.BackBlue, "BackBlue should be parsed correctly")
 	assert.Equal(t, uint16(5), p.X, "X should be parsed correctly")
 	assert.Equal(t, uint16(15), p.Y, "Y should be parsed correctly")
+}
+func TestParseImageText16Request(t *testing.T) {
+	order := binary.LittleEndian
+	req := &ImageText16Request{
+		Drawable: Drawable(1),
+		GC:       GContext(2),
+		X:        10,
+		Y:        20,
+		Text:     []uint16{'H', 'e', 'l', 'l', 'o'},
+	}
+	req.N = byte(len(req.Text))
+
+	encoded := req.EncodeMessage(order)
+	p, err := ParseImageText16Request(order, encoded[1], encoded[4:], 1)
+	assert.NoError(t, err, "ParseImageText16Request should not return an error")
+	assert.Equal(t, req, p)
 }

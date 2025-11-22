@@ -3487,21 +3487,19 @@ func (r *SetDeviceButtonMappingRequest) OpCode() ReqCode {
 
 func (r *SetDeviceButtonMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
+	length := uint16((4 + len(r.Map) + PadLen(len(r.Map))) / 4)
+
 	binary.Write(buf, order, r.OpCode())
 	buf.WriteByte(XSetDeviceButtonMapping)
-	binary.Write(buf, order, uint16(0)) // Eagerly write length
+	binary.Write(buf, order, length)
+
 	buf.WriteByte(r.DeviceID)
 	buf.WriteByte(byte(len(r.Map)))
 	buf.Write([]byte{0, 0}) // padding
 	buf.Write(r.Map)
 	buf.Write(make([]byte, PadLen(len(r.Map))))
 
-	// Overwrite length
-	encoded := buf.Bytes()
-	length := uint16(len(encoded) / 4)
-	order.PutUint16(encoded[2:4], length)
-
-	return encoded
+	return buf.Bytes()
 }
 
 func ParseSetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceButtonMappingRequest, error) {
@@ -3510,12 +3508,12 @@ func ParseSetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq
 	}
 	map_size := body[1]
 	expectedLen := 4 + int(map_size)
-	if len(body) != expectedLen {
+	if len(body) != expectedLen+PadLen(expectedLen) {
 		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceButtonMapping, XInputOpcode)
 	}
 	return &SetDeviceButtonMappingRequest{
 		DeviceID: body[0],
-		Map:      body[4:],
+		Map:      body[4:expectedLen],
 	}, nil
 }
 
