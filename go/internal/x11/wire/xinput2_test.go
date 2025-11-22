@@ -4,682 +4,810 @@ package wire
 
 import (
 	"encoding/binary"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-var order = binary.LittleEndian
+func TestGetExtensionVersionRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &GetExtensionVersionRequest{
+		Name: "XInputExtension",
+	}
 
-func TestParseXIQueryVersion(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 2.3. XIQueryVersion
-	t.Run("valid request", func(t *testing.T) {
-		raw := []byte{byte(XIQueryVersion), 0, 2, 0, 2, 0}
-		req, err := ParseXInputRequest(binary.LittleEndian, raw[0], raw[2:], 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIQueryVersionRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.MajorVersion)
-		assert.Equal(t, uint16(2), xiReq.MinorVersion)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		raw := []byte{byte(XIQueryVersion), 0, 2, 0}
-		_, err := ParseXInputRequest(binary.LittleEndian, raw[0], raw[2:], 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIChangeProperty(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.18. XIChangeProperty
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0,          // mode
-			8,          // format
-			3, 0, 0, 0, // property
-			4, 0, 0, 0, // type
-			1, 0, 0, 0, // num_items
-			5, 0, 0, 0, // item + padding
-		}
+func TestXIBarrierReleasePointerRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIBarrierReleasePointerRequest{
+		NumBarriers: 1,
+		Barriers: []XIBarrier{
+			{
+				Barrier: 1,
+				EventID: 2,
+			},
+		},
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIChangeProperty, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIChangePropertyRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, byte(0), xiReq.Mode)
-		assert.Equal(t, byte(8), xiReq.Format)
-		assert.Equal(t, uint32(3), xiReq.Property)
-		assert.Equal(t, uint32(4), xiReq.Type)
-		assert.Equal(t, uint32(1), xiReq.NumItems)
-		assert.Equal(t, []byte{5}, xiReq.Data)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIChangeProperty, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIDeleteProperty(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.19. XIDeleteProperty
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			3, 0, 0, 0, // property
-		}
-		require.Len(t, body, 8)
+func TestXIGetSelectedEventsRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIGetSelectedEventsRequest{
+		Window: Window(1),
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIDeleteProperty, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIDeletePropertyRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, uint32(3), xiReq.Property)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIDeleteProperty, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIGetProperty(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.20. XIGetProperty
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0,    // delete
-			0,    // pad
-			1, 0, 0, 0, // property
-			2, 0, 0, 0, // type
-			3, 0, 0, 0, // offset
-			4, 0, 0, 0, // len
-		}
-		require.Len(t, body, 20)
+func TestXIGetPropertyRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIGetPropertyRequest{
+		DeviceID: 2,
+		Delete:   true,
+		Property: 3,
+		Type:     4,
+		Offset:   5,
+		Len:      6,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIGetProperty, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIGetPropertyRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.False(t, xiReq.Delete)
-		assert.Equal(t, uint32(1), xiReq.Property)
-		assert.Equal(t, uint32(2), xiReq.Type)
-		assert.Equal(t, uint32(3), xiReq.Offset)
-		assert.Equal(t, uint32(4), xiReq.Len)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIGetProperty, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIGetSelectedEvents(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.21. XIGetSelectedEvents
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			1, 0, 0, 0, // window
-		}
-		require.Len(t, body, 4)
+func TestXIDeletePropertyRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIDeletePropertyRequest{
+		DeviceID: 2,
+		Property: 3,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIGetSelectedEvents, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIGetSelectedEventsRequest)
-		require.True(t, ok)
-		assert.Equal(t, Window(1), xiReq.Window)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIGetSelectedEvents, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIBarrierReleasePointer(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.22. XIBarrierReleasePointer
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			1, 0, // num_barriers
-			0, 0, // pad
-			2, 0, 0, 0, // barrier
-			3, 0, 0, 0, // eventid
-		}
-		require.Len(t, body, 12)
+func TestXIChangePropertyRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIChangePropertyRequest{
+		DeviceID: 2,
+		Mode:     1,
+		Format:   8,
+		Property: 3,
+		Type:     4,
+		NumItems: 4,
+		Data:     []byte{1, 2, 3, 4},
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIBarrierReleasePointer, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIBarrierReleasePointerRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint32(1), xiReq.NumBarriers)
-		require.Len(t, xiReq.Barriers, 1)
-		assert.Equal(t, uint32(2), xiReq.Barriers[0].Barrier)
-		assert.Equal(t, uint32(3), xiReq.Barriers[0].EventID)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIBarrierReleasePointer, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIListProperties(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.17. XIListProperties
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-		}
-		require.Len(t, body, 4)
+func TestXIListPropertiesRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIListPropertiesRequest{
+		DeviceID: 2,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIListProperties, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIListPropertiesRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIListProperties, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIPassiveUngrabDevice(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.16. XIPassiveUngrabDevice
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			1, 0, 0, 0, // grab_window
-			4, 0, 0, 0, // detail
-			1, 0, // num_modifiers
-			0, 0, // pad
-			1,    // grab_type
-			0,    // pad
-			0, 0, // pad
-			5, 0, 0, 0, // modifiers
-		}
-		require.Len(t, body, 24)
+func TestXIPassiveUngrabDeviceRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIPassiveUngrabDeviceRequest{
+		DeviceID:     2,
+		GrabWindow:   Window(1),
+		Detail:       5,
+		NumModifiers: 1,
+		GrabType:     1,
+		Modifiers:    []byte{1, 2, 3, 4},
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIPassiveUngrabDevice, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIPassiveUngrabDeviceRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, Window(1), xiReq.GrabWindow)
-		assert.Equal(t, uint32(4), xiReq.Detail)
-		assert.Equal(t, uint16(1), xiReq.NumModifiers)
-		assert.Equal(t, byte(1), xiReq.GrabType)
-		assert.Equal(t, []byte{5, 0, 0, 0}, xiReq.Modifiers)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIPassiveUngrabDevice, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIPassiveGrabDevice(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.15. XIPassiveGrabDevice
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			1, 0, 0, 0, // grab_window
-			0, 0, 0, 0, // time
-			3, 0, 0, 0, // cursor
-			4, 0, 0, 0, // detail
-			1, 0, // num_modifiers
-			0, 0, // pad
-			1,          // grab_type
-			1,          // grab_mode
-			1,          // paired_device_mode
-			1,          // owner_events
-			5, 0, 0, 0, // modifiers
-		}
-		require.Len(t, body, 32)
+func TestXIPassiveGrabDeviceRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIPassiveGrabDeviceRequest{
+		DeviceID:         2,
+		GrabWindow:       Window(1),
+		Time:             3,
+		Cursor:           4,
+		Detail:           5,
+		NumModifiers:     1,
+		GrabType:         1,
+		GrabMode:         2,
+		PairedDeviceMode: 3,
+		OwnerEvents:      true,
+		Modifiers:        []byte{1, 2, 3, 4},
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIPassiveGrabDevice, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIPassiveGrabDeviceRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, Window(1), xiReq.GrabWindow)
-		assert.Equal(t, uint32(0), xiReq.Time)
-		assert.Equal(t, uint32(3), xiReq.Cursor)
-		assert.Equal(t, uint32(4), xiReq.Detail)
-		assert.Equal(t, uint16(1), xiReq.NumModifiers)
-		assert.Equal(t, byte(1), xiReq.GrabType)
-		assert.Equal(t, byte(1), xiReq.GrabMode)
-		assert.Equal(t, byte(1), xiReq.PairedDeviceMode)
-		assert.True(t, xiReq.OwnerEvents)
-		assert.Equal(t, []byte{5, 0, 0, 0}, xiReq.Modifiers)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIPassiveGrabDevice, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIAllowEvents(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.14. XIAllowEvents
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0,          // event_mode
-			0,          // pad
-			0, 0, 0, 0, // time
-			1, 0, 0, 0, // touchid
-			1, 0, 0, 0, // grab_window
-		}
-		require.Len(t, body, 16)
+func TestXIAllowEventsRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIAllowEventsRequest{
+		DeviceID:   2,
+		EventMode:  1,
+		Time:       3,
+		TouchID:    4,
+		GrabWindow: Window(5),
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIAllowEvents, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIAllowEventsRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, byte(0), xiReq.EventMode)
-		assert.Equal(t, uint32(0), xiReq.Time)
-		assert.Equal(t, uint32(1), xiReq.TouchID)
-		assert.Equal(t, Window(1), xiReq.GrabWindow)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIAllowEvents, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIUngrabDevice(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.13. XIUngrabDevice
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			0, 0, 0, 0, // time
-		}
-		require.Len(t, body, 8)
+func TestXIUngrabDeviceRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIUngrabDeviceRequest{
+		DeviceID: 2,
+		Time:     3,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIUngrabDevice, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIUngrabDeviceRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, uint32(0), xiReq.Time)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIUngrabDevice, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIGrabDevice(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.12. XIGrabDevice
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			1, 0, 0, 0, // grab_window
-			0, 0, 0, 0, // time
-			3, 0, 0, 0, // cursor
-			1,    // grab_mode
-			1,    // paired_device_mode
-			1,    // owner_events
-			0,    // pad
-			1, 0, // mask_len = 1 (4 bytes)
-			5, 0, 0, 0, // mask
-		}
-		require.Len(t, body, 24)
+func TestXIGrabDeviceRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIGrabDeviceRequest{
+		DeviceID:         2,
+		GrabWindow:       Window(1),
+		Time:             3,
+		Cursor:           4,
+		GrabMode:         1,
+		PairedDeviceMode: 2,
+		OwnerEvents:      true,
+		MaskLen:          1,
+		Mask:             []byte{1, 2, 3, 4},
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIGrabDevice, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIGrabDeviceRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, Window(1), xiReq.GrabWindow)
-		assert.Equal(t, uint32(0), xiReq.Time)
-		assert.Equal(t, uint32(3), xiReq.Cursor)
-		assert.Equal(t, byte(1), xiReq.GrabMode)
-		assert.Equal(t, byte(1), xiReq.PairedDeviceMode)
-		assert.True(t, xiReq.OwnerEvents)
-		assert.Equal(t, uint16(1), xiReq.MaskLen)
-		assert.Equal(t, []byte{5, 0, 0, 0}, xiReq.Mask)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIGrabDevice, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIGetFocus(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.11. XIGetFocus
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-		}
-		require.Len(t, body, 4)
+func TestXIGetFocusRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIGetFocusRequest{
+		DeviceID: 2,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIGetFocus, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIGetFocusRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIGetFocus, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXISetFocus(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.10. XISetFocus
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			1, 0, 0, 0, // focus
-			0, 0, 0, 0, // time
-		}
-		require.Len(t, body, 12)
+func TestXISetFocusRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XISetFocusRequest{
+		DeviceID: 2,
+		Focus:    Window(1),
+		Time:     3,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XISetFocus, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XISetFocusRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, Window(1), xiReq.Focus)
-		assert.Equal(t, uint32(0), xiReq.Time)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XISetFocus, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIQueryDevice(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.9. XIQueryDevice
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-		}
-		require.Len(t, body, 4)
+func TestXIQueryDeviceRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIQueryDeviceRequest{
+		DeviceID: 2,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIQueryDevice, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIQueryDeviceRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIQueryDevice, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXISelectEvents(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.8. XISelectEvents
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			1, 0, 0, 0, // window
-			1, 0, // num_masks
-			0, 0, // pad
-			2, 0, // deviceid
-			1, 0, // mask_len = 1 (4 bytes)
-			4, 0, 0, 0, // mask
-		}
-		require.Len(t, body, 16)
+func TestXISelectEventsRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XISelectEventsRequest{
+		Window:   Window(1),
+		NumMasks: 1,
+		Masks: []XIEventMask{
+			{
+				DeviceID: 2,
+				MaskLen:  1,
+				Mask:     []byte{1, 2, 3, 4},
+			},
+		},
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XISelectEvents, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XISelectEventsRequest)
-		require.True(t, ok)
-		assert.Equal(t, Window(1), xiReq.Window)
-		require.Len(t, xiReq.Masks, 1)
-		assert.Equal(t, uint16(2), xiReq.Masks[0].DeviceID)
-		assert.Equal(t, uint16(1), xiReq.Masks[0].MaskLen)
-		assert.Equal(t, []byte{4, 0, 0, 0}, xiReq.Masks[0].Mask)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XISelectEvents, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIGetClientPointer(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.7. XIGetClientPointer
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			1, 0, 0, 0, // window
-		}
-		require.Len(t, body, 4)
+func TestXIGetClientPointerRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIGetClientPointerRequest{
+		Window: Window(1),
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIGetClientPointer, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIGetClientPointerRequest)
-		require.True(t, ok)
-		assert.Equal(t, Window(1), xiReq.Window)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIGetClientPointer, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXISetClientPointer(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.6. XISetClientPointer
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			1, 0, 0, 0, // window
-		}
-		require.Len(t, body, 8)
+func TestXISetClientPointerRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XISetClientPointerRequest{
+		DeviceID: 2,
+		Window:   Window(1),
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XISetClientPointer, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XISetClientPointerRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, Window(1), xiReq.Window)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XISetClientPointer, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIChangeHierarchy(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.5. XIChangeHierarchy
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			1, 0, // num_changes
-			0, 0, // pad
-			3, 0, // type XIAttachSlave
-			8, 0, // length
-			2, 0, // deviceid
-			4, 0, // masterid
-		}
-		require.Len(t, body, 12)
+func TestXIChangeHierarchyRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIChangeHierarchyRequest{
+		NumChanges: 1,
+		Changes: []XIChangeHierarchyChange{
+			&XIDetachSlave{
+				Type:     4,
+				Length:   8,
+				DeviceID: 5,
+			},
+		},
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIChangeHierarchy, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIChangeHierarchyRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(1), xiReq.NumChanges)
-		require.Len(t, xiReq.Changes, 1)
-		change, ok := xiReq.Changes[0].(*XIAttachSlave)
-		require.True(t, ok)
-		assert.Equal(t, uint16(3), change.Type)
-		assert.Equal(t, uint16(8), change.Length)
-		assert.Equal(t, uint16(2), change.DeviceID)
-		assert.Equal(t, uint16(4), change.MasterID)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIChangeHierarchy, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIChangeCursor(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.4. XIChangeCursor
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			1, 0, 0, 0, // window
-			3, 0, 0, 0, // cursor
-		}
-		require.Len(t, body, 12)
+func TestXIChangeCursorRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIChangeCursorRequest{
+		DeviceID: 2,
+		Window:   Window(1),
+		Cursor:   3,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIChangeCursor, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIChangeCursorRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, Window(1), xiReq.Window)
-		assert.Equal(t, uint32(3), xiReq.Cursor)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIChangeCursor, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
 }
 
-func TestParseXIWarpPointer(t *testing.T) {
-	// https://www.x.org/releases/X11R7.7/doc/inputproto/XI2proto.txt
-	// 5.2. XIWarpPointer
-	t.Run("valid request", func(t *testing.T) {
-		body := []byte{
-			2, 0, // deviceid
-			0, 0, // pad
-			1, 0, 0, 0, // src-window
-			2, 0, 0, 0, // dst-window
-			0, 0, 0, 0, // src-x
-			0, 0, 0, 0, // src-y
-			10, 0, // src-w
-			20, 0, // src-h
-			0, 0, 0, 0, // dst-x
-			0, 0, 0, 0, // dst-y
-		}
-		require.Len(t, body, 32)
+func TestXIWarpPointerRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIWarpPointerRequest{
+		DeviceID:  2,
+		SrcWindow: Window(1),
+		DstWindow: Window(2),
+		SrcX:      10,
+		SrcY:      20,
+		SrcW:      100,
+		SrcH:      200,
+		DstX:      30,
+		DstY:      40,
+	}
 
-		req, err := ParseXInputRequest(binary.LittleEndian, XIWarpPointer, body, 1)
-		require.NoError(t, err)
-		xiReq, ok := req.(*XIWarpPointerRequest)
-		require.True(t, ok)
-		assert.Equal(t, uint16(2), xiReq.DeviceID)
-		assert.Equal(t, Window(1), xiReq.SrcWindow)
-		assert.Equal(t, Window(2), xiReq.DstWindow)
-		assert.Equal(t, int32(0), xiReq.SrcX)
-		assert.Equal(t, int32(0), xiReq.SrcY)
-		assert.Equal(t, uint16(10), xiReq.SrcW)
-		assert.Equal(t, uint16(20), xiReq.SrcH)
-		assert.Equal(t, int32(0), xiReq.DstX)
-		assert.Equal(t, int32(0), xiReq.DstY)
-	})
+	encoded := req.EncodeMessage(order)
 
-	t.Run("invalid request", func(t *testing.T) {
-		body := []byte{0}
-		_, err := ParseXInputRequest(binary.LittleEndian, XIWarpPointer, body, 1)
-		var target Error
-		require.ErrorAs(t, err, &target)
-		assert.Equal(t, byte(LengthErrorCode), target.Code())
-	})
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
+}
+func TestListInputDevicesRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &ListInputDevicesRequest{}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseListInputDevicesRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseListInputDevicesRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestOpenDeviceRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &OpenDeviceRequest{
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseOpenDeviceRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseOpenDeviceRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestSelectExtensionEventRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &SelectExtensionEventRequest{
+		Window:  123,
+		Classes: []uint32{10, 20},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseSelectExtensionEventRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseSelectExtensionEventRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGetDeviceMotionEventsRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GetDeviceMotionEventsRequest{
+		Start:    100,
+		Stop:     200,
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGetDeviceMotionEventsRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceMotionEventsRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestChangeKeyboardDeviceRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &ChangeKeyboardDeviceRequest{
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseChangeKeyboardDeviceRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseChangeKeyboardDeviceRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestChangePointerDeviceRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &ChangePointerDeviceRequest{
+		XAxis:    1,
+		YAxis:    2,
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseChangePointerDeviceRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseChangePointerDeviceRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGrabDeviceKeyRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GrabDeviceKeyRequest{
+		GrabWindow:      123,
+		Modifiers:       1,
+		Key:             10,
+		DeviceID:        5,
+		OwnerEvents:     true,
+		ThisDeviceMode:  1,
+		OtherDeviceMode: 0,
+		NumClasses:      0,
+		Classes:         []uint32{},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGrabDeviceKeyRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGrabDeviceKeyRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestUngrabDeviceKeyRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &UngrabDeviceKeyRequest{
+		GrabWindow: 123,
+		Modifiers:  1,
+		Key:        10,
+		DeviceID:   5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseUngrabDeviceKeyRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseUngrabDeviceKeyRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGrabDeviceButtonRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GrabDeviceButtonRequest{
+		GrabWindow:      123,
+		Modifiers:       1,
+		Button:          10,
+		DeviceID:        5,
+		OwnerEvents:     true,
+		ThisDeviceMode:  1,
+		OtherDeviceMode: 0,
+		NumClasses:      0,
+		Classes:         []uint32{},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGrabDeviceButtonRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGrabDeviceButtonRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestUngrabDeviceButtonRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &UngrabDeviceButtonRequest{
+		GrabWindow: 123,
+		Modifiers:  1,
+		Button:     10,
+		DeviceID:   5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseUngrabDeviceButtonRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseUngrabDeviceButtonRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestAllowDeviceEventsRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &AllowDeviceEventsRequest{
+		Time:     0,
+		DeviceID: 5,
+		Mode:     1,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseAllowDeviceEventsRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseAllowDeviceEventsRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGetDeviceFocusRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GetDeviceFocusRequest{
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGetDeviceFocusRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceFocusRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestSetDeviceFocusRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &SetDeviceFocusRequest{
+		Focus:    123,
+		Time:     0,
+		RevertTo: 1,
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseSetDeviceFocusRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceFocusRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGetFeedbackControlRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GetFeedbackControlRequest{
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGetFeedbackControlRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGetFeedbackControlRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestChangeFeedbackControlRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &ChangeFeedbackControlRequest{
+		Mask:      1,
+		DeviceID:  5,
+		ControlID: 10,
+		Control:   []byte{1, 2, 3, 4},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseChangeFeedbackControlRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseChangeFeedbackControlRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGetDeviceKeyMappingRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GetDeviceKeyMappingRequest{
+		DeviceID: 5,
+		FirstKey: 10,
+		Count:    2,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGetDeviceKeyMappingRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceKeyMappingRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestChangeDeviceKeyMappingRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &ChangeDeviceKeyMappingRequest{
+		DeviceID:          5,
+		FirstKey:          10,
+		KeysymsPerKeycode: 2,
+		KeycodeCount:      2,
+		Keysyms:           []uint32{1, 2, 3, 4},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseChangeDeviceKeyMappingRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseChangeDeviceKeyMappingRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGetDeviceModifierMappingRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GetDeviceModifierMappingRequest{
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGetDeviceModifierMappingRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceModifierMappingRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestSetDeviceModifierMappingRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &SetDeviceModifierMappingRequest{
+		DeviceID: 5,
+		Keycodes: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseSetDeviceModifierMappingRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceModifierMappingRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestGetDeviceButtonMappingRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &GetDeviceButtonMappingRequest{
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseGetDeviceButtonMappingRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseGetDeviceButtonMappingRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestSetDeviceButtonMappingRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &SetDeviceButtonMappingRequest{
+		DeviceID: 5,
+		Map:      []byte{1, 3, 2},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseSetDeviceButtonMappingRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceButtonMappingRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestQueryDeviceStateRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &QueryDeviceStateRequest{
+		DeviceID: 5,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseQueryDeviceStateRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseQueryDeviceStateRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestSendExtensionEventRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &SendExtensionEventRequest{
+		Destination: 123,
+		DeviceID:    5,
+		Propagate:   true,
+		NumClasses:  0,
+		NumEvents:   1,
+		Events:      []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32},
+		Classes:     []uint32{},
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseSendExtensionEventRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseSendExtensionEventRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
+}
+func TestDeviceBellRequest(t *testing.T) {
+	order := binary.LittleEndian
+	request := &DeviceBellRequest{
+		DeviceID:      5,
+		FeedbackID:    10,
+		FeedbackClass: 1,
+		Percent:       50,
+	}
+
+	encoded := request.EncodeMessage(order)
+	decoded, err := ParseDeviceBellRequest(order, encoded[4:], 1)
+	if err != nil {
+		t.Fatalf("ParseDeviceBellRequest failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(request, decoded) {
+		t.Errorf("expected %+v, got %+v", request, decoded)
+	}
 }

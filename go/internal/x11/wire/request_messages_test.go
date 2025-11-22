@@ -240,218 +240,95 @@ func TestParseImageText8Request(t *testing.T) {
 	}
 }
 
-func TestParseImageText16Request(t *testing.T) {
-	// ImageText16 request: drawable, gc, x, y, text
-	drawable := uint32(1)
-	gc := uint32(2)
-	x := int16(10)
-	y := int16(20)
-	text := []uint16{0x0048, 0x0065, 0x006c, 0x006c, 0x006f} // "Hello"
-	pad := PadLen(12 + 2*len(text))
-
-	payload := make([]byte, 12+2*len(text)+pad)
-	binary.LittleEndian.PutUint32(payload[0:4], drawable)
-	binary.LittleEndian.PutUint32(payload[4:8], gc)
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-	for i, r := range text {
-		binary.LittleEndian.PutUint16(payload[12+2*i:14+2*i], r)
-	}
-
-	p, err := ParseImageText16Request(binary.LittleEndian, byte(len(text)), payload, 1)
-	assert.NoError(t, err, "ParseImageText16Request should not return an error")
-
-	assert.Equal(t, Drawable(drawable), p.Drawable, "drawable mismatch")
-	assert.Equal(t, GContext(gc), p.Gc, "gc mismatch")
-	assert.Equal(t, x, p.X, "x mismatch")
-	assert.Equal(t, y, p.Y, "y mismatch")
-	assert.Equal(t, text, p.Text, "text mismatch")
-}
 
 func TestParsePolyText8Request(t *testing.T) {
-	// PolyText8 request: drawable, gc, x, y, items
-	drawable := uint32(1)
-	gc := uint32(2)
-	x := int16(10)
-	y := int16(20)
+	order := binary.LittleEndian
+	req := &PolyText8Request{
+		Drawable: Drawable(1),
+		GC:       GContext(2),
+		X:        10,
+		Y:        20,
+		Items: []PolyTextItem{
+			PolyText8String{Delta: 5, Str: []byte("Hi")},
+			PolyText8String{Delta: 10, Str: []byte("There")},
+		},
+	}
 
-	payload := make([]byte, 12) // drawable (4) + gc (4) + x (2) + y (2)
-	binary.LittleEndian.PutUint32(payload[0:4], drawable)
-	binary.LittleEndian.PutUint32(payload[4:8], gc)
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-
-	// Item 1: len=2, delta=5, str="Hi" -> total 4 bytes
-	payload = append(payload, 2)
-	payload = append(payload, 5)
-	payload = append(payload, 'H', 'i')
-
-	// Item 2: len=5, delta=10, str="There" -> total 7 bytes
-	payload = append(payload, 5)
-	payload = append(payload, 10)
-	payload = append(payload, 'T', 'h', 'e', 'r', 'e')
-
-	// Total length of items is 4 + 7 = 11.
-	// The list must be padded to a multiple of 4.
-	// 11 % 4 = 3. Need 1 byte of padding.
-	payload = append(payload, 0)
-
-	p, err := ParsePolyText8Request(binary.LittleEndian, payload, 1)
+	encoded := req.EncodeMessage(order)
+	p, err := ParsePolyText8Request(order, encoded[4:], 1)
 	assert.NoError(t, err, "ParsePolyText8Request should not return an error")
 
-	assert.Equal(t, Drawable(drawable), p.Drawable, "drawable mismatch")
-	assert.Equal(t, GContext(gc), p.GC, "gc mismatch")
-	assert.Equal(t, x, p.X, "x mismatch")
-	assert.Equal(t, y, p.Y, "y mismatch")
-
-	expectedItems := []PolyTextItem{
-		PolyText8String{Delta: 5, Str: []byte("Hi")},
-		PolyText8String{Delta: 10, Str: []byte("There")},
-	}
-	assert.Equal(t, expectedItems, p.Items, "items mismatch")
+	assert.Equal(t, req.Drawable, p.Drawable)
+	assert.Equal(t, req.GC, p.GC)
+	assert.Equal(t, req.X, p.X)
+	assert.Equal(t, req.Y, p.Y)
+	assert.Equal(t, req.Items, p.Items)
 }
 
 func TestParsePolyText8Request_WithFontChange(t *testing.T) {
-	// PolyText8 request with font change
-	drawable := uint32(1)
-	gc := uint32(2)
-	x := int16(10)
-	y := int16(20)
-	fontID := uint32(12345)
+	order := binary.LittleEndian
+	req := &PolyText8Request{
+		Drawable: Drawable(1),
+		GC:       GContext(2),
+		X:        10,
+		Y:        20,
+		Items: []PolyTextItem{
+			PolyText8String{Delta: 0, Str: []byte("Hello")},
+			PolyTextFont{Font: Font(12345)},
+			PolyText8String{Delta: 10, Str: []byte("World")},
+		},
+	}
 
-	payload := make([]byte, 12)
-	binary.LittleEndian.PutUint32(payload[0:4], drawable)
-	binary.LittleEndian.PutUint32(payload[4:8], gc)
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-
-	// Item 1: text="Hello" -> 1 (len) + 1 (delta) + 5 (str) = 7 bytes
-	payload = append(payload, 5) // n = 5
-	payload = append(payload, 0) // delta = 0
-	payload = append(payload, "Hello"...)
-
-	// Item 2: font change -> 1 (marker) + 4 (fontID) = 5 bytes
-	payload = append(payload, 255)
-	fontBytes := make([]byte, 4)
-	binary.LittleEndian.PutUint32(fontBytes, fontID)
-	payload = append(payload, fontBytes...)
-
-	// Item 3: text="World" -> 1 (len) + 1 (delta) + 5 (str) = 7 bytes
-	payload = append(payload, 5)  // n = 5
-	payload = append(payload, 10) // delta = 10
-	payload = append(payload, "World"...)
-
-	// Total length of items is 7 + 5 + 7 = 19 bytes.
-	// 19 % 4 = 3. Need 1 byte of padding.
-	payload = append(payload, 0)
-
-	p, err := ParsePolyText8Request(binary.LittleEndian, payload, 1)
+	encoded := req.EncodeMessage(order)
+	p, err := ParsePolyText8Request(order, encoded[4:], 1)
 	assert.NoError(t, err, "ParsePolyText8Request should not return an error")
 
-	expectedItems := []PolyTextItem{
-		PolyText8String{Delta: 0, Str: []byte("Hello")},
-		PolyTextFont{Font: Font(fontID)},
-		PolyText8String{Delta: 10, Str: []byte("World")},
-	}
-	assert.Equal(t, expectedItems, p.Items, "items mismatch")
+	assert.Equal(t, req.Items, p.Items)
 }
 
 func TestParsePolyText16Request(t *testing.T) {
-	// PolyText16 request: drawable, gc, x, y, items
-	drawable := uint32(1)
-	gc := uint32(2)
-	x := int16(10)
-	y := int16(20)
+	order := binary.LittleEndian
+	req := &PolyText16Request{
+		Drawable: Drawable(1),
+		GC:       GContext(2),
+		X:        10,
+		Y:        20,
+		Items: []PolyTextItem{
+			PolyText16String{Delta: 5, Str: []uint16{0x0048, 0x0069}},
+			PolyText16String{Delta: 10, Str: []uint16{0x0054, 0x0068, 0x0065, 0x0072, 0x0065}},
+		},
+	}
 
-	payload := make([]byte, 12) // drawable (4) + gc (4) + x (2) + y (2)
-	binary.LittleEndian.PutUint32(payload[0:4], drawable)
-	binary.LittleEndian.PutUint32(payload[4:8], gc)
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-
-	// Item 1: len=2, delta=5, str="Hi" (4 bytes) -> total 6 bytes
-	payload = append(payload, 2)
-	payload = append(payload, 5)
-	payload = append(payload, 0x48, 0x00, 0x69, 0x00)
-
-	// Item 2: len=5, delta=10, str="There" (10 bytes) -> total 12 bytes
-	payload = append(payload, 5)
-	payload = append(payload, 10)
-	payload = append(payload, 0x54, 0x00, 0x68, 0x00, 0x65, 0x00, 0x72, 0x00, 0x65, 0x00)
-
-	// Total length of items is 6 + 12 = 18 bytes.
-	// The list must be padded to a multiple of 4.
-	// 18 % 4 = 2. Need 2 bytes of padding.
-	payload = append(payload, 0, 0)
-
-	p, err := ParsePolyText16Request(binary.LittleEndian, payload, 1)
+	encoded := req.EncodeMessage(order)
+	p, err := ParsePolyText16Request(order, encoded[4:], 1)
 	assert.NoError(t, err, "ParsePolyText16Request should not return an error")
 
-	assert.Equal(t, Drawable(drawable), p.Drawable, "drawable mismatch")
-	assert.Equal(t, GContext(gc), p.GC, "gc mismatch")
-	assert.Equal(t, x, p.X, "x mismatch")
-	assert.Equal(t, y, p.Y, "y mismatch")
-
-	expectedItems := []PolyTextItem{
-		PolyText16String{Delta: 5, Str: []uint16{0x0048, 0x0069}},
-		PolyText16String{Delta: 10, Str: []uint16{0x0054, 0x0068, 0x0065, 0x0072, 0x0065}},
-	}
-	assert.Equal(t, expectedItems, p.Items, "items mismatch")
+	assert.Equal(t, req.Drawable, p.Drawable)
+	assert.Equal(t, req.GC, p.GC)
+	assert.Equal(t, req.X, p.X)
+	assert.Equal(t, req.Y, p.Y)
+	assert.Equal(t, req.Items, p.Items)
 }
 
 func TestParsePolyText16Request_WithFontChange(t *testing.T) {
-	// PolyText16 request with font change
-	drawable := uint32(1)
-	gc := uint32(2)
-	x := int16(10)
-	y := int16(20)
-	fontID := uint32(12345)
-
-	payload := make([]byte, 12)
-	binary.LittleEndian.PutUint32(payload[0:4], drawable)
-	binary.LittleEndian.PutUint32(payload[4:8], gc)
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(x))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(y))
-
-	// Item 1: text="Hello" -> 1 (len) + 1 (delta) + 5*2 (str) = 12 bytes
-	text1 := []uint16{'H', 'e', 'l', 'l', 'o'}
-	payload = append(payload, byte(len(text1))) // n = 5
-	payload = append(payload, 0)                // delta = 0
-	for _, char := range text1 {
-		charBytes := make([]byte, 2)
-		binary.LittleEndian.PutUint16(charBytes, char)
-		payload = append(payload, charBytes...)
+	order := binary.LittleEndian
+	req := &PolyText16Request{
+		Drawable: Drawable(1),
+		GC:       GContext(2),
+		X:        10,
+		Y:        20,
+		Items: []PolyTextItem{
+			PolyText16String{Delta: 0, Str: []uint16{'H', 'e', 'l', 'l', 'o'}},
+			PolyTextFont{Font: Font(12345)},
+			PolyText16String{Delta: 10, Str: []uint16{'W', 'o', 'r', 'l', 'd'}},
+		},
 	}
 
-	// Item 2: font change -> 1 (marker) + 4 (fontID) = 5 bytes
-	payload = append(payload, 255)
-	fontBytes := make([]byte, 4)
-	binary.LittleEndian.PutUint32(fontBytes, fontID)
-	payload = append(payload, fontBytes...)
-
-	// Item 3: text="World" -> 1 (len) + 1 (delta) + 5*2 (str) = 12 bytes
-	text2 := []uint16{'W', 'o', 'r', 'l', 'd'}
-	payload = append(payload, byte(len(text2))) // n = 5
-	payload = append(payload, 10)               // delta = 10
-	for _, char := range text2 {
-		charBytes := make([]byte, 2)
-		binary.LittleEndian.PutUint16(charBytes, char)
-		payload = append(payload, charBytes...)
-	}
-
-	// Total length of items is 12 + 5 + 12 = 29 bytes.
-	// 29 % 4 = 1. Need 3 bytes of padding.
-	payload = append(payload, 0, 0, 0)
-
-	p, err := ParsePolyText16Request(binary.LittleEndian, payload, 1)
+	encoded := req.EncodeMessage(order)
+	p, err := ParsePolyText16Request(order, encoded[4:], 1)
 	assert.NoError(t, err, "ParsePolyText16Request should not return an error")
 
-	expectedItems := []PolyTextItem{
-		PolyText16String{Delta: 0, Str: text1},
-		PolyTextFont{Font: Font(fontID)},
-		PolyText16String{Delta: 10, Str: text2},
-	}
-	assert.Equal(t, expectedItems, p.Items, "items mismatch")
+	assert.Equal(t, req.Items, p.Items)
 }
 
 func TestParseQueryPointerRequest(t *testing.T) {
@@ -758,7 +635,7 @@ func TestParseGrabPointerRequest(t *testing.T) {
 	order.PutUint32(reqBody[12:16], 101)
 	order.PutUint32(reqBody[16:20], 112)
 
-	p, err := ParseGrabPointerRequest(order, reqBody, 1)
+	p, err := ParseGrabPointerRequest(order, 0, reqBody, 1)
 	assert.NoError(t, err, "ParseGrabPointerRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, uint16(456), p.EventMask, "EventMask should be parsed correctly")
@@ -841,7 +718,7 @@ func TestParseGrabKeyboardRequest(t *testing.T) {
 	reqBody[8] = 1
 	reqBody[9] = 2
 
-	p, err := ParseGrabKeyboardRequest(order, reqBody, 1)
+	p, err := ParseGrabKeyboardRequest(order, 0, reqBody, 1)
 	assert.NoError(t, err, "ParseGrabKeyboardRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, Timestamp(456), p.Time, "Time should be parsed correctly")
@@ -883,9 +760,8 @@ func TestParseUngrabKeyRequest(t *testing.T) {
 	reqBody := make([]byte, 8)
 	order.PutUint32(reqBody[0:4], 123)
 	order.PutUint16(reqBody[4:6], 456)
-	reqBody[6] = 7
 
-	p, err := ParseUngrabKeyRequest(order, reqBody, 1)
+	p, err := ParseUngrabKeyRequest(order, 7, reqBody, 1)
 	assert.NoError(t, err, "ParseUngrabKeyRequest should not return an error")
 	assert.Equal(t, Window(123), p.GrabWindow, "GrabWindow should be parsed correctly")
 	assert.Equal(t, uint16(456), p.Modifiers, "Modifiers should be parsed correctly")
@@ -949,12 +825,11 @@ func TestParseWarpPointerRequest(t *testing.T) {
 
 func TestParseSetInputFocusRequest(t *testing.T) {
 	order := binary.LittleEndian
-	reqBody := make([]byte, 12)
+	reqBody := make([]byte, 8)
 	order.PutUint32(reqBody[0:4], 123)
-	reqBody[4] = 2
-	order.PutUint32(reqBody[8:12], 456)
+	order.PutUint32(reqBody[4:8], 456)
 
-	p, err := ParseSetInputFocusRequest(order, reqBody, 1)
+	p, err := ParseSetInputFocusRequest(order, 2, reqBody, 1)
 	assert.NoError(t, err, "ParseSetInputFocusRequest should not return an error")
 	assert.Equal(t, Window(123), p.Focus, "Focus should be parsed correctly")
 	assert.Equal(t, byte(2), p.RevertTo, "RevertTo should be parsed correctly")

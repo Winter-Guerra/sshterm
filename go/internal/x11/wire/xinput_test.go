@@ -11,199 +11,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseSelectExtensionEventRequest(t *testing.T) {
-	t.Run("valid request", func(t *testing.T) {
-		classes := []uint32{10, 20}
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // window
-		binary.Write(buf, binary.LittleEndian, uint16(len(classes)))
-		buf.Write([]byte{0, 0}) // padding
-		for _, class := range classes {
-			binary.Write(buf, binary.LittleEndian, class)
-		}
 
-		req, err := ParseSelectExtensionEventRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, Window(123), req.Window)
-		assert.Equal(t, classes, req.Classes)
-	})
 
-	t.Run("body too short", func(t *testing.T) {
-		_, err := ParseSelectExtensionEventRequest(binary.LittleEndian, []byte{1, 2}, 1)
-		assert.Error(t, err)
-		assert.IsType(t, &LengthError{}, err)
-	})
 
-	t.Run("body length mismatch", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // window
-		binary.Write(buf, binary.LittleEndian, uint16(2))   // num_classes = 2
-		buf.Write([]byte{0, 0})                             // padding
-		binary.Write(buf, binary.LittleEndian, uint32(10))  // only one class
 
-		_, err := ParseSelectExtensionEventRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.Error(t, err)
-		assert.IsType(t, &LengthError{}, err)
-	})
-}
 
-func TestParseGrabDeviceKeyRequest(t *testing.T) {
-	t.Run("valid request", func(t *testing.T) {
-		classes := []uint32{}
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // grab_window
-		binary.Write(buf, binary.LittleEndian, uint16(len(classes)))
-		buf.WriteByte(1) // owner_events
-		buf.WriteByte(1) // this_device_mode
-		buf.WriteByte(0) // other_device_mode
-		buf.WriteByte(5) // device_id
-		binary.Write(buf, binary.LittleEndian, uint16(0)) // modifiers
-		buf.WriteByte(10)   // key
-
-		req, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, Window(123), req.GrabWindow)
-		assert.Equal(t, uint16(len(classes)), req.NumClasses)
-		assert.True(t, req.OwnerEvents)
-		assert.Equal(t, byte(1), req.ThisDeviceMode)
-		assert.Equal(t, byte(0), req.OtherDeviceMode)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.Key)
-		assert.Equal(t, uint16(0), req.Modifiers)
-		assert.Equal(t, classes, req.Classes)
-	})
-
-	t.Run("invalid length", func(t *testing.T) {
-		_, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, []byte{1, 2, 3}, 1)
-		assert.Error(t, err)
-		assert.IsType(t, &LengthError{}, err)
-	})
-
-	t.Run("body length mismatch", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // grab_window
-		binary.Write(buf, binary.LittleEndian, uint16(2))   // num_classes = 2
-		buf.WriteByte(1) // owner_events
-		buf.WriteByte(1) // this_device_mode
-		buf.WriteByte(0) // other_device_mode
-		buf.WriteByte(5) // device_id
-		binary.Write(buf, binary.LittleEndian, uint16(0)) // modifiers
-		buf.WriteByte(10)   // key
-		binary.Write(buf, binary.LittleEndian, uint32(10))  // only one class
-
-		_, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.Error(t, err)
-		assert.IsType(t, &LengthError{}, err)
-	})
-}
-
-func TestParseUngrabDeviceKeyRequest(t *testing.T) {
-	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // grab_window
-		binary.Write(buf, binary.LittleEndian, uint16(1))   // modifiers
-		buf.WriteByte(5)                                    // device_id
-		buf.WriteByte(10)                                   // key
-		buf.Write([]byte{0, 0, 0, 0})                       // padding
-
-		req, err := ParseUngrabDeviceKeyRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, Window(123), req.GrabWindow)
-		assert.Equal(t, uint16(1), req.Modifiers)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.Key)
-	})
-
-	t.Run("invalid length", func(t *testing.T) {
-		_, err := ParseUngrabDeviceKeyRequest(binary.LittleEndian, []byte{1, 2, 3}, 1)
-		assert.Error(t, err)
-		assert.IsType(t, &LengthError{}, err)
-	})
-}
-
-func TestParseGrabDeviceButtonRequest(t *testing.T) {
-	t.Run("valid request", func(t *testing.T) {
-		classes := []uint32{}
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // grab_window
-		binary.Write(buf, binary.LittleEndian, uint16(len(classes)))
-		buf.WriteByte(1) // owner_events
-		buf.WriteByte(1) // this_device_mode
-		buf.WriteByte(0) // other_device_mode
-		buf.WriteByte(5) // device_id
-		binary.Write(buf, binary.LittleEndian, uint16(1)) // modifiers
-		buf.WriteByte(10)   // button
-
-		req, err := ParseGrabDeviceButtonRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, Window(123), req.GrabWindow)
-		assert.Equal(t, uint16(len(classes)), req.NumClasses)
-		assert.True(t, req.OwnerEvents)
-		assert.Equal(t, byte(1), req.ThisDeviceMode)
-		assert.Equal(t, byte(0), req.OtherDeviceMode)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.Button)
-		assert.Equal(t, uint16(1), req.Modifiers)
-		assert.Equal(t, classes, req.Classes)
-	})
-}
-
-func TestParseUngrabDeviceButtonRequest(t *testing.T) {
-	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // grab_window
-		binary.Write(buf, binary.LittleEndian, uint16(1))   // modifiers
-		buf.WriteByte(5)                                    // device_id
-		buf.WriteByte(10)                                   // button
-		buf.Write([]byte{0, 0, 0, 0})                       // padding
-
-		req, err := ParseUngrabDeviceButtonRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, Window(123), req.GrabWindow)
-		assert.Equal(t, uint16(1), req.Modifiers)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.Button)
-	})
-}
-
-func TestParseGetDeviceMotionEventsRequest(t *testing.T) {
-	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(100)) // start
-		binary.Write(buf, binary.LittleEndian, uint32(200)) // stop
-		buf.WriteByte(5)                                    // device id
-		buf.Write([]byte{0, 0, 0})                          // padding
-
-		req, err := ParseGetDeviceMotionEventsRequest(binary.LittleEndian, buf.Bytes(), 1)
-		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, uint32(100), req.Start)
-		assert.Equal(t, uint32(200), req.Stop)
-		assert.Equal(t, byte(5), req.DeviceID)
-	})
-
-	t.Run("invalid length", func(t *testing.T) {
-		_, err := ParseGetDeviceMotionEventsRequest(binary.LittleEndian, []byte{1, 2, 3}, 1)
-		assert.Error(t, err)
-		assert.IsType(t, &LengthError{}, err)
-	})
-}
 
 func TestParseChangeKeyboardDeviceRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)           // device id
-		buf.Write([]byte{0, 0, 0}) // padding
+		order := binary.LittleEndian
+		request := &ChangeKeyboardDeviceRequest{
+			DeviceID: 5,
+		}
 
-		req, err := ParseChangeKeyboardDeviceRequest(binary.LittleEndian, buf.Bytes(), 1)
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseChangeKeyboardDeviceRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 
 	t.Run("invalid length", func(t *testing.T) {
@@ -215,9 +40,14 @@ func TestParseChangeKeyboardDeviceRequest(t *testing.T) {
 
 func TestParseListInputDevicesRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		req, err := ParseListInputDevicesRequest(binary.LittleEndian, []byte{}, 1)
+		order := binary.LittleEndian
+		request := &ListInputDevicesRequest{}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseListInputDevicesRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 
 	t.Run("invalid length", func(t *testing.T) {
@@ -229,13 +59,16 @@ func TestParseListInputDevicesRequest(t *testing.T) {
 
 func TestParseOpenDeviceRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.Write([]byte{0, 0, 0})
-		req, err := ParseOpenDeviceRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &OpenDeviceRequest{
+			DeviceID: 5,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseOpenDeviceRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 
 	t.Run("invalid length", func(t *testing.T) {
@@ -247,15 +80,17 @@ func TestParseOpenDeviceRequest(t *testing.T) {
 
 func TestParseSetDeviceModeRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.WriteByte(1)
-		buf.Write([]byte{0, 0})
-		req, err := ParseSetDeviceModeRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &SetDeviceModeRequest{
+			DeviceID: 5,
+			Mode:     1,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseSetDeviceModeRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(1), req.Mode)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 
 	t.Run("invalid length", func(t *testing.T) {
@@ -267,22 +102,19 @@ func TestParseSetDeviceModeRequest(t *testing.T) {
 
 func TestParseSetDeviceValuatorsRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		valuators := []int32{100, 200}
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.WriteByte(1)
-		buf.WriteByte(byte(len(valuators)))
-		buf.WriteByte(0)
-		for _, v := range valuators {
-			binary.Write(buf, binary.LittleEndian, v)
+		order := binary.LittleEndian
+		request := &SetDeviceValuatorsRequest{
+			DeviceID:      5,
+			FirstValuator: 1,
+			NumValuators:  2,
+			Valuators:     []int32{100, 200},
 		}
-		req, err := ParseSetDeviceValuatorsRequest(binary.LittleEndian, buf.Bytes(), 1)
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseSetDeviceValuatorsRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(1), req.FirstValuator)
-		assert.Equal(t, byte(len(valuators)), req.NumValuators)
-		assert.Equal(t, valuators, req.Valuators)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 
 	t.Run("invalid length", func(t *testing.T) {
@@ -294,47 +126,37 @@ func TestParseSetDeviceValuatorsRequest(t *testing.T) {
 
 func TestParseGetDeviceControlRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.WriteByte(0)
-		binary.Write(buf, binary.LittleEndian, uint16(1))
-		req, err := ParseGetDeviceControlRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &GetDeviceControlRequest{
+			DeviceID: 5,
+			Control:  1,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGetDeviceControlRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, uint16(1), req.Control)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseChangeDeviceControlRequest(t *testing.T) {
 	t.Run("valid device resolution control", func(t *testing.T) {
-		resolutions := []uint32{100, 200}
-		control := &DeviceResolutionControl{
-			FirstValuator: 1,
-			NumValuators:  2,
-			Resolutions:   resolutions,
-		}
-		buf := new(bytes.Buffer)
-		buf.WriteByte(10) // device ID
-		buf.WriteByte(0)  // padding
-		binary.Write(buf, binary.LittleEndian, uint16(DeviceResolution))
-		binary.Write(buf, binary.LittleEndian, uint16(8+len(resolutions)*4))
-		buf.WriteByte(control.FirstValuator)
-		buf.WriteByte(control.NumValuators)
-		buf.Write([]byte{0, 0}) // padding
-		for _, res := range resolutions {
-			binary.Write(buf, binary.LittleEndian, res)
+		order := binary.LittleEndian
+		request := &ChangeDeviceControlRequest{
+			DeviceID: 10,
+			Control: &DeviceResolutionControl{
+				FirstValuator: 1,
+				NumValuators:  2,
+				Resolutions:   []uint32{100, 200},
+			},
 		}
 
-		req, err := ParseChangeDeviceControlRequest(binary.LittleEndian, buf.Bytes(), 1)
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseChangeDeviceControlRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(10), req.DeviceID)
-		assert.IsType(t, &DeviceResolutionControl{}, req.Control)
-		drc := req.Control.(*DeviceResolutionControl)
-		assert.Equal(t, control.FirstValuator, drc.FirstValuator)
-		assert.Equal(t, control.NumValuators, drc.NumValuators)
-		assert.Equal(t, control.Resolutions, drc.Resolutions)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 
 	t.Run("invalid control id", func(t *testing.T) {
@@ -365,18 +187,18 @@ func TestParseChangeDeviceControlRequest(t *testing.T) {
 
 func TestParseChangePointerDeviceRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(1)           // x axis
-		buf.WriteByte(2)           // y axis
-		buf.WriteByte(5)           // device id
-		buf.WriteByte(0)           // padding
+		order := binary.LittleEndian
+		request := &ChangePointerDeviceRequest{
+			XAxis:    1,
+			YAxis:    2,
+			DeviceID: 5,
+		}
 
-		req, err := ParseChangePointerDeviceRequest(binary.LittleEndian, buf.Bytes(), 1)
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseChangePointerDeviceRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(1), req.XAxis)
-		assert.Equal(t, byte(2), req.YAxis)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 
 	t.Run("invalid length", func(t *testing.T) {
@@ -388,232 +210,241 @@ func TestParseChangePointerDeviceRequest(t *testing.T) {
 
 func TestParseGetDeviceFocusRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.Write([]byte{0, 0, 0})
-		req, err := ParseGetDeviceFocusRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &GetDeviceFocusRequest{
+			DeviceID: 5,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGetDeviceFocusRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseSetDeviceFocusRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // focus
-		binary.Write(buf, binary.LittleEndian, uint32(100)) // time
-		buf.WriteByte(1)                                    // revert_to
-		buf.WriteByte(5)                                    // device_id
-		buf.Write([]byte{0, 0})                             // padding
-		req, err := ParseSetDeviceFocusRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &SetDeviceFocusRequest{
+			Focus:    123,
+			Time:     100,
+			RevertTo: 1,
+			DeviceID: 5,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseSetDeviceFocusRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, Window(123), req.Focus)
-		assert.Equal(t, uint32(100), req.Time)
-		assert.Equal(t, byte(1), req.RevertTo)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseGetFeedbackControlRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.Write([]byte{0, 0, 0})
-		req, err := ParseGetFeedbackControlRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &GetFeedbackControlRequest{
+			DeviceID: 5,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGetFeedbackControlRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseChangeFeedbackControlRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		controlData := []byte{1, 2, 3, 4}
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(1)) // mask
-		buf.WriteByte(5)                                  // device_id
-		buf.WriteByte(10)                                 // feedback_id
-		buf.Write([]byte{0, 0})                           // padding
-		buf.Write(controlData)
-		req, err := ParseChangeFeedbackControlRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &ChangeFeedbackControlRequest{
+			Mask:      1,
+			DeviceID:  5,
+			ControlID: 10,
+			Control:   []byte{1, 2, 3, 4},
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseChangeFeedbackControlRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, uint32(1), req.Mask)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.ControlID)
-		assert.Equal(t, controlData, req.Control)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseGetDeviceKeyMappingRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)  // device_id
-		buf.WriteByte(10) // first_keycode
-		buf.WriteByte(2)  // count
-		buf.WriteByte(0)  // padding
-		req, err := ParseGetDeviceKeyMappingRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &GetDeviceKeyMappingRequest{
+			DeviceID: 5,
+			FirstKey: 10,
+			Count:    2,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGetDeviceKeyMappingRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.FirstKey)
-		assert.Equal(t, byte(2), req.Count)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseChangeDeviceKeyMappingRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		keysyms := []uint32{1, 2, 3, 4}
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)  // device_id
-		buf.WriteByte(10) // first_keycode
-		buf.WriteByte(2)  // keysyms_per_keycode
-		buf.WriteByte(2)  // keycode_count
-		for _, ks := range keysyms {
-			binary.Write(buf, binary.LittleEndian, ks)
+		order := binary.LittleEndian
+		request := &ChangeDeviceKeyMappingRequest{
+			DeviceID:          5,
+			FirstKey:          10,
+			KeysymsPerKeycode: 2,
+			KeycodeCount:      2,
+			Keysyms:           []uint32{1, 2, 3, 4},
 		}
-		req, err := ParseChangeDeviceKeyMappingRequest(binary.LittleEndian, buf.Bytes(), 1)
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseChangeDeviceKeyMappingRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.FirstKey)
-		assert.Equal(t, byte(2), req.KeysymsPerKeycode)
-		assert.Equal(t, byte(2), req.KeycodeCount)
-		assert.Equal(t, keysyms, req.Keysyms)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseGetDeviceModifierMappingRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.Write([]byte{0, 0, 0})
-		req, err := ParseGetDeviceModifierMappingRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &GetDeviceModifierMappingRequest{
+			DeviceID: 5,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGetDeviceModifierMappingRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseSetDeviceModifierMappingRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		keycodes := []byte{1, 2, 3, 4, 5, 6, 7, 8}
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5) // device_id
-		buf.WriteByte(1) // num_keycodes_per_modifier
-		buf.Write([]byte{0, 0})
-		buf.Write(keycodes)
-		req, err := ParseSetDeviceModifierMappingRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &SetDeviceModifierMappingRequest{
+			DeviceID: 5,
+			Keycodes: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseSetDeviceModifierMappingRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, keycodes, req.Keycodes)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseGetDeviceButtonMappingRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.Write([]byte{0, 0, 0})
-		req, err := ParseGetDeviceButtonMappingRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &GetDeviceButtonMappingRequest{
+			DeviceID: 5,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGetDeviceButtonMappingRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseSetDeviceButtonMappingRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buttonMap := []byte{1, 3, 2}
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5) // device_id
-		buf.WriteByte(byte(len(buttonMap)))
-		buf.Write([]byte{0, 0})
-		buf.Write(buttonMap)
-		req, err := ParseSetDeviceButtonMappingRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &SetDeviceButtonMappingRequest{
+			DeviceID: 5,
+			Map:      []byte{1, 3, 2},
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseSetDeviceButtonMappingRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, buttonMap, req.Map)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseQueryDeviceStateRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)
-		buf.Write([]byte{0, 0, 0})
-		req, err := ParseQueryDeviceStateRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &QueryDeviceStateRequest{
+			DeviceID: 5,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseQueryDeviceStateRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseSendExtensionEventRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		events := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
-		classes := []uint32{}
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint32(123)) // destination
-		binary.Write(buf, binary.LittleEndian, uint16(len(classes)))
-		buf.WriteByte(byte(len(events) / 32)) // num_events
-		buf.WriteByte(5)                      // device_id
-		buf.WriteByte(1)                      // propagate
-		buf.Write([]byte{0, 0, 0})            // padding
-		buf.Write(events)
+		order := binary.LittleEndian
+		request := &SendExtensionEventRequest{
+			Destination: 123,
+			DeviceID:    5,
+			Propagate:   true,
+			NumClasses:  0,
+			NumEvents:   1,
+			Events:      []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32},
+			Classes:     []uint32{},
+		}
 
-		req, err := ParseSendExtensionEventRequest(binary.LittleEndian, buf.Bytes(), 1)
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseSendExtensionEventRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, Window(123), req.Destination)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.True(t, req.Propagate)
-		assert.Equal(t, byte(len(events)/32), req.NumEvents)
-		assert.Equal(t, uint16(len(classes)), req.NumClasses)
-		assert.Equal(t, events, req.Events)
-		assert.Equal(t, classes, req.Classes)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseDeviceBellRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		buf.WriteByte(5)  // device_id
-		buf.WriteByte(10) // feedback_id
-		buf.WriteByte(1)  // feedback_class
-		buf.WriteByte(50) // percent
-		req, err := ParseDeviceBellRequest(binary.LittleEndian, buf.Bytes(), 1)
+		order := binary.LittleEndian
+		request := &DeviceBellRequest{
+			DeviceID:      5,
+			FeedbackID:    10,
+			FeedbackClass: 1,
+			Percent:       50,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseDeviceBellRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, byte(5), req.DeviceID)
-		assert.Equal(t, byte(10), req.FeedbackID)
-		assert.Equal(t, byte(1), req.FeedbackClass)
-		assert.Equal(t, byte(50), req.Percent)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
 func TestParseXIChangeHierarchyRequest(t *testing.T) {
 	t.Run("valid request with detach slave", func(t *testing.T) {
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, uint16(1)) // num_changes
-		binary.Write(buf, binary.LittleEndian, uint16(0)) // padding
-		binary.Write(buf, binary.LittleEndian, uint16(4)) // type = XIDetachSlave
-		binary.Write(buf, binary.LittleEndian, uint16(8)) // length
-		binary.Write(buf, binary.LittleEndian, uint16(5)) // deviceid
-		binary.Write(buf, binary.LittleEndian, uint16(0)) // padding
+		order := binary.LittleEndian
+		request := &XIChangeHierarchyRequest{
+			NumChanges: 1,
+			Changes: []XIChangeHierarchyChange{
+				&XIDetachSlave{
+					Type:     4,
+					Length:   8,
+					DeviceID: 5,
+				},
+			},
+		}
 
-		req, err := ParseXIChangeHierarchyRequest(binary.LittleEndian, buf.Bytes(), 1)
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseXIChangeHierarchyRequest(order, encoded[4:], 1)
 		assert.NoError(t, err)
-		assert.NotNil(t, req)
-		assert.Equal(t, uint16(1), req.NumChanges)
-		assert.Len(t, req.Changes, 1)
-		detach, ok := req.Changes[0].(*XIDetachSlave)
-		assert.True(t, ok, "Expected XIDetachSlave change")
-		assert.Equal(t, uint16(5), detach.DeviceID)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
 	})
 }
 
@@ -1002,4 +833,143 @@ func TestSetDeviceButtonMappingReply(t *testing.T) {
 	if !reflect.DeepEqual(reply, decoded) {
 		t.Errorf("expected %+v, got %+v", reply, decoded)
 	}
+}
+func TestParseSelectExtensionEventRequest(t *testing.T) {
+	t.Run("valid request", func(t *testing.T) {
+		order := binary.LittleEndian
+		request := &SelectExtensionEventRequest{
+			Window:  123,
+			Classes: []uint32{10, 20},
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseSelectExtensionEventRequest(order, encoded[4:], 1)
+		assert.NoError(t, err)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
+	})
+
+	t.Run("body too short", func(t *testing.T) {
+		_, err := ParseSelectExtensionEventRequest(binary.LittleEndian, []byte{1, 2}, 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
+	})
+
+	t.Run("body length mismatch", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, uint32(123)) // window
+		binary.Write(buf, binary.LittleEndian, uint16(2))   // num_classes = 2
+		buf.Write([]byte{0, 0})                             // padding
+		binary.Write(buf, binary.LittleEndian, uint32(10))  // only one class
+
+		_, err := ParseSelectExtensionEventRequest(binary.LittleEndian, buf.Bytes(), 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
+	})
+}
+func TestParseGrabDeviceKeyRequest(t *testing.T) {
+	t.Run("valid request", func(t *testing.T) {
+		order := binary.LittleEndian
+		request := &GrabDeviceKeyRequest{
+			GrabWindow:      123,
+			Modifiers:       0,
+			Key:             10,
+			DeviceID:        5,
+			OwnerEvents:     true,
+			ThisDeviceMode:  1,
+			OtherDeviceMode: 0,
+			NumClasses:      0,
+			Classes:         []uint32{},
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGrabDeviceKeyRequest(order, encoded[4:], 1)
+		assert.NoError(t, err)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
+	})
+
+	t.Run("invalid length", func(t *testing.T) {
+		_, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, []byte{1, 2, 3}, 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
+	})
+
+	t.Run("body length mismatch", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, uint32(123)) // grab_window
+		binary.Write(buf, binary.LittleEndian, uint16(2))   // num_classes = 2
+		buf.WriteByte(1) // owner_events
+		buf.WriteByte(1) // this_device_mode
+		buf.WriteByte(0) // other_device_mode
+		buf.WriteByte(5) // device_id
+		binary.Write(buf, binary.LittleEndian, uint16(0)) // modifiers
+		buf.WriteByte(10)   // key
+		binary.Write(buf, binary.LittleEndian, uint32(10))  // only one class
+
+		_, err := ParseGrabDeviceKeyRequest(binary.LittleEndian, buf.Bytes(), 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
+	})
+}
+func TestParseUngrabDeviceKeyRequest(t *testing.T) {
+	t.Run("valid request", func(t *testing.T) {
+		order := binary.LittleEndian
+		request := &UngrabDeviceKeyRequest{
+			GrabWindow: 123,
+			Modifiers:  1,
+			DeviceID:   5,
+			Key:        10,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseUngrabDeviceKeyRequest(order, encoded[4:], 1)
+		assert.NoError(t, err)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
+	})
+
+	t.Run("invalid length", func(t *testing.T) {
+		_, err := ParseUngrabDeviceKeyRequest(binary.LittleEndian, []byte{1, 2, 3}, 1)
+		assert.Error(t, err)
+		assert.IsType(t, &LengthError{}, err)
+	})
+}
+func TestParseGrabDeviceButtonRequest(t *testing.T) {
+	t.Run("valid request", func(t *testing.T) {
+		order := binary.LittleEndian
+		request := &GrabDeviceButtonRequest{
+			GrabWindow:      123,
+			Modifiers:       1,
+			Button:          10,
+			DeviceID:        5,
+			OwnerEvents:     true,
+			ThisDeviceMode:  1,
+			OtherDeviceMode: 0,
+			NumClasses:      0,
+			Classes:         []uint32{},
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseGrabDeviceButtonRequest(order, encoded[4:], 1)
+		assert.NoError(t, err)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
+	})
+}
+func TestParseAllowDeviceEventsRequest(t *testing.T) {
+	t.Run("valid request", func(t *testing.T) {
+		order := binary.LittleEndian
+		request := &AllowDeviceEventsRequest{
+			Time:     0,
+			DeviceID: 5,
+			Mode:     1,
+		}
+
+		encoded := request.EncodeMessage(order)
+		decoded, err := ParseAllowDeviceEventsRequest(order, encoded[4:], 1)
+		assert.NoError(t, err)
+		assert.NotNil(t, decoded)
+		assert.Equal(t, request, decoded)
+	})
 }

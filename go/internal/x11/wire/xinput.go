@@ -206,6 +206,22 @@ type GetExtensionVersionRequest struct {
 	Name string
 }
 
+func (r *GetExtensionVersionRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	nameBytes := []byte(r.Name)
+	length := uint16(2 + (len(nameBytes)+PadLen(len(nameBytes)))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetExtensionVersion)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, uint16(len(nameBytes)))
+	buf.Write([]byte{0, 0}) // padding
+	buf.Write(nameBytes)
+	buf.Write(make([]byte, PadLen(len(nameBytes))))
+
+	return buf.Bytes()
+}
+
 func (r *GetExtensionVersionRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
@@ -214,7 +230,7 @@ func ParseGetExtensionVersionRequest(order binary.ByteOrder, body []byte, seq ui
 	if len(body) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XGetExtensionVersion, XInputOpcode)
 	}
-	length := int(order.Uint32(body[0:4]))
+	length := int(order.Uint16(body[0:2]))
 	if len(body) != 4+length+PadLen(length) {
 		return nil, NewError(LengthErrorCode, seq, 0, XGetExtensionVersion, XInputOpcode)
 	}
@@ -238,6 +254,27 @@ type XIWarpPointerRequest struct {
 
 func (r *XIWarpPointerRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIWarpPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(9)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIWarpPointer)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.SrcWindow)
+	binary.Write(buf, order, r.DstWindow)
+	binary.Write(buf, order, r.SrcX)
+	binary.Write(buf, order, r.SrcY)
+	binary.Write(buf, order, r.SrcW)
+	binary.Write(buf, order, r.SrcH)
+	binary.Write(buf, order, r.DstX)
+	binary.Write(buf, order, r.DstY)
+	return buf.Bytes()
 }
 
 func ParseXIWarpPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIWarpPointerRequest, error) {
@@ -268,6 +305,21 @@ type XIChangeCursorRequest struct {
 
 func (r *XIChangeCursorRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIChangeCursorRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIChangeCursor)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.Cursor)
+	return buf.Bytes()
 }
 
 func ParseXIChangeCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangeCursorRequest, error) {
@@ -338,6 +390,37 @@ func (r *XIChangeHierarchyRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (c *XIDetachSlave) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, c.Type)
+	binary.Write(buf, order, c.Length)
+	binary.Write(buf, order, c.DeviceID)
+	binary.Write(buf, order, uint16(0)) // padding
+	return buf.Bytes()
+}
+
+func (r *XIChangeHierarchyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+
+	changesBytes := new(bytes.Buffer)
+	for _, change := range r.Changes {
+		switch c := change.(type) {
+		case *XIDetachSlave:
+			changesBytes.Write(c.EncodeMessage(order))
+		}
+	}
+	length := uint16(2 + (changesBytes.Len())/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIChangeHierarchy)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.NumChanges)
+	buf.Write([]byte{0, 0}) // padding
+	buf.Write(changesBytes.Bytes())
+	return buf.Bytes()
+}
+
 func ParseXIChangeHierarchyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangeHierarchyRequest, error) {
 	if len(body) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIChangeHierarchy, XInputOpcode)
@@ -402,6 +485,20 @@ func (r *XISetClientPointerRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XISetClientPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(3)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XISetClientPointer)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
 func ParseXISetClientPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISetClientPointerRequest, error) {
 	if len(body) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, XISetClientPointer, XInputOpcode)
@@ -419,6 +516,18 @@ type XIGetClientPointerRequest struct {
 
 func (r *XIGetClientPointerRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIGetClientPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIGetClientPointer)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
 }
 
 func ParseXIGetClientPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetClientPointerRequest, error) {
@@ -445,6 +554,28 @@ type XIEventMask struct {
 
 func (r *XISelectEventsRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XISelectEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+
+	masksBytes := new(bytes.Buffer)
+	for _, mask := range r.Masks {
+		binary.Write(masksBytes, order, mask.DeviceID)
+		binary.Write(masksBytes, order, mask.MaskLen)
+		masksBytes.Write(mask.Mask)
+	}
+	length := uint16(3 + (masksBytes.Len())/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XISelectEvents)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.NumMasks)
+	buf.Write([]byte{0, 0}) // padding
+	buf.Write(masksBytes.Bytes())
+	return buf.Bytes()
 }
 
 func ParseXISelectEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISelectEventsRequest, error) {
@@ -489,6 +620,19 @@ func (r *XIQueryDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XIQueryDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIQueryDevice)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	return buf.Bytes()
+}
+
 func ParseXIQueryDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIQueryDeviceRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIQueryDevice, XInputOpcode)
@@ -509,6 +653,21 @@ func (r *XISetFocusRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XISetFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XISetFocus)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.Focus)
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
+}
+
 func ParseXISetFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISetFocusRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, XISetFocus, XInputOpcode)
@@ -527,6 +686,19 @@ type XIGetFocusRequest struct {
 
 func (r *XIGetFocusRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIGetFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIGetFocus)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	return buf.Bytes()
 }
 
 func ParseXIGetFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetFocusRequest, error) {
@@ -555,24 +727,51 @@ func (r *XIGrabDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XIGrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(7 + len(r.Mask)/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIGrabDevice)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Time)
+	binary.Write(buf, order, r.Cursor)
+	buf.WriteByte(r.GrabMode)
+	buf.WriteByte(r.PairedDeviceMode)
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	buf.WriteByte(0) // padding
+	binary.Write(buf, order, r.MaskLen)
+	buf.Write([]byte{0, 0}) // padding
+	buf.Write(r.Mask)
+	return buf.Bytes()
+}
+
 func ParseXIGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGrabDeviceRequest, error) {
-	if len(body) < 20 {
+	if len(body) < 24 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIGrabDevice, XInputOpcode)
 	}
-	maskLen := order.Uint16(body[18:20])
-	if len(body) != 20+int(maskLen)*4 {
+	maskLen := order.Uint16(body[20:22])
+	if len(body) != 24+int(maskLen)*4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIGrabDevice, XInputOpcode)
 	}
 	return &XIGrabDeviceRequest{
 		DeviceID:         order.Uint16(body[0:2]),
-		GrabWindow:       Window(order.Uint32(body[2:6])),
-		Time:             order.Uint32(body[6:10]),
-		Cursor:           order.Uint32(body[10:14]),
-		GrabMode:         body[14],
-		PairedDeviceMode: body[15],
-		OwnerEvents:      body[16] != 0,
+		GrabWindow:       Window(order.Uint32(body[4:8])),
+		Time:             order.Uint32(body[8:12]),
+		Cursor:           order.Uint32(body[12:16]),
+		GrabMode:         body[16],
+		PairedDeviceMode: body[17],
+		OwnerEvents:      body[18] != 0,
 		MaskLen:          maskLen,
-		Mask:             body[20:],
+		Mask:             body[24:],
 	}, nil
 }
 
@@ -584,6 +783,20 @@ type XIUngrabDeviceRequest struct {
 
 func (r *XIUngrabDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIUngrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(3)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIUngrabDevice)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
 }
 
 func ParseXIUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIUngrabDeviceRequest, error) {
@@ -607,6 +820,23 @@ type XIAllowEventsRequest struct {
 
 func (r *XIAllowEventsRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIAllowEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(5)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIAllowEvents)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.WriteByte(r.EventMode)
+	buf.WriteByte(0) // padding
+	binary.Write(buf, order, r.Time)
+	binary.Write(buf, order, r.TouchID)
+	binary.Write(buf, order, r.GrabWindow)
+	return buf.Bytes()
 }
 
 func ParseXIAllowEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIAllowEventsRequest, error) {
@@ -639,6 +869,34 @@ type XIPassiveGrabDeviceRequest struct {
 
 func (r *XIPassiveGrabDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIPassiveGrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(8 + len(r.Modifiers)/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIPassiveGrabDevice)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Time)
+	binary.Write(buf, order, r.Cursor)
+	binary.Write(buf, order, r.Detail)
+	binary.Write(buf, order, r.NumModifiers)
+	buf.Write([]byte{0, 0}) // padding
+	buf.WriteByte(r.GrabType)
+	buf.WriteByte(r.GrabMode)
+	buf.WriteByte(r.PairedDeviceMode)
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	buf.Write(r.Modifiers)
+	return buf.Bytes()
 }
 
 func ParseXIPassiveGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIPassiveGrabDeviceRequest, error) {
@@ -678,6 +936,26 @@ func (r *XIPassiveUngrabDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XIPassiveUngrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(6 + len(r.Modifiers)/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIPassiveUngrabDevice)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Detail)
+	binary.Write(buf, order, r.NumModifiers)
+	buf.Write([]byte{0, 0}) // padding
+	buf.WriteByte(r.GrabType)
+	buf.Write([]byte{0, 0, 0}) // padding
+	buf.Write(r.Modifiers)
+	return buf.Bytes()
+}
+
 func ParseXIPassiveUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIPassiveUngrabDeviceRequest, error) {
 	if len(body) < 16 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIPassiveUngrabDevice, XInputOpcode)
@@ -705,6 +983,19 @@ func (r *XIListPropertiesRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XIListPropertiesRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIListProperties)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	return buf.Bytes()
+}
+
 func ParseXIListPropertiesRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIListPropertiesRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIListProperties, XInputOpcode)
@@ -727,6 +1018,25 @@ type XIChangePropertyRequest struct {
 
 func (r *XIChangePropertyRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIChangePropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(5 + (len(r.Data)+PadLen(len(r.Data)))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIChangeProperty)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.WriteByte(r.Mode)
+	buf.WriteByte(r.Format)
+	binary.Write(buf, order, r.Property)
+	binary.Write(buf, order, r.Type)
+	binary.Write(buf, order, r.NumItems)
+	buf.Write(r.Data)
+	buf.Write(make([]byte, PadLen(len(r.Data))))
+	return buf.Bytes()
 }
 
 func pad(i int) int {
@@ -774,6 +1084,20 @@ func (r *XIDeletePropertyRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XIDeletePropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(3)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIDeleteProperty)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.Property)
+	return buf.Bytes()
+}
+
 func ParseXIDeletePropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIDeletePropertyRequest, error) {
 	if len(body) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIDeleteProperty, XInputOpcode)
@@ -796,6 +1120,28 @@ type XIGetPropertyRequest struct {
 
 func (r *XIGetPropertyRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIGetPropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(6)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIGetProperty)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.DeviceID)
+	if r.Delete {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	buf.WriteByte(0) // padding
+	binary.Write(buf, order, r.Property)
+	binary.Write(buf, order, r.Type)
+	binary.Write(buf, order, r.Offset)
+	binary.Write(buf, order, r.Len)
+	return buf.Bytes()
 }
 
 func ParseXIGetPropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetPropertyRequest, error) {
@@ -821,6 +1167,18 @@ func (r *XIGetSelectedEventsRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *XIGetSelectedEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIGetSelectedEvents)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
 func ParseXIGetSelectedEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetSelectedEventsRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XIGetSelectedEvents, XInputOpcode)
@@ -843,6 +1201,22 @@ type XIBarrier struct {
 
 func (r *XIBarrierReleasePointerRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *XIBarrierReleasePointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2 + len(r.Barriers)*2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIBarrierReleasePointer)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.NumBarriers)
+	for _, barrier := range r.Barriers {
+		binary.Write(buf, order, barrier.Barrier)
+		binary.Write(buf, order, barrier.EventID)
+	}
+	return buf.Bytes()
 }
 
 func ParseXIBarrierReleasePointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIBarrierReleasePointerRequest, error) {
@@ -952,6 +1326,17 @@ func (r *ListInputDevicesRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *ListInputDevicesRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(1)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XListInputDevices)
+	binary.Write(buf, order, length)
+
+	return buf.Bytes()
+}
+
 func ParseListInputDevicesRequest(order binary.ByteOrder, body []byte, seq uint16) (*ListInputDevicesRequest, error) {
 	if len(body) != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, XListInputDevices, XInputOpcode)
@@ -966,6 +1351,19 @@ type OpenDeviceRequest struct {
 
 func (r *OpenDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *OpenDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XOpenDevice)
+	binary.Write(buf, order, length)
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
 }
 
 func ParseOpenDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*OpenDeviceRequest, error) {
@@ -1353,6 +1751,20 @@ func (r *SetDeviceModeRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *SetDeviceModeRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XSetDeviceMode)
+	binary.Write(buf, order, length)
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.Mode)
+	buf.Write([]byte{0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseSetDeviceModeRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceModeRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceMode, XInputOpcode)
@@ -1399,6 +1811,25 @@ type SetDeviceValuatorsRequest struct {
 
 func (r *SetDeviceValuatorsRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *SetDeviceValuatorsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2 + len(r.Valuators))
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XSetDeviceValuators)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.FirstValuator)
+	buf.WriteByte(byte(len(r.Valuators)))
+	buf.WriteByte(0) // padding
+	for _, v := range r.Valuators {
+		binary.Write(buf, order, v)
+	}
+
+	return buf.Bytes()
 }
 
 func ParseSetDeviceValuatorsRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceValuatorsRequest, error) {
@@ -1519,6 +1950,21 @@ func (r *GetDeviceControlRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *GetDeviceControlRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetDeviceControl)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(0) // padding
+	binary.Write(buf, order, r.Control)
+
+	return buf.Bytes()
+}
+
 func ParseGetDeviceControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceControlRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceControl, XInputOpcode)
@@ -1592,6 +2038,23 @@ type ChangeDeviceControlRequest struct {
 
 func (r *ChangeDeviceControlRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *ChangeDeviceControlRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	controlBytes := r.Control.EncodeMessage(order)
+	length := uint16(1 + (len(controlBytes)+PadLen(len(controlBytes)))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XChangeDeviceControl)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(0) // padding
+	buf.Write(controlBytes)
+	buf.Write(make([]byte, PadLen(len(controlBytes))))
+
+	return buf.Bytes()
 }
 
 func ParseChangeDeviceControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceControlRequest, error) {
@@ -1831,6 +2294,22 @@ type AllowDeviceEventsRequest struct {
 
 func (r *AllowDeviceEventsRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *AllowDeviceEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(3)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XAllowDeviceEvents)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Time)
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.Mode)
+	buf.Write([]byte{0, 0}) // padding
+
+	return buf.Bytes()
 }
 
 func ParseAllowDeviceEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*AllowDeviceEventsRequest, error) {
@@ -2209,6 +2688,24 @@ func (r *SelectExtensionEventRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *SelectExtensionEventRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(3 + len(r.Classes))
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XSelectExtensionEvent)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, uint16(len(r.Classes)))
+	buf.Write([]byte{0, 0}) // padding
+	for _, class := range r.Classes {
+		binary.Write(buf, order, class)
+	}
+
+	return buf.Bytes()
+}
+
 func ParseSelectExtensionEventRequest(order binary.ByteOrder, body []byte, seq uint16) (*SelectExtensionEventRequest, error) {
 	if len(body) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, XSelectExtensionEvent, XInputOpcode)
@@ -2238,6 +2735,22 @@ func (r *GetDeviceMotionEventsRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *GetDeviceMotionEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetDeviceMotionEvents)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Start)
+	binary.Write(buf, order, r.Stop)
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseGetDeviceMotionEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceMotionEventsRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceMotionEvents, XInputOpcode)
@@ -2258,6 +2771,20 @@ func (r *ChangeKeyboardDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *ChangeKeyboardDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XChangeKeyboardDevice)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseChangeKeyboardDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeKeyboardDeviceRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XChangeKeyboardDevice, XInputOpcode)
@@ -2276,6 +2803,22 @@ type ChangePointerDeviceRequest struct {
 
 func (r *ChangePointerDeviceRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *ChangePointerDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XChangePointerDevice)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.XAxis)
+	buf.WriteByte(r.YAxis)
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(0) // padding
+
+	return buf.Bytes()
 }
 
 func ParseChangePointerDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangePointerDeviceRequest, error) {
@@ -2304,6 +2847,33 @@ type GrabDeviceKeyRequest struct {
 
 func (r *GrabDeviceKeyRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *GrabDeviceKeyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(5 + len(r.Classes))
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGrabDeviceKey)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, uint16(len(r.Classes)))
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	buf.WriteByte(r.ThisDeviceMode)
+	buf.WriteByte(r.OtherDeviceMode)
+	buf.WriteByte(r.DeviceID)
+	binary.Write(buf, order, r.Modifiers)
+	buf.WriteByte(r.Key)
+	for _, class := range r.Classes {
+		binary.Write(buf, order, class)
+	}
+
+	return buf.Bytes()
 }
 
 func ParseGrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceKeyRequest, error) {
@@ -2343,6 +2913,23 @@ func (r *UngrabDeviceKeyRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *UngrabDeviceKeyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XUngrabDeviceKey)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Modifiers)
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.Key)
+	buf.Write([]byte{0, 0, 0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseUngrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceKeyRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, XUngrabDeviceKey, XInputOpcode)
@@ -2370,6 +2957,33 @@ type GrabDeviceButtonRequest struct {
 
 func (r *GrabDeviceButtonRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *GrabDeviceButtonRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(5 + len(r.Classes))
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGrabDeviceButton)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, uint16(len(r.Classes)))
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	buf.WriteByte(r.ThisDeviceMode)
+	buf.WriteByte(r.OtherDeviceMode)
+	buf.WriteByte(r.DeviceID)
+	binary.Write(buf, order, r.Modifiers)
+	buf.WriteByte(r.Button)
+	for _, class := range r.Classes {
+		binary.Write(buf, order, class)
+	}
+
+	return buf.Bytes()
 }
 
 func ParseGrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceButtonRequest, error) {
@@ -2410,6 +3024,23 @@ func (r *UngrabDeviceButtonRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *UngrabDeviceButtonRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XUngrabDeviceButton)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Modifiers)
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.Button)
+	buf.Write([]byte{0, 0, 0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseUngrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceButtonRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, XUngrabDeviceButton, XInputOpcode)
@@ -2429,6 +3060,20 @@ type GetDeviceFocusRequest struct {
 
 func (r *GetDeviceFocusRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *GetDeviceFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetDeviceFocus)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
 }
 
 func ParseGetDeviceFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceFocusRequest, error) {
@@ -2452,6 +3097,23 @@ func (r *SetDeviceFocusRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *SetDeviceFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XSetDeviceFocus)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Focus)
+	binary.Write(buf, order, r.Time)
+	buf.WriteByte(r.RevertTo)
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseSetDeviceFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceFocusRequest, error) {
 	if len(body) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceFocus, XInputOpcode)
@@ -2471,6 +3133,20 @@ type GetFeedbackControlRequest struct {
 
 func (r *GetFeedbackControlRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *GetFeedbackControlRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetFeedbackControl)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
 }
 
 func ParseGetFeedbackControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetFeedbackControlRequest, error) {
@@ -2494,6 +3170,24 @@ func (r *ChangeFeedbackControlRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *ChangeFeedbackControlRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(3 + (len(r.Control)+PadLen(len(r.Control)))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XChangeFeedbackControl)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Mask)
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.ControlID)
+	buf.Write([]byte{0, 0}) // padding
+	buf.Write(r.Control)
+	buf.Write(make([]byte, PadLen(len(r.Control))))
+
+	return buf.Bytes()
+}
+
 func ParseChangeFeedbackControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeFeedbackControlRequest, error) {
 	if len(body) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, XChangeFeedbackControl, XInputOpcode)
@@ -2515,6 +3209,22 @@ type GetDeviceKeyMappingRequest struct {
 
 func (r *GetDeviceKeyMappingRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *GetDeviceKeyMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetDeviceKeyMapping)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.FirstKey)
+	buf.WriteByte(r.Count)
+	buf.WriteByte(0) // padding
+
+	return buf.Bytes()
 }
 
 func ParseGetDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceKeyMappingRequest, error) {
@@ -2586,6 +3296,25 @@ func (r *ChangeDeviceKeyMappingRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *ChangeDeviceKeyMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2 + len(r.Keysyms))
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XChangeDeviceKeyMapping)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.FirstKey)
+	buf.WriteByte(r.KeysymsPerKeycode)
+	buf.WriteByte(r.KeycodeCount)
+	for _, keysym := range r.Keysyms {
+		binary.Write(buf, order, keysym)
+	}
+
+	return buf.Bytes()
+}
+
 func ParseChangeDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceKeyMappingRequest, error) {
 	if len(body) < 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceKeyMapping, XInputOpcode)
@@ -2618,6 +3347,20 @@ func (r *GetDeviceModifierMappingRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *GetDeviceModifierMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetDeviceModifierMapping)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseGetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceModifierMappingRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceModifierMapping, XInputOpcode)
@@ -2635,6 +3378,23 @@ type SetDeviceModifierMappingRequest struct {
 
 func (r *SetDeviceModifierMappingRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *SetDeviceModifierMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2 + (len(r.Keycodes)+PadLen(len(r.Keycodes)))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XSetDeviceModifierMapping)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(byte(len(r.Keycodes) / 8))
+	buf.Write([]byte{0, 0}) // padding
+	buf.Write(r.Keycodes)
+	buf.Write(make([]byte, PadLen(len(r.Keycodes))))
+
+	return buf.Bytes()
 }
 
 func ParseSetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceModifierMappingRequest, error) {
@@ -2692,6 +3452,20 @@ func (r *GetDeviceButtonMappingRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *GetDeviceButtonMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XGetDeviceButtonMapping)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseGetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceButtonMappingRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceButtonMapping, XInputOpcode)
@@ -2709,6 +3483,25 @@ type SetDeviceButtonMappingRequest struct {
 
 func (r *SetDeviceButtonMappingRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *SetDeviceButtonMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XSetDeviceButtonMapping)
+	binary.Write(buf, order, uint16(0)) // Eagerly write length
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(byte(len(r.Map)))
+	buf.Write([]byte{0, 0}) // padding
+	buf.Write(r.Map)
+	buf.Write(make([]byte, PadLen(len(r.Map))))
+
+	// Overwrite length
+	encoded := buf.Bytes()
+	length := uint16(len(encoded) / 4)
+	order.PutUint16(encoded[2:4], length)
+
+	return encoded
 }
 
 func ParseSetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceButtonMappingRequest, error) {
@@ -2765,6 +3558,20 @@ func (r *QueryDeviceStateRequest) OpCode() ReqCode {
 	return XInputOpcode
 }
 
+func (r *QueryDeviceStateRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XQueryDeviceState)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.Write([]byte{0, 0, 0}) // padding
+
+	return buf.Bytes()
+}
+
 func ParseQueryDeviceStateRequest(order binary.ByteOrder, body []byte, seq uint16) (*QueryDeviceStateRequest, error) {
 	if len(body) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, XQueryDeviceState, XInputOpcode)
@@ -2787,6 +3594,32 @@ type SendExtensionEventRequest struct {
 
 func (r *SendExtensionEventRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *SendExtensionEventRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4 + len(r.Events)/4 + len(r.Classes))
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XSendExtensionEvent)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Destination)
+	binary.Write(buf, order, uint16(len(r.Classes)))
+	buf.WriteByte(byte(len(r.Events) / 32))
+	buf.WriteByte(r.DeviceID)
+	if r.Propagate {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	buf.Write([]byte{0, 0, 0}) // padding
+	buf.Write(r.Events)
+	for _, class := range r.Classes {
+		binary.Write(buf, order, class)
+	}
+
+	return buf.Bytes()
 }
 
 func ParseSendExtensionEventRequest(order binary.ByteOrder, body []byte, seq uint16) (*SendExtensionEventRequest, error) {
@@ -2840,6 +3673,22 @@ type DeviceBellRequest struct {
 
 func (r *DeviceBellRequest) OpCode() ReqCode {
 	return XInputOpcode
+}
+
+func (r *DeviceBellRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(2)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XDeviceBell)
+	binary.Write(buf, order, length)
+
+	buf.WriteByte(r.DeviceID)
+	buf.WriteByte(r.FeedbackID)
+	buf.WriteByte(r.FeedbackClass)
+	buf.WriteByte(r.Percent)
+
+	return buf.Bytes()
 }
 
 func ParseDeviceBellRequest(order binary.ByteOrder, body []byte, seq uint16) (*DeviceBellRequest, error) {

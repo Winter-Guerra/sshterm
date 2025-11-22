@@ -3,6 +3,7 @@
 package wire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 )
@@ -106,7 +107,7 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return ParseDeletePropertyRequest(order, body, seq)
 
 	case GetProperty:
-		return ParseGetPropertyRequest(order, body, seq)
+		return ParseGetPropertyRequest(order, data, body, seq)
 
 	case ListProperties:
 		return ParseListPropertiesRequest(order, body, seq)
@@ -124,7 +125,7 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return ParseSendEventRequest(order, data, body, seq)
 
 	case GrabPointer:
-		return ParseGrabPointerRequest(order, body, seq)
+		return ParseGrabPointerRequest(order, data, body, seq)
 
 	case UngrabPointer:
 		return ParseUngrabPointerRequest(order, body, seq)
@@ -139,7 +140,7 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return ParseChangeActivePointerGrabRequest(order, body, seq)
 
 	case GrabKeyboard:
-		return ParseGrabKeyboardRequest(order, body, seq)
+		return ParseGrabKeyboardRequest(order, data, body, seq)
 
 	case UngrabKeyboard:
 		return ParseUngrabKeyboardRequest(order, body, seq)
@@ -148,7 +149,7 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return ParseGrabKeyRequest(order, data, body, seq)
 
 	case UngrabKey:
-		return ParseUngrabKeyRequest(order, body, seq)
+		return ParseUngrabKeyRequest(order, data, body, seq)
 
 	case AllowEvents:
 		return ParseAllowEventsRequest(order, data, body, seq)
@@ -172,7 +173,7 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return ParseWarpPointerRequest(order, body, seq)
 
 	case SetInputFocus:
-		return ParseSetInputFocusRequest(order, body, seq)
+		return ParseSetInputFocusRequest(order, data, body, seq)
 
 	case GetInputFocus:
 		return ParseGetInputFocusRequest(order, body, seq)
@@ -442,10 +443,63 @@ type WindowAttributes struct {
 	BackgroundPixelSet bool
 }
 
-func (wa *WindowAttributes) values() []uint32 {
-	// This is a placeholder. A real implementation would serialize the struct
-	// based on a bitmask. For the test, we only need to serialize the event mask.
-	return []uint32{wa.EventMask}
+// encode serializes the window attributes to a byte slice based on the value mask.
+func (wa *WindowAttributes) encode(order binary.ByteOrder, valueMask uint32) []byte {
+	buf := new(bytes.Buffer)
+	if valueMask&CWBackPixmap != 0 {
+		binary.Write(buf, order, wa.BackgroundPixmap)
+	}
+	if valueMask&CWBackPixel != 0 {
+		binary.Write(buf, order, wa.BackgroundPixel)
+	}
+	if valueMask&CWBorderPixmap != 0 {
+		binary.Write(buf, order, wa.BorderPixmap)
+	}
+	if valueMask&CWBorderPixel != 0 {
+		binary.Write(buf, order, wa.BorderPixel)
+	}
+	if valueMask&CWBitGravity != 0 {
+		binary.Write(buf, order, wa.BitGravity)
+	}
+	if valueMask&CWWinGravity != 0 {
+		binary.Write(buf, order, wa.WinGravity)
+	}
+	if valueMask&CWBackingStore != 0 {
+		binary.Write(buf, order, wa.BackingStore)
+	}
+	if valueMask&CWBackingPlanes != 0 {
+		binary.Write(buf, order, wa.BackingPlanes)
+	}
+	if valueMask&CWBackingPixel != 0 {
+		binary.Write(buf, order, wa.BackingPixel)
+	}
+	if valueMask&CWOverrideRedirect != 0 {
+		var v uint32
+		if wa.OverrideRedirect {
+			v = 1
+		}
+		binary.Write(buf, order, v)
+	}
+	if valueMask&CWSaveUnder != 0 {
+		var v uint32
+		if wa.SaveUnder {
+			v = 1
+		}
+		binary.Write(buf, order, v)
+	}
+	if valueMask&CWEventMask != 0 {
+		binary.Write(buf, order, wa.EventMask)
+	}
+	if valueMask&CWDontPropagate != 0 {
+		binary.Write(buf, order, wa.DontPropagateMask)
+	}
+	if valueMask&CWColormap != 0 {
+		binary.Write(buf, order, wa.Colormap)
+	}
+	if valueMask&CWCursor != 0 {
+		binary.Write(buf, order, wa.Cursor)
+	}
+	return buf.Bytes()
 }
 
 // PolyTextItem is an interface for items in a PolyText request.
@@ -514,6 +568,27 @@ type CreateWindowRequest struct {
 	Values      WindowAttributes
 }
 
+func (r *CreateWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Depth)
+	valuesBytes := r.Values.encode(order, r.ValueMask)
+	length := uint16(8 + len(valuesBytes)/4)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Parent)
+	binary.Write(buf, order, r.X)
+	binary.Write(buf, order, r.Y)
+	binary.Write(buf, order, r.Width)
+	binary.Write(buf, order, r.Height)
+	binary.Write(buf, order, r.BorderWidth)
+	binary.Write(buf, order, r.Class)
+	binary.Write(buf, order, r.Visual)
+	binary.Write(buf, order, r.ValueMask)
+	buf.Write(valuesBytes)
+	return buf.Bytes()
+}
+
 func (CreateWindowRequest) OpCode() ReqCode { return CreateWindow }
 
 func ParseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CreateWindowRequest, error) {
@@ -559,6 +634,19 @@ type ChangeWindowAttributesRequest struct {
 	Values    WindowAttributes
 }
 
+func (r *ChangeWindowAttributesRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	valuesBytes := r.Values.encode(order, r.ValueMask)
+	length := uint16(3 + len(valuesBytes)/4)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.ValueMask)
+	buf.Write(valuesBytes)
+	return buf.Bytes()
+}
+
 func (ChangeWindowAttributesRequest) OpCode() ReqCode { return ChangeWindowAttributes }
 
 func ParseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeWindowAttributesRequest, error) {
@@ -581,6 +669,15 @@ func ParseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []by
 
 type GetWindowAttributesRequest struct {
 	Window Window
+}
+
+func (r *GetWindowAttributesRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
 }
 
 func (GetWindowAttributesRequest) OpCode() ReqCode { return GetWindowAttributes }
@@ -606,6 +703,15 @@ type DestroyWindowRequest struct {
 	Window Window
 }
 
+func (r *DestroyWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
 func (DestroyWindowRequest) OpCode() ReqCode { return DestroyWindow }
 
 /*
@@ -627,6 +733,15 @@ func ParseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq u
 
 type DestroySubwindowsRequest struct {
 	Window Window
+}
+
+func (r *DestroySubwindowsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
 }
 
 func (DestroySubwindowsRequest) OpCode() ReqCode { return DestroySubwindows }
@@ -651,6 +766,15 @@ func ParseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, s
 type ChangeSaveSetRequest struct {
 	Window Window
 	Mode   byte
+}
+
+func (r *ChangeSaveSetRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Mode)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
 }
 
 func (ChangeSaveSetRequest) OpCode() ReqCode { return ChangeSaveSet }
@@ -678,6 +802,18 @@ type ReparentWindowRequest struct {
 	Parent Window
 	X      int16
 	Y      int16
+}
+
+func (r *ReparentWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(4)) // length
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.Parent)
+	binary.Write(buf, order, r.X)
+	binary.Write(buf, order, r.Y)
+	return buf.Bytes()
 }
 
 func (ReparentWindowRequest) OpCode() ReqCode { return ReparentWindow }
@@ -709,6 +845,15 @@ type MapWindowRequest struct {
 	Window Window
 }
 
+func (r *MapWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
 func (MapWindowRequest) OpCode() ReqCode { return MapWindow }
 
 /*
@@ -730,6 +875,15 @@ func ParseMapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 
 type MapSubwindowsRequest struct {
 	Window Window
+}
+
+func (r *MapSubwindowsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
 }
 
 func (MapSubwindowsRequest) OpCode() ReqCode { return MapSubwindows }
@@ -755,6 +909,15 @@ type UnmapWindowRequest struct {
 	Window Window
 }
 
+func (r *UnmapWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
 func (UnmapWindowRequest) OpCode() ReqCode { return UnmapWindow }
 
 /*
@@ -776,6 +939,15 @@ func ParseUnmapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uin
 
 type UnmapSubwindowsRequest struct {
 	Window Window
+}
+
+func (r *UnmapSubwindowsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
 }
 
 func (UnmapSubwindowsRequest) OpCode() ReqCode { return UnmapSubwindows }
@@ -801,6 +973,20 @@ type ConfigureWindowRequest struct {
 	Window    Window
 	ValueMask uint16
 	Values    []uint32
+}
+
+func (r *ConfigureWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(3+len(r.Values))) // length
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.ValueMask)
+	buf.Write([]byte{0, 0}) // unused
+	for _, v := range r.Values {
+		binary.Write(buf, order, v)
+	}
+	return buf.Bytes()
 }
 
 func (ConfigureWindowRequest) OpCode() ReqCode { return ConfigureWindow }
@@ -854,6 +1040,15 @@ type CirculateWindowRequest struct {
 	Direction byte
 }
 
+func (r *CirculateWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Direction)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
 func (CirculateWindowRequest) OpCode() ReqCode { return CirculateWindow }
 
 func ParseCirculateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CirculateWindowRequest, error) {
@@ -876,6 +1071,15 @@ GetGeometry
 */
 type GetGeometryRequest struct {
 	Drawable Drawable
+}
+
+func (r *GetGeometryRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Drawable)
+	return buf.Bytes()
 }
 
 func (GetGeometryRequest) OpCode() ReqCode { return GetGeometry }
@@ -901,6 +1105,15 @@ type QueryTreeRequest struct {
 	Window Window
 }
 
+func (r *QueryTreeRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
 func (QueryTreeRequest) OpCode() ReqCode { return QueryTree }
 
 func ParseQueryTreeRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*QueryTreeRequest, error) {
@@ -915,6 +1128,22 @@ func ParseQueryTreeRequest(order binary.ByteOrder, requestBody []byte, seq uint1
 type InternAtomRequest struct {
 	Name         string
 	OnlyIfExists bool
+}
+
+func (r *InternAtomRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	if r.OnlyIfExists {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(2+(len(r.Name)+PadLen(len(r.Name)))/4)) // length
+	binary.Write(buf, order, uint16(len(r.Name)))
+	buf.Write([]byte{0, 0}) // unused
+	buf.WriteString(r.Name)
+	buf.Write(make([]byte, PadLen(len(r.Name))))
+	return buf.Bytes()
 }
 
 func (InternAtomRequest) OpCode() ReqCode { return InternAtom }
@@ -957,6 +1186,15 @@ type GetAtomNameRequest struct {
 	Atom Atom
 }
 
+func (r *GetAtomNameRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Atom)
+	return buf.Bytes()
+}
+
 func (GetAtomNameRequest) OpCode() ReqCode { return GetAtomName }
 
 func ParseGetAtomNameRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetAtomNameRequest, error) {
@@ -994,6 +1232,22 @@ type ChangePropertyRequest struct {
 	Data     []byte
 }
 
+func (r *ChangePropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(6+(len(r.Data)+PadLen(len(r.Data)))/4)) // length
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.Property)
+	binary.Write(buf, order, r.Type)
+	buf.WriteByte(r.Format)
+	buf.Write([]byte{0, 0, 0}) // unused
+	binary.Write(buf, order, uint32(len(r.Data)))
+	buf.Write(r.Data)
+	buf.Write(make([]byte, PadLen(len(r.Data))))
+	return buf.Bytes()
+}
+
 func (ChangePropertyRequest) OpCode() ReqCode { return ChangeProperty }
 
 func ParseChangePropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangePropertyRequest, error) {
@@ -1025,6 +1279,16 @@ DeleteProperty
 type DeletePropertyRequest struct {
 	Window   Window
 	Property Atom
+}
+
+func (r *DeletePropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(3)) // length
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.Property)
+	return buf.Bytes()
 }
 
 func (DeletePropertyRequest) OpCode() ReqCode { return DeleteProperty }
@@ -1060,16 +1324,34 @@ type GetPropertyRequest struct {
 	Length   uint32
 }
 
+func (r *GetPropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	if r.Delete {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(6)) // length
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.Property)
+	binary.Write(buf, order, r.Type)
+	binary.Write(buf, order, r.Offset)
+	binary.Write(buf, order, r.Length)
+	return buf.Bytes()
+}
+
 func (GetPropertyRequest) OpCode() ReqCode { return GetProperty }
 
-func ParseGetPropertyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetPropertyRequest, error) {
+func ParseGetPropertyRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GetPropertyRequest, error) {
 	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GetProperty)
 	}
 	req := &GetPropertyRequest{}
+	req.Delete = data != 0
 	req.Window = Window(order.Uint32(requestBody[0:4]))
 	req.Property = Atom(order.Uint32(requestBody[4:8]))
-	req.Delete = requestBody[8] != 0
+	req.Type = Atom(order.Uint32(requestBody[8:12]))
 	req.Offset = order.Uint32(requestBody[12:16])
 	req.Length = order.Uint32(requestBody[16:20])
 	return req, nil
@@ -1085,6 +1367,15 @@ ListProperties
 */
 type ListPropertiesRequest struct {
 	Window Window
+}
+
+func (r *ListPropertiesRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
 }
 
 func (ListPropertiesRequest) OpCode() ReqCode { return ListProperties }
@@ -1114,6 +1405,17 @@ type SetSelectionOwnerRequest struct {
 	Time      Timestamp
 }
 
+func (r *SetSelectionOwnerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(4)) // length
+	binary.Write(buf, order, r.Owner)
+	binary.Write(buf, order, r.Selection)
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
+}
+
 func (SetSelectionOwnerRequest) OpCode() ReqCode { return SetSelectionOwner }
 
 func ParseSetSelectionOwnerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetSelectionOwnerRequest, error) {
@@ -1137,6 +1439,15 @@ GetSelectionOwner
 */
 type GetSelectionOwnerRequest struct {
 	Selection Atom
+}
+
+func (r *GetSelectionOwnerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Selection)
+	return buf.Bytes()
 }
 
 func (GetSelectionOwnerRequest) OpCode() ReqCode { return GetSelectionOwner }
@@ -1170,6 +1481,19 @@ type ConvertSelectionRequest struct {
 	Time      Timestamp
 }
 
+func (r *ConvertSelectionRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(6)) // length
+	binary.Write(buf, order, r.Requestor)
+	binary.Write(buf, order, r.Selection)
+	binary.Write(buf, order, r.Target)
+	binary.Write(buf, order, r.Property)
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
+}
+
 func (ConvertSelectionRequest) OpCode() ReqCode { return ConvertSelection }
 
 func ParseConvertSelectionRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ConvertSelectionRequest, error) {
@@ -1200,6 +1524,21 @@ type SendEventRequest struct {
 	Destination Window
 	EventMask   uint32
 	EventData   []byte
+}
+
+func (r *SendEventRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	if r.Propagate {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(11)) // length
+	binary.Write(buf, order, r.Destination)
+	binary.Write(buf, order, r.EventMask)
+	buf.Write(r.EventData)
+	return buf.Bytes()
 }
 
 func (SendEventRequest) OpCode() ReqCode { return SendEvent }
@@ -1241,13 +1580,33 @@ type GrabPointerRequest struct {
 	Time         Timestamp
 }
 
+func (r *GrabPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(6)) // length
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.EventMask)
+	buf.WriteByte(r.PointerMode)
+	buf.WriteByte(r.KeyboardMode)
+	binary.Write(buf, order, r.ConfineTo)
+	binary.Write(buf, order, r.Cursor)
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
+}
+
 func (GrabPointerRequest) OpCode() ReqCode { return GrabPointer }
 
-func ParseGrabPointerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabPointerRequest, error) {
+func ParseGrabPointerRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabPointerRequest, error) {
 	if len(requestBody) != 20 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabPointer)
 	}
 	req := &GrabPointerRequest{}
+	req.OwnerEvents = data != 0
 	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
 	req.EventMask = order.Uint16(requestBody[4:6])
 	req.PointerMode = requestBody[6]
@@ -1268,6 +1627,15 @@ UngrabPointer
 */
 type UngrabPointerRequest struct {
 	Time Timestamp
+}
+
+func (r *UngrabPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
 }
 
 func (UngrabPointerRequest) OpCode() ReqCode { return UngrabPointer }
@@ -1309,6 +1677,27 @@ type GrabButtonRequest struct {
 	Modifiers    uint16
 }
 
+func (r *GrabButtonRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(6)) // length
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.EventMask)
+	buf.WriteByte(r.PointerMode)
+	buf.WriteByte(r.KeyboardMode)
+	binary.Write(buf, order, r.ConfineTo)
+	binary.Write(buf, order, r.Cursor)
+	buf.WriteByte(r.Button)
+	buf.WriteByte(0) // unused
+	binary.Write(buf, order, r.Modifiers)
+	return buf.Bytes()
+}
+
 func (GrabButtonRequest) OpCode() ReqCode { return GrabButton }
 
 func ParseGrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabButtonRequest, error) {
@@ -1344,6 +1733,17 @@ type UngrabButtonRequest struct {
 	Modifiers  uint16
 }
 
+func (r *UngrabButtonRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Button)
+	binary.Write(buf, order, uint16(3)) // length
+	binary.Write(buf, order, r.GrabWindow)
+	buf.Write([]byte{0, 0}) // unused
+	binary.Write(buf, order, r.Modifiers)
+	return buf.Bytes()
+}
+
 func (UngrabButtonRequest) OpCode() ReqCode { return UngrabButton }
 
 func ParseUngrabButtonRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*UngrabButtonRequest, error) {
@@ -1372,6 +1772,18 @@ type ChangeActivePointerGrabRequest struct {
 	Cursor    Cursor
 	Time      Timestamp
 	EventMask uint16
+}
+
+func (r *ChangeActivePointerGrabRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(4)) // length
+	binary.Write(buf, order, r.Cursor)
+	binary.Write(buf, order, r.Time)
+	binary.Write(buf, order, r.EventMask)
+	buf.Write([]byte{0, 0}) // unused
+	return buf.Bytes()
 }
 
 func (ChangeActivePointerGrabRequest) OpCode() ReqCode { return ChangeActivePointerGrab }
@@ -1407,13 +1819,31 @@ type GrabKeyboardRequest struct {
 	KeyboardMode byte
 }
 
+func (r *GrabKeyboardRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(4)) // length
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Time)
+	buf.WriteByte(r.PointerMode)
+	buf.WriteByte(r.KeyboardMode)
+	buf.Write([]byte{0, 0}) // unused
+	return buf.Bytes()
+}
+
 func (GrabKeyboardRequest) OpCode() ReqCode { return GrabKeyboard }
 
-func ParseGrabKeyboardRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabKeyboardRequest, error) {
+func ParseGrabKeyboardRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabKeyboardRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, GrabKeyboard)
 	}
 	req := &GrabKeyboardRequest{}
+	req.OwnerEvents = data != 0
 	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
 	req.Time = Timestamp(order.Uint32(requestBody[4:8]))
 	req.PointerMode = requestBody[8]
@@ -1431,6 +1861,15 @@ UngrabKeyboard
 */
 type UngrabKeyboardRequest struct {
 	Time Timestamp
+}
+
+func (r *UngrabKeyboardRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
 }
 
 func (UngrabKeyboardRequest) OpCode() ReqCode { return UngrabKeyboard }
@@ -1466,6 +1905,24 @@ type GrabKeyRequest struct {
 	KeyboardMode byte
 }
 
+func (r *GrabKeyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	if r.OwnerEvents {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(4)) // length
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Modifiers)
+	buf.WriteByte(byte(r.Key))
+	buf.WriteByte(r.PointerMode)
+	buf.WriteByte(r.KeyboardMode)
+	buf.Write([]byte{0, 0, 0}) // unused
+	return buf.Bytes()
+}
+
 func (GrabKeyRequest) OpCode() ReqCode { return GrabKey }
 
 func ParseGrabKeyRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*GrabKeyRequest, error) {
@@ -1498,16 +1955,27 @@ type UngrabKeyRequest struct {
 	Key        KeyCode
 }
 
+func (r *UngrabKeyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(byte(r.Key))
+	binary.Write(buf, order, uint16(3)) // length
+	binary.Write(buf, order, r.GrabWindow)
+	binary.Write(buf, order, r.Modifiers)
+	buf.Write([]byte{0, 0}) // unused
+	return buf.Bytes()
+}
+
 func (UngrabKeyRequest) OpCode() ReqCode { return UngrabKey }
 
-func ParseUngrabKeyRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*UngrabKeyRequest, error) {
+func ParseUngrabKeyRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*UngrabKeyRequest, error) {
 	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, UngrabKey)
 	}
 	req := &UngrabKeyRequest{}
+	req.Key = KeyCode(data)
 	req.GrabWindow = Window(order.Uint32(requestBody[0:4]))
 	req.Modifiers = order.Uint16(requestBody[4:6])
-	req.Key = KeyCode(requestBody[6])
 	return req, nil
 }
 
@@ -1527,6 +1995,15 @@ AllowEvents
 type AllowEventsRequest struct {
 	Mode byte
 	Time Timestamp
+}
+
+func (r *AllowEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Mode)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
 }
 
 func (AllowEventsRequest) OpCode() ReqCode { return AllowEvents }
@@ -1550,6 +2027,14 @@ GrabServer
 */
 type GrabServerRequest struct{}
 
+func (r *GrabServerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(1)) // length
+	return buf.Bytes()
+}
+
 func (GrabServerRequest) OpCode() ReqCode { return GrabServer }
 
 func ParseGrabServerRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GrabServerRequest, error) {
@@ -1564,6 +2049,14 @@ UngrabServer
 2     1                               request length
 */
 type UngrabServerRequest struct{}
+
+func (r *UngrabServerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(1)) // length
+	return buf.Bytes()
+}
 
 func (UngrabServerRequest) OpCode() ReqCode { return UngrabServer }
 
@@ -1581,6 +2074,15 @@ QueryPointer
 */
 type QueryPointerRequest struct {
 	Drawable Drawable
+}
+
+func (r *QueryPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Drawable)
+	return buf.Bytes()
 }
 
 func (QueryPointerRequest) OpCode() ReqCode { return QueryPointer }
@@ -1608,6 +2110,17 @@ type GetMotionEventsRequest struct {
 	Window Window
 	Start  Timestamp
 	Stop   Timestamp
+}
+
+func (r *GetMotionEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(4)) // length
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.Start)
+	binary.Write(buf, order, r.Stop)
+	return buf.Bytes()
 }
 
 func (GetMotionEventsRequest) OpCode() ReqCode { return GetMotionEvents }
@@ -1639,6 +2152,18 @@ type TranslateCoordsRequest struct {
 	DstWindow Window
 	SrcX      int16
 	SrcY      int16
+}
+
+func (r *TranslateCoordsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(4)) // length
+	binary.Write(buf, order, r.SrcWindow)
+	binary.Write(buf, order, r.DstWindow)
+	binary.Write(buf, order, r.SrcX)
+	binary.Write(buf, order, r.SrcY)
+	return buf.Bytes()
 }
 
 func (TranslateCoordsRequest) OpCode() ReqCode { return TranslateCoords }
@@ -1681,6 +2206,22 @@ type WarpPointerRequest struct {
 	DstY      int16
 }
 
+func (r *WarpPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(6)) // length
+	binary.Write(buf, order, r.SrcWindow)
+	binary.Write(buf, order, r.DstWindow)
+	binary.Write(buf, order, r.SrcX)
+	binary.Write(buf, order, r.SrcY)
+	binary.Write(buf, order, r.SrcWidth)
+	binary.Write(buf, order, r.SrcHeight)
+	binary.Write(buf, order, r.DstX)
+	binary.Write(buf, order, r.DstY)
+	return buf.Bytes()
+}
+
 func (WarpPointerRequest) OpCode() ReqCode { return WarpPointer }
 
 func ParseWarpPointerRequest(order binary.ByteOrder, payload []byte, seq uint16) (*WarpPointerRequest, error) {
@@ -1717,16 +2258,26 @@ type SetInputFocusRequest struct {
 	Time     Timestamp
 }
 
+func (r *SetInputFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.RevertTo)
+	binary.Write(buf, order, uint16(3)) // length
+	binary.Write(buf, order, r.Focus)
+	binary.Write(buf, order, r.Time)
+	return buf.Bytes()
+}
+
 func (SetInputFocusRequest) OpCode() ReqCode { return SetInputFocus }
 
-func ParseSetInputFocusRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*SetInputFocusRequest, error) {
-	if len(requestBody) != 12 {
+func ParseSetInputFocusRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*SetInputFocusRequest, error) {
+	if len(requestBody) != 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, 0, SetInputFocus)
 	}
 	req := &SetInputFocusRequest{}
+	req.RevertTo = data
 	req.Focus = Window(order.Uint32(requestBody[0:4]))
-	req.RevertTo = requestBody[4]
-	req.Time = Timestamp(order.Uint32(requestBody[8:12]))
+	req.Time = Timestamp(order.Uint32(requestBody[4:8]))
 	return req, nil
 }
 
@@ -1738,6 +2289,14 @@ GetInputFocus
 2     1                               request length
 */
 type GetInputFocusRequest struct{}
+
+func (r *GetInputFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(1)) // length
+	return buf.Bytes()
+}
 
 func (GetInputFocusRequest) OpCode() ReqCode { return GetInputFocus }
 
@@ -1753,6 +2312,14 @@ QueryKeymap
 2     1                               request length
 */
 type QueryKeymapRequest struct{}
+
+func (r *QueryKeymapRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(1)) // length
+	return buf.Bytes()
+}
 
 func (QueryKeymapRequest) OpCode() ReqCode { return QueryKeymap }
 
@@ -1775,6 +2342,19 @@ p                                     padding
 type OpenFontRequest struct {
 	Fid  Font
 	Name string
+}
+
+func (r *OpenFontRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(3+(len(r.Name)+PadLen(len(r.Name)))/4))
+	binary.Write(buf, order, r.Fid)
+	binary.Write(buf, order, uint16(len(r.Name)))
+	buf.Write([]byte{0, 0}) // unused
+	buf.WriteString(r.Name)
+	buf.Write(make([]byte, PadLen(len(r.Name))))
+	return buf.Bytes()
 }
 
 func (OpenFontRequest) OpCode() ReqCode { return OpenFont }
@@ -1806,6 +2386,15 @@ type CloseFontRequest struct {
 	Fid Font
 }
 
+func (r *CloseFontRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Fid)
+	return buf.Bytes()
+}
+
 func (CloseFontRequest) OpCode() ReqCode { return CloseFont }
 
 func ParseCloseFontRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*CloseFontRequest, error) {
@@ -1827,6 +2416,15 @@ QueryFont
 */
 type QueryFontRequest struct {
 	Fid Font
+}
+
+func (r *QueryFontRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2)) // length
+	binary.Write(buf, order, r.Fid)
+	return buf.Bytes()
 }
 
 func (QueryFontRequest) OpCode() ReqCode { return QueryFont }
@@ -1852,6 +2450,24 @@ QueryTextExtents
 type QueryTextExtentsRequest struct {
 	Fid  Font
 	Text []uint16
+}
+
+func (r *QueryTextExtentsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	oddLength := len(r.Text)%2 != 0
+	if oddLength {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+	binary.Write(buf, order, uint16(2+(len(r.Text)*2+PadLen(len(r.Text)*2))/4))
+	binary.Write(buf, order, r.Fid)
+	for _, c := range r.Text {
+		binary.Write(buf, order, c)
+	}
+	buf.Write(make([]byte, PadLen(len(r.Text)*2)))
+	return buf.Bytes()
 }
 
 func (QueryTextExtentsRequest) OpCode() ReqCode { return QueryTextExtents }
@@ -1903,6 +2519,18 @@ type ListFontsRequest struct {
 	Pattern  string
 }
 
+func (r *ListFontsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2+(len(r.Pattern)+PadLen(len(r.Pattern)))/4))
+	binary.Write(buf, order, r.MaxNames)
+	binary.Write(buf, order, uint16(len(r.Pattern)))
+	buf.WriteString(r.Pattern)
+	buf.Write(make([]byte, PadLen(len(r.Pattern))))
+	return buf.Bytes()
+}
+
 func (ListFontsRequest) OpCode() ReqCode { return ListFonts }
 
 func ParseListFontsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ListFontsRequest, error) {
@@ -1934,6 +2562,18 @@ p                                     padding
 type ListFontsWithInfoRequest struct {
 	MaxNames uint16
 	Pattern  string
+}
+
+func (r *ListFontsWithInfoRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2+(len(r.Pattern)+PadLen(len(r.Pattern)))/4))
+	binary.Write(buf, order, r.MaxNames)
+	binary.Write(buf, order, uint16(len(r.Pattern)))
+	buf.WriteString(r.Pattern)
+	buf.Write(make([]byte, PadLen(len(r.Pattern))))
+	return buf.Bytes()
 }
 
 func (ListFontsWithInfoRequest) OpCode() ReqCode { return ListFontsWithInfo }
@@ -2771,6 +3411,36 @@ type PolyText8Request struct {
 
 func (PolyText8Request) OpCode() ReqCode { return PolyText8 }
 
+func (r *PolyText8Request) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+
+	itemsBytes := new(bytes.Buffer)
+	for _, item := range r.Items {
+		switch i := item.(type) {
+		case PolyText8String:
+			itemsBytes.WriteByte(byte(len(i.Str)))
+			itemsBytes.WriteByte(byte(i.Delta))
+			itemsBytes.Write(i.Str)
+		case PolyTextFont:
+			itemsBytes.WriteByte(255)
+			binary.Write(itemsBytes, order, i.Font)
+		}
+	}
+	length := uint16(4 + (itemsBytes.Len()+PadLen(itemsBytes.Len()))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.GC)
+	binary.Write(buf, order, r.X)
+	binary.Write(buf, order, r.Y)
+	buf.Write(itemsBytes.Bytes())
+	buf.Write(make([]byte, PadLen(itemsBytes.Len())))
+	return buf.Bytes()
+}
+
 func ParsePolyText8Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText8Request, error) {
 	var req PolyText8Request
 	if len(data) < 12 {
@@ -2833,6 +3503,38 @@ type PolyText16Request struct {
 }
 
 func (PolyText16Request) OpCode() ReqCode { return PolyText16 }
+
+func (r *PolyText16Request) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+
+	itemsBytes := new(bytes.Buffer)
+	for _, item := range r.Items {
+		switch i := item.(type) {
+		case PolyText16String:
+			itemsBytes.WriteByte(byte(len(i.Str)))
+			itemsBytes.WriteByte(byte(i.Delta))
+			for _, c := range i.Str {
+				binary.Write(itemsBytes, order, c)
+			}
+		case PolyTextFont:
+			itemsBytes.WriteByte(255)
+			binary.Write(itemsBytes, order, i.Font)
+		}
+	}
+	length := uint16(4 + (itemsBytes.Len()+PadLen(itemsBytes.Len()))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.GC)
+	binary.Write(buf, order, r.X)
+	binary.Write(buf, order, r.Y)
+	buf.Write(itemsBytes.Bytes())
+	buf.Write(make([]byte, PadLen(itemsBytes.Len())))
+	return buf.Bytes()
+}
 
 func ParsePolyText16Request(order binary.ByteOrder, data []byte, seq uint16) (*PolyText16Request, error) {
 	var req PolyText16Request
@@ -2902,6 +3604,23 @@ type ImageText8Request struct {
 
 func (ImageText8Request) OpCode() ReqCode { return ImageText8 }
 
+func (r *ImageText8Request) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4 + (len(r.Text)+PadLen(len(r.Text)))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(byte(len(r.Text)))
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	binary.Write(buf, order, r.X)
+	binary.Write(buf, order, r.Y)
+	buf.Write(r.Text)
+	buf.Write(make([]byte, PadLen(len(r.Text))))
+	return buf.Bytes()
+}
+
 func ParseImageText8Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText8Request, error) {
 	n := int(data)
 	paddedLen := 12 + n + PadLen(n)
@@ -2939,6 +3658,25 @@ type ImageText16Request struct {
 }
 
 func (ImageText16Request) OpCode() ReqCode { return ImageText16 }
+
+func (r *ImageText16Request) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(4 + (len(r.Text)*2+PadLen(len(r.Text)*2))/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(byte(len(r.Text)))
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	binary.Write(buf, order, r.X)
+	binary.Write(buf, order, r.Y)
+	for _, c := range r.Text {
+		binary.Write(buf, order, c)
+	}
+	buf.Write(make([]byte, PadLen(len(r.Text)*2)))
+	return buf.Bytes()
+}
 
 func ParseImageText16Request(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ImageText16Request, error) {
 	n := int(data)
