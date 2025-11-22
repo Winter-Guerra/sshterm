@@ -4,7 +4,6 @@ package x11
 
 import (
 	"bytes"
-	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,14 +18,12 @@ func TestSetSelectionOwnerRequest(t *testing.T) {
 	// 1. Send a SetSelectionOwner request
 	selection := wire.Atom(1)
 	owner := wire.Window(2)
-	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(wire.SetSelectionOwner))
-	binary.Write(reqBuf, client.byteOrder, byte(0))
-	binary.Write(reqBuf, client.byteOrder, uint16(4))
-	binary.Write(reqBuf, client.byteOrder, uint32(owner))
-	binary.Write(reqBuf, client.byteOrder, uint32(selection))
-	binary.Write(reqBuf, client.byteOrder, uint32(0)) // timestamp
-	mockConn.r = reqBuf
+	r := &wire.SetSelectionOwnerRequest{
+		Owner:     owner,
+		Selection: selection,
+		Time:      0,
+	}
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	req, seq, err := server.readRequest(client)
 	if err != nil {
@@ -48,12 +45,10 @@ func TestGetSelectionOwnerRequest(t *testing.T) {
 	server.selections[client.xID(uint32(selection))] = uint32(owner)
 
 	// 2. Send a GetSelectionOwner request
-	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetSelectionOwner))
-	binary.Write(reqBuf, client.byteOrder, byte(0))
-	binary.Write(reqBuf, client.byteOrder, uint16(2))
-	binary.Write(reqBuf, client.byteOrder, uint32(selection))
-	mockConn.r = reqBuf
+	r := &wire.GetSelectionOwnerRequest{
+		Selection: selection,
+	}
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	req, seq, err := server.readRequest(client)
 	if err != nil {
@@ -93,16 +88,14 @@ func TestConvertSelectionRequest(t *testing.T) {
 	target := wire.Atom(2)
 	property := wire.Atom(3)
 	requestor := wire.Window(4)
-	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(wire.ConvertSelection))
-	binary.Write(reqBuf, client.byteOrder, byte(0))
-	binary.Write(reqBuf, client.byteOrder, uint16(6))
-	binary.Write(reqBuf, client.byteOrder, uint32(requestor))
-	binary.Write(reqBuf, client.byteOrder, uint32(selection))
-	binary.Write(reqBuf, client.byteOrder, uint32(target))
-	binary.Write(reqBuf, client.byteOrder, uint32(property))
-	binary.Write(reqBuf, client.byteOrder, uint32(0)) // timestamp
-	mockConn.r = reqBuf
+	r := &wire.ConvertSelectionRequest{
+		Requestor: requestor,
+		Selection: selection,
+		Target:    target,
+		Property:  property,
+		Time:      0,
+	}
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	req, seq, err := server.readRequest(client)
 	if err != nil {

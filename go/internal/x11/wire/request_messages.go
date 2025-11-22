@@ -4279,6 +4279,20 @@ type SetPointerMappingRequest struct {
 	Map []byte
 }
 
+func (r *SetPointerMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	n := len(r.Map)
+	paddedLen := n + PadLen(n)
+	length := uint16(1 + paddedLen/4)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(byte(n))
+	binary.Write(buf, order, length)
+	buf.Write(r.Map)
+	buf.Write(make([]byte, PadLen(n)))
+	return buf.Bytes()
+}
+
 func (SetPointerMappingRequest) OpCode() ReqCode { return SetPointerMapping }
 
 /*
@@ -4301,6 +4315,14 @@ func ParseSetPointerMappingRequest(order binary.ByteOrder, data byte, requestBod
 
 type GetPointerMappingRequest struct{}
 
+func (r *GetPointerMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(1))
+	return buf.Bytes()
+}
+
 func (GetPointerMappingRequest) OpCode() ReqCode { return GetPointerMapping }
 
 /*
@@ -4315,6 +4337,14 @@ func ParseGetPointerMappingRequest(order binary.ByteOrder, requestBody []byte, s
 }
 
 type GetPointerControlRequest struct{}
+
+func (r *GetPointerControlRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(1))
+	return buf.Bytes()
+}
 
 func (GetPointerControlRequest) OpCode() ReqCode { return GetPointerControl }
 
@@ -4669,6 +4699,18 @@ type SetModifierMappingRequest struct {
 	KeyCodes            []KeyCode
 }
 
+func (r *SetModifierMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.KeyCodesPerModifier)
+	length := uint16(1 + len(r.KeyCodes)/4)
+	binary.Write(buf, order, length)
+	for _, kc := range r.KeyCodes {
+		buf.WriteByte(byte(kc))
+	}
+	return buf.Bytes()
+}
+
 func (SetModifierMappingRequest) OpCode() ReqCode { return SetModifierMapping }
 
 /*
@@ -4693,6 +4735,14 @@ func ParseSetModifierMappingRequest(order binary.ByteOrder, data byte, requestBo
 }
 
 type GetModifierMappingRequest struct{}
+
+func (r *GetModifierMappingRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(1))
+	return buf.Bytes()
+}
 
 func (GetModifierMappingRequest) OpCode() ReqCode { return GetModifierMapping }
 

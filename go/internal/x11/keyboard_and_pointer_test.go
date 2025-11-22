@@ -4,7 +4,6 @@ package x11
 
 import (
 	"bytes"
-	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,12 +16,8 @@ func TestGetPointerMappingRequest(t *testing.T) {
 	mockConn := client.conn.(*testConn)
 
 	// 1. Send a GetPointerMapping request
-	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetPointerMapping))
-	binary.Write(reqBuf, client.byteOrder, byte(0))
-	binary.Write(reqBuf, client.byteOrder, uint16(1))
-	binary.Write(reqBuf, client.byteOrder, uint32(0))
-	mockConn.r = reqBuf
+	r := &wire.GetPointerMappingRequest{}
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	req, seq, err := server.readRequest(client)
 	if err != nil {
@@ -64,13 +59,8 @@ func TestGetPointerControlRequest(t *testing.T) {
 	mockConn := client.conn.(*testConn)
 
 	// 1. Send a GetPointerControl request
-	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetPointerControl))
-	binary.Write(reqBuf, client.byteOrder, byte(0))
-	binary.Write(reqBuf, client.byteOrder, uint16(1))
-	// Pad to 4 bytes
-	binary.Write(reqBuf, client.byteOrder, uint16(0))
-	mockConn.r = reqBuf
+	r := &wire.GetPointerControlRequest{}
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	req, seq, err := server.readRequest(client)
 	if err != nil {
@@ -122,14 +112,11 @@ func TestSetModifierMappingRequest(t *testing.T) {
 		keyCodes[i] = wire.KeyCode(i + 1)
 	}
 
-	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(wire.SetModifierMapping))
-	binary.Write(reqBuf, client.byteOrder, byte(keyCodesPerModifier))
-	binary.Write(reqBuf, client.byteOrder, uint16(1+2*keyCodesPerModifier)) // request length
-	for _, kc := range keyCodes {
-		binary.Write(reqBuf, client.byteOrder, kc)
+	r := &wire.SetModifierMappingRequest{
+		KeyCodesPerModifier: keyCodesPerModifier,
+		KeyCodes:            keyCodes,
 	}
-	mockConn.r = reqBuf
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	req, seq, err := server.readRequest(client)
 	if err != nil {
@@ -146,12 +133,8 @@ func TestGetModifierMappingRequest(t *testing.T) {
 	mockConn := client.conn.(*testConn)
 
 	// 1. Send a GetModifierMapping request
-	reqBuf := new(bytes.Buffer)
-	binary.Write(reqBuf, client.byteOrder, uint8(wire.GetModifierMapping))
-	binary.Write(reqBuf, client.byteOrder, byte(0))
-	binary.Write(reqBuf, client.byteOrder, uint16(1))
-	binary.Write(reqBuf, client.byteOrder, uint32(0))
-	mockConn.r = reqBuf
+	r := &wire.GetModifierMappingRequest{}
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	req, seq, err := server.readRequest(client)
 	if err != nil {
@@ -193,20 +176,13 @@ func TestSetPointerMappingRequest(t *testing.T) {
 
 	// 1. Define the pointer map and construct the raw request bytes
 	pointerMap := []byte{3, 1, 2}
-	n := len(pointerMap)
-	paddedLen := n + wire.PadLen(n)
-	reqLen := 1 + (paddedLen / 4) // Request length in 4-byte units
-
-	rawReq := new(bytes.Buffer)
-	binary.Write(rawReq, client.byteOrder, uint8(wire.SetPointerMapping)) // Opcode
-	binary.Write(rawReq, client.byteOrder, uint8(n))                      // length of map
-	binary.Write(rawReq, client.byteOrder, uint16(reqLen))                // request length
-	rawReq.Write(pointerMap)
-	rawReq.Write(make([]byte, wire.PadLen(n))) // padding
+	r := &wire.SetPointerMappingRequest{
+		Map: pointerMap,
+	}
 
 	// The mock connection needs the raw request to be read
 	mockConn := client.conn.(*testConn)
-	mockConn.r = rawReq
+	mockConn.r = bytes.NewBuffer(r.EncodeMessage(client.byteOrder))
 
 	// 2. Read and handle the request
 	req, seq, err := server.readRequest(client)
