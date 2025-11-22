@@ -715,15 +715,22 @@ func TestGetDeviceKeyMappingReply(t *testing.T) {
 
 func TestSetDeviceModifierMappingReply(t *testing.T) {
 	order := binary.LittleEndian
-	reply := &SetDeviceModifierMappingReply{
+	b := []byte{0x01, 0x1b, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	want := &SetDeviceModifierMappingReply{
 		Sequence: 1,
 		Status:   2,
 	}
 
-	encoded := reply.EncodeMessage(order)
-	decoded, err := ParseSetDeviceModifierMappingReply(order, encoded)
-	assert.NoError(t, err)
-	assert.Equal(t, reply, decoded)
+	r, err := ParseSetDeviceModifierMappingReply(order, b)
+	if err != nil {
+		t.Fatalf("ParseSetDeviceModifierMappingReply failed: %v", err)
+	}
+	assert.Equal(t, want, r)
+
+	roundtrip := r.EncodeMessage(order)
+	if !bytes.Equal(b, roundtrip) {
+		t.Errorf("EncodeMessage output %#v is not equal to %#v", roundtrip, b)
+	}
 }
 
 func TestSetDeviceButtonMappingReply(t *testing.T) {

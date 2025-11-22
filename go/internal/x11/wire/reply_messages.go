@@ -14,14 +14,14 @@ type ServerMessage interface {
 }
 
 var (
-	sequenceToOpcode = make(map[uint16]ReqCode)
+	sequenceToOpcode = make(map[uint16]Opcodes)
 	seqMutex         sync.Mutex
 )
 
-func ExpectReply(sequence uint16, opcode ReqCode) {
+func ExpectReply(sequence uint16, opcodes Opcodes) {
 	seqMutex.Lock()
 	defer seqMutex.Unlock()
-	sequenceToOpcode[sequence] = opcode
+	sequenceToOpcode[sequence] = opcodes
 }
 
 func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMessage {
@@ -58,7 +58,7 @@ func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMes
 					return
 				}
 				seqMutex.Lock()
-				opcode, ok := sequenceToOpcode[sequenceNumber]
+				opcodes, ok := sequenceToOpcode[sequenceNumber]
 				if ok {
 					delete(sequenceToOpcode, sequenceNumber)
 				}
@@ -68,9 +68,9 @@ func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMes
 					continue
 				}
 
-				p, err := ParseReply(opcode, msg, order)
+				p, err := ParseReply(opcodes, msg, order)
 				if err != nil {
-					debugf("X11 ReadServerMessages: ParseReply(%x): %v", header, err)
+					debugf("X11 ReadServerMessages: ParseReply(%x): %v", msg, err)
 					continue
 				}
 				ch <- p
@@ -88,8 +88,8 @@ func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMes
 	return ch
 }
 
-func ParseReply(opcode ReqCode, msg []byte, order binary.ByteOrder) (ServerMessage, error) {
-	switch opcode {
+func ParseReply(opcodes Opcodes, msg []byte, order binary.ByteOrder) (ServerMessage, error) {
+	switch opcodes.Major {
 	case GetWindowAttributes:
 		return ParseGetWindowAttributesReply(order, msg)
 	case GetGeometry:
@@ -171,19 +171,18 @@ func ParseReply(opcode ReqCode, msg []byte, order binary.ByteOrder) (ServerMessa
 	case GetPointerControl:
 		return ParseGetPointerControlReply(order, msg)
 	case XInputOpcode:
-		return parseXInputReply(order, msg)
+		return parseXInputReply(opcodes.Minor, order, msg)
 	case BigRequestsOpcode:
 		return &BigRequestsEnableReply{
 			Sequence:         order.Uint16(msg[2:4]),
 			MaxRequestLength: order.Uint32(msg[8:12]),
 		}, nil
 	default:
-		return nil, NewError(RequestErrorCode, 0, 0, byte(opcode), 0)
+		return nil, NewError(RequestErrorCode, 0, 0, byte(opcodes.Major), 0)
 	}
 }
 
-func parseXInputReply(order binary.ByteOrder, b []byte) (ServerMessage, error) {
-	minorOpcode := b[8]
+func parseXInputReply(minorOpcode uint8, order binary.ByteOrder, b []byte) (ServerMessage, error) {
 	switch minorOpcode {
 	case XGetExtensionVersion:
 		return ParseGetExtensionVersionReply(order, b)
@@ -1101,11 +1100,14 @@ func ParseAllocColorReply(order binary.ByteOrder, b []byte) (*AllocColorReply, e
 
 // AllocNamedColor: 85
 type AllocNamedColorReply struct {
-	Sequence uint16
-	Red      uint16
-	Green    uint16
-	Blue     uint16
-	Pixel    uint32
+	Sequence   uint16
+	Red        uint16
+	Green      uint16
+	Blue       uint16
+	ExactRed   uint16
+	ExactGreen uint16
+	ExactBlue  uint16
+	Pixel      uint32
 }
 
 /*
@@ -1129,9 +1131,9 @@ func (r *AllocNamedColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], 0) // Reply length (0 * 4 bytes = 0 bytes, plus 32 bytes header = 32 bytes total)
 	order.PutUint32(reply[8:12], r.Pixel)
-	order.PutUint16(reply[12:14], r.Red)
-	order.PutUint16(reply[14:16], r.Green)
-	order.PutUint16(reply[16:18], r.Blue)
+	order.PutUint16(reply[12:14], r.ExactRed)
+	order.PutUint16(reply[14:16], r.ExactGreen)
+	order.PutUint16(reply[16:18], r.ExactBlue)
 	order.PutUint16(reply[18:20], r.Red)
 	order.PutUint16(reply[20:22], r.Green)
 	order.PutUint16(reply[22:24], r.Blue)
@@ -1143,11 +1145,14 @@ func ParseAllocNamedColorReply(order binary.ByteOrder, b []byte) (*AllocNamedCol
 		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
 	}
 	r := &AllocNamedColorReply{
-		Sequence: order.Uint16(b[2:4]),
-		Pixel:    order.Uint32(b[8:12]),
-		Red:      order.Uint16(b[12:14]),
-		Green:    order.Uint16(b[14:16]),
-		Blue:     order.Uint16(b[16:18]),
+		Sequence:   order.Uint16(b[2:4]),
+		Pixel:      order.Uint32(b[8:12]),
+		ExactRed:   order.Uint16(b[12:14]),
+		ExactGreen: order.Uint16(b[14:16]),
+		ExactBlue:  order.Uint16(b[16:18]),
+		Red:        order.Uint16(b[18:20]),
+		Green:      order.Uint16(b[20:22]),
+		Blue:       order.Uint16(b[22:24]),
 	}
 	return r, nil
 }

@@ -3249,9 +3249,10 @@ func (r *GetDeviceKeyMappingReply) EncodeMessage(order binary.ByteOrder) []byte 
 	length := len(r.Keysyms) * 4
 	reply := make([]byte, 32+length)
 	reply[0] = 1 // Reply
-	reply[1] = r.KeysymsPerKeycode
+	reply[1] = byte(XGetDeviceKeyMapping)
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], uint32(length/4))
+	reply[8] = r.KeysymsPerKeycode
 	offset := 32
 	for _, keysym := range r.Keysyms {
 		order.PutUint32(reply[offset:offset+4], keysym)
@@ -3264,7 +3265,7 @@ func ParseGetDeviceKeyMappingReply(order binary.ByteOrder, b []byte) (*GetDevice
 	if len(b) < 32 {
 		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
 	}
-	keysymsPerKeycode := b[1]
+	keysymsPerKeycode := b[8]
 	length := order.Uint32(b[4:8])
 	if len(b) < 32+int(length)*4 {
 		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
@@ -3439,7 +3440,7 @@ func ParseSetDeviceModifierMappingReply(order binary.ByteOrder, b []byte) (*SetD
 	}
 	r := &SetDeviceModifierMappingReply{
 		Sequence: order.Uint16(b[2:4]),
-		Status:   b[1],
+		Status:   b[8],
 	}
 	return r, nil
 }

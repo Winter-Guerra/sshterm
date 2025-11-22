@@ -73,3 +73,9 @@ type XColorItem struct {
 
 // XID is a generic X resource identifier.
 type XID uint32
+
+// Opcodes is a struct that holds the major and minor opcodes for a request.
+type Opcodes struct {
+	Major ReqCode
+	Minor uint8
+}

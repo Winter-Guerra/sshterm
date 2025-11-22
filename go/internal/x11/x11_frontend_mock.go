@@ -205,12 +205,14 @@ func (m *MockX11Frontend) GetDeviceButtonMapping(deviceID byte) []byte {
 
 func (m *MockX11Frontend) GetDeviceModifierMapping(deviceID byte) (byte, []byte) {
 	m.GetDeviceModifierMappingCalls = append(m.GetDeviceModifierMappingCalls, []any{deviceID})
-	return 1, []byte{}
+	// The number of keycodes is keycodesPerModifier * 8.
+	// Since we return 1 for keycodesPerModifier, the slice length should be 8.
+	return 1, make([]byte, 8)
 }
 
 func (m *MockX11Frontend) GetDeviceKeyMapping(deviceID byte, firstKey byte, count byte) (byte, []uint32) {
 	m.GetDeviceKeyMappingCalls = append(m.GetDeviceKeyMappingCalls, []any{deviceID, firstKey, count})
-	return 1, []uint32{}
+	return 1, make([]uint32, count)
 }
 
 func (m *MockX11Frontend) GetFeedbackControl(deviceID byte) []wire.FeedbackState {

@@ -2011,11 +2011,14 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		cm.pixels[pixel] = wire.XColorItem{Red: exactRed, Green: exactGreen, Blue: exactBlue, ClientID: client.id}
 
 		return &wire.AllocNamedColorReply{
-			Sequence: seq,
-			Red:      exactRed,
-			Green:    exactGreen,
-			Blue:     exactBlue,
-			Pixel:    pixel,
+			Sequence:   seq,
+			Pixel:      pixel,
+			ExactRed:   exactRed,
+			ExactGreen: exactGreen,
+			ExactBlue:  exactBlue,
+			Red:        exactRed,
+			Green:      exactGreen,
+			Blue:       exactBlue,
 		}
 
 	case *wire.AllocColorCellsRequest:

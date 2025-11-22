@@ -21,7 +21,7 @@ func TestReadServerMessages(t *testing.T) {
 		Depth:    2,
 		Root:     3,
 	}
-	ExpectReply(1, GetGeometry)
+	ExpectReply(1, Opcodes{Major: GetGeometry})
 	buf.Write(reply.EncodeMessage(order))
 	// Write an event
 	event := &KeyEvent{
@@ -963,7 +963,7 @@ func TestBigRequestsEnableReply(t *testing.T) {
 	}
 
 	encoded := reply.EncodeMessage(order)
-	decoded, err := ParseReply(BigRequestsOpcode, encoded, order)
+	decoded, err := ParseReply(Opcodes{Major: BigRequestsOpcode}, encoded, order)
 	if err != nil {
 		t.Fatalf("ParseBigRequestsEnableReply failed: %v", err)
 	}

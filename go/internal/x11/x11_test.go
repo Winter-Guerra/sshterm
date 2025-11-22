@@ -93,7 +93,9 @@ func TestGetWindowAttributesRequest(t *testing.T) {
 	}
 
 	// 4. Decode the reply from the buffer
-	replyMsg, err := wire.ParseReply(req.OpCode(), clientBuffer.Bytes(), client.byteOrder)
+	opcodes := wire.Opcodes{Major: req.OpCode()}
+	wire.ExpectReply(2, opcodes)
+	replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
 	if err != nil {
 		t.Fatalf("Failed to parse reply from buffer: %v", err)
 	}
@@ -511,7 +513,9 @@ func TestWindowHierarchyRequests(t *testing.T) {
 		t.Fatalf("QueryTree: failed to write reply to buffer: %v", err)
 	}
 
-	replyMsg, err := wire.ParseReply(queryTreeReq.OpCode(), clientBuffer.Bytes(), client.byteOrder)
+	opcodes := wire.Opcodes{Major: queryTreeReq.OpCode()}
+	wire.ExpectReply(4, opcodes)
+	replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
 	if err != nil {
 		t.Fatalf("QueryTree: failed to parse reply: %v", err)
 	}
@@ -558,7 +562,7 @@ func TestSendKeyboardEvent_EventMask_Blocked(t *testing.T) {
 }
 
 func TestColormapRequests(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	// Test CreateColormapRequest
@@ -579,13 +583,19 @@ func TestColormapRequests(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		req := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
 		reply := server.handleRequest(client, req, 3)
-		if reply == nil {
-			t.Fatal("AllocColorRequest: expected reply, got nil")
+		encodedReply := reply.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes := wire.Opcodes{Major: req.OpCode()}
+		wire.ExpectReply(3, opcodes)
+		replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
 		}
-		allocReply, ok := reply.(*wire.AllocColorReply)
+		allocReply, ok := replyMsg.(*wire.AllocColorReply)
 		if !ok {
 			t.Fatalf("AllocColorRequest: expected *wire.AllocColorReply, got %T", reply)
 		}
+
 		expectedPixel := (uint32(0x10) << 16) | (uint32(0x20) << 8) | uint32(0x30)
 		if allocReply.Pixel != expectedPixel {
 			t.Errorf("AllocColorRequest: expected pixel %x, got %x", expectedPixel, allocReply.Pixel)
@@ -593,11 +603,21 @@ func TestColormapRequests(t *testing.T) {
 		if _, ok := server.colormaps[cmapID].pixels[expectedPixel]; !ok {
 			t.Errorf("AllocColorRequest: pixel %x not allocated in colormap %s", expectedPixel, cmapID)
 		}
+		clientBuffer.Reset()
 
 		// Test with default colormap
 		reqDefault := &wire.AllocColorRequest{Cmap: wire.Colormap(server.defaultColormap), Red: 0x4000, Green: 0x5000, Blue: 0x6000}
 		replyDefault := server.handleRequest(client, reqDefault, 4)
-		allocReplyDefault, ok := replyDefault.(*wire.AllocColorReply)
+
+		encodedReply = replyDefault.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes = wire.Opcodes{Major: reqDefault.OpCode()}
+		wire.ExpectReply(4, opcodes)
+		replyMsg, err = wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
+		}
+		allocReplyDefault, ok := replyMsg.(*wire.AllocColorReply)
 		if !ok {
 			t.Fatalf("AllocColorRequest (default): expected *wire.AllocColorReply, got %T", replyDefault)
 		}
@@ -608,6 +628,7 @@ func TestColormapRequests(t *testing.T) {
 		if _, ok := server.colormaps[xID{local: server.defaultColormap}].pixels[expectedPixelDefault]; !ok {
 			t.Errorf("AllocColorRequest (default): pixel %x not allocated in default colormap", expectedPixelDefault)
 		}
+		clientBuffer.Reset()
 	})
 
 	// Test AllocNamedColorRequest
@@ -615,37 +636,51 @@ func TestColormapRequests(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		req := &wire.AllocNamedColorRequest{Cmap: wire.Colormap(cmapID.local), Name: []byte("red")}
 		reply := server.handleRequest(client, req, 5)
-		if reply == nil {
-			t.Fatal("AllocNamedColorRequest: expected reply, got nil")
+		encodedReply := reply.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes := wire.Opcodes{Major: req.OpCode()}
+		wire.ExpectReply(5, opcodes)
+		replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
 		}
-		allocReply, ok := reply.(*wire.AllocNamedColorReply)
+		allocReply, ok := replyMsg.(*wire.AllocNamedColorReply)
 		if !ok {
 			t.Fatalf("AllocNamedColorRequest: expected *wire.AllocNamedColorReply, got %T", reply)
 		}
-		// "red" is 0xFF0000, scaled to 16-bit is 0xFFFF00000000
-		if allocReply.Red != 0xFFFF || allocReply.Green != 0 || allocReply.Blue != 0 {
-			t.Errorf("AllocNamedColorRequest: expected red, got R:%x G:%x B:%x", allocReply.Red, allocReply.Green, allocReply.Blue)
+
+		if allocReply.ExactRed != 0xffff || allocReply.ExactGreen != 0 || allocReply.ExactBlue != 0 {
+			t.Errorf("AllocNamedColorRequest: expected red, got R:%x G:%x B:%x", allocReply.ExactRed, allocReply.ExactGreen, allocReply.ExactBlue)
 		}
-		expectedPixel := (uint32(0xFF) << 16) | (uint32(0x00) << 8) | uint32(0x00)
+		expectedPixel := uint32(0xff0000)
 		if _, ok := server.colormaps[cmapID].pixels[expectedPixel]; !ok {
 			t.Errorf("AllocNamedColorRequest: pixel %x not allocated in colormap %s", expectedPixel, cmapID)
 		}
+		clientBuffer.Reset()
 
 		// Test with default colormap
 		reqDefault := &wire.AllocNamedColorRequest{Cmap: wire.Colormap(server.defaultColormap), Name: []byte("blue")}
 		replyDefault := server.handleRequest(client, reqDefault, 6)
-		allocReplyDefault, ok := replyDefault.(*wire.AllocNamedColorReply)
+		encodedReply = replyDefault.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes = wire.Opcodes{Major: reqDefault.OpCode()}
+		wire.ExpectReply(6, opcodes)
+		replyMsg, err = wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
+		}
+		allocReplyDefault, ok := replyMsg.(*wire.AllocNamedColorReply)
 		if !ok {
 			t.Fatalf("AllocNamedColorRequest (default): expected *wire.AllocNamedColorReply, got %T", replyDefault)
 		}
-		// "blue" is 0x0000FF, scaled to 16-bit is 0x00000000FFFF
-		if allocReplyDefault.Red != 0 || allocReplyDefault.Green != 0 || allocReplyDefault.Blue != 0xFFFF {
-			t.Errorf("AllocNamedColorRequest (default): expected blue, got R:%x G:%x B:%x", allocReplyDefault.Red, allocReplyDefault.Green, allocReplyDefault.Blue)
+		if allocReplyDefault.ExactRed != 0 || allocReplyDefault.ExactGreen != 0 || allocReplyDefault.ExactBlue != 0xffff {
+			t.Errorf("AllocNamedColorRequest (default): expected blue, got R:%x G:%x B:%x", allocReplyDefault.ExactRed, allocReplyDefault.ExactGreen, allocReplyDefault.ExactBlue)
 		}
-		expectedPixelDefault := (uint32(0x00) << 16) | (uint32(0x00) << 8) | uint32(0xFF)
+		expectedPixelDefault := uint32(0x0000ff)
 		if _, ok := server.colormaps[xID{local: server.defaultColormap}].pixels[expectedPixelDefault]; !ok {
 			t.Errorf("AllocNamedColorRequest (default): pixel %x not allocated in default colormap", expectedPixelDefault)
 		}
+		clientBuffer.Reset()
 	})
 
 	// Test FreeColorsRequest
@@ -653,11 +688,21 @@ func TestColormapRequests(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
 		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
-		allocReply := server.handleRequest(client, allocReq, 7).(*wire.AllocColorReply)
+		reply := server.handleRequest(client, allocReq, 7)
+		encodedReply := reply.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes := wire.Opcodes{Major: allocReq.OpCode()}
+		wire.ExpectReply(7, opcodes)
+		replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
+		}
+		allocReply := replyMsg.(*wire.AllocColorReply)
 		pixelToFree := allocReply.Pixel
+		clientBuffer.Reset()
 
 		req := &wire.FreeColorsRequest{Cmap: wire.Colormap(cmapID.local), Pixels: []uint32{pixelToFree}}
-		reply := server.handleRequest(client, req, 8)
+		reply = server.handleRequest(client, req, 8)
 		if reply != nil {
 			t.Fatalf("FreeColorsRequest: expected nil reply for success, got %v", reply)
 		}
@@ -671,8 +716,18 @@ func TestColormapRequests(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
 		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
-		allocReply := server.handleRequest(client, allocReq, 9).(*wire.AllocColorReply)
+		reply := server.handleRequest(client, allocReq, 9)
+		encodedReply := reply.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes := wire.Opcodes{Major: allocReq.OpCode()}
+		wire.ExpectReply(9, opcodes)
+		replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
+		}
+		allocReply := replyMsg.(*wire.AllocColorReply)
 		pixelToStore := allocReply.Pixel
+		clientBuffer.Reset()
 
 		// Store new values for the pixel
 		req := &wire.StoreColorsRequest{
@@ -681,7 +736,7 @@ func TestColormapRequests(t *testing.T) {
 				{Pixel: pixelToStore, Red: 0xAAAA, Green: 0xBBBB, Blue: 0xCCCC, Flags: wire.DoRed | wire.DoGreen | wire.DoBlue},
 			},
 		}
-		reply := server.handleRequest(client, req, 10)
+		reply = server.handleRequest(client, req, 10)
 		if reply != nil {
 			t.Fatalf("StoreColorsRequest: expected nil reply for success, got %v", reply)
 		}
@@ -696,8 +751,18 @@ func TestColormapRequests(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
 		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1000, Green: 0x2000, Blue: 0x3000}
-		allocReply := server.handleRequest(client, allocReq, 11).(*wire.AllocColorReply)
+		reply := server.handleRequest(client, allocReq, 11)
+		encodedReply := reply.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes := wire.Opcodes{Major: allocReq.OpCode()}
+		wire.ExpectReply(11, opcodes)
+		replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
+		}
+		allocReply := replyMsg.(*wire.AllocColorReply)
 		pixelToStore := allocReply.Pixel
+		clientBuffer.Reset()
 
 		// Store a named color for the pixel
 		req := &wire.StoreNamedColorRequest{
@@ -706,13 +771,12 @@ func TestColormapRequests(t *testing.T) {
 			Name:  "green",
 			Flags: wire.DoRed | wire.DoGreen | wire.DoBlue,
 		}
-		reply := server.handleRequest(client, req, 12)
+		reply = server.handleRequest(client, req, 12)
 		if reply != nil {
 			t.Fatalf("StoreNamedColorRequest: expected nil reply for success, got %v", reply)
 		}
 		storedColor := server.colormaps[cmapID].pixels[pixelToStore]
-		// "green" is 0x008000, scaled to 16-bit is 0x000080800000
-		if storedColor.Red != 0 || storedColor.Green != 0x8080 || storedColor.Blue != 0 {
+		if storedColor.Red != 0 || storedColor.Green != 32896 || storedColor.Blue != 0 {
 			t.Errorf("StoreNamedColorRequest: expected stored color R:0 G:8080 B:0, got R:%x G:%x B:%x", storedColor.Red, storedColor.Green, storedColor.Blue)
 		}
 	})
@@ -722,17 +786,22 @@ func TestColormapRequests(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		req := &wire.LookupColorRequest{Cmap: wire.Colormap(cmapID.local), Name: "white"}
 		reply := server.handleRequest(client, req, 13)
-		if reply == nil {
-			t.Fatal("LookupColorRequest: expected reply, got nil")
+		encodedReply := reply.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes := wire.Opcodes{Major: req.OpCode()}
+		wire.ExpectReply(13, opcodes)
+		replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
 		}
-		lookupReply, ok := reply.(*wire.LookupColorReply)
+		lookupReply, ok := replyMsg.(*wire.LookupColorReply)
 		if !ok {
 			t.Fatalf("LookupColorRequest: expected *wire.LookupColorReply, got %T", reply)
 		}
-		// "white" is 0xFFFFFF, scaled to 16-bit is 0xFFFFFFFF
-		if lookupReply.Red != 0xFFFF || lookupReply.Green != 0xFFFF || lookupReply.Blue != 0xFFFF {
-			t.Errorf("LookupColorRequest: expected white, got R:%x G:%x B:%x", lookupReply.Red, lookupReply.Green, lookupReply.Blue)
+		if lookupReply.ExactRed != 0xffff || lookupReply.ExactGreen != 0xffff || lookupReply.ExactBlue != 0xffff {
+			t.Errorf("LookupColorRequest: expected white, got R:%x G:%x B:%x", lookupReply.ExactRed, lookupReply.ExactGreen, lookupReply.ExactBlue)
 		}
+		clientBuffer.Reset()
 	})
 
 	// Test GetRGBColor
@@ -740,21 +809,41 @@ func TestColormapRequests(t *testing.T) {
 		cmapID := xID{client: client.id, local: 100}
 		// Allocate a color first
 		allocReq := &wire.AllocColorRequest{Cmap: wire.Colormap(cmapID.local), Red: 0x1234, Green: 0x5678, Blue: 0x9ABC}
-		allocReply := server.handleRequest(client, allocReq, 14).(*wire.AllocColorReply)
+		reply := server.handleRequest(client, allocReq, 14)
+		encodedReply := reply.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes := wire.Opcodes{Major: allocReq.OpCode()}
+		wire.ExpectReply(14, opcodes)
+		replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
+		}
+		allocReply := replyMsg.(*wire.AllocColorReply)
 		pixel := allocReply.Pixel
+		clientBuffer.Reset()
 
 		r, g, b := server.GetRGBColor(cmapID, pixel)
-		if r != 0x12 || g != 0x56 || b != 0x9A {
+		if r != 0x12 || g != 0x56 || b != 0x9a {
 			t.Errorf("GetRGBColor: expected R:0x12 G:0x56 B:0x9A, got R:0x%x G:0x%x B:0x%x", r, g, b)
 		}
 
 		// Test with default colormap
 		allocReqDefault := &wire.AllocColorRequest{Cmap: wire.Colormap(server.defaultColormap), Red: 0xDEFF, Green: 0xADBE, Blue: 0xEF00}
-		allocReplyDefault := server.handleRequest(client, allocReqDefault, 15).(*wire.AllocColorReply)
+		replyDefault := server.handleRequest(client, allocReqDefault, 15)
+		encodedReply = replyDefault.EncodeMessage(client.byteOrder)
+		clientBuffer.Write(encodedReply)
+		opcodes = wire.Opcodes{Major: allocReqDefault.OpCode()}
+		wire.ExpectReply(15, opcodes)
+		replyMsg, err = wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+		if err != nil {
+			t.Fatalf("Failed to parse reply: %v", err)
+		}
+		allocReplyDefault := replyMsg.(*wire.AllocColorReply)
 		pixelDefault := allocReplyDefault.Pixel
+		clientBuffer.Reset()
 
 		r, g, b = server.GetRGBColor(xID{local: server.defaultColormap}, pixelDefault)
-		if r != 0xDE || g != 0xAD || b != 0xEF {
+		if r != 0xde || g != 0xad || b != 0xef {
 			t.Errorf("GetRGBColor (default): expected R:0xDE G:0xAD B:0xEF, got R:0x%x G:0x%x B:0x%x", r, g, b)
 		}
 
@@ -813,7 +902,9 @@ func TestKeyboardMappingRequests(t *testing.T) {
 		t.Fatalf("GetKeyboardMapping: failed to write reply to buffer: %v", err)
 	}
 
-	replyMsg, err := wire.ParseReply(getReq.OpCode(), clientBuffer.Bytes(), client.byteOrder)
+	opcodes := wire.Opcodes{Major: getReq.OpCode()}
+	wire.ExpectReply(2, opcodes)
+	replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
 	if err != nil {
 		t.Fatalf("GetKeyboardMapping: failed to parse reply: %v", err)
 	}
@@ -842,60 +933,83 @@ func TestKeyboardMappingRequests(t *testing.T) {
 }
 
 func TestExtensionRequests(t *testing.T) {
-	server, _ := setupTestServer(t)
+	server, clientBuffer := setupTestServer(t)
 	client := server.clients[1]
 
 	// 1. Test QueryExtension for a known extension (BIG-REQUESTS)
 	queryBigReq := &wire.QueryExtensionRequest{Name: wire.BigRequestsExtensionName}
 	reply := server.handleRequest(client, queryBigReq, 2)
-	if reply == nil {
-		t.Fatal("QueryExtension (BIG-REQUESTS): handleRequest returned a nil reply")
+	encodedReply := reply.EncodeMessage(client.byteOrder)
+	clientBuffer.Write(encodedReply)
+	opcodes := wire.Opcodes{Major: queryBigReq.OpCode()}
+	wire.ExpectReply(2, opcodes)
+	replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+	if err != nil {
+		t.Fatalf("QueryExtension (BIG-REQUESTS): failed to parse reply: %v", err)
 	}
-	queryBigReply, ok := reply.(*wire.QueryExtensionReply)
+	queryBigReply, ok := replyMsg.(*wire.QueryExtensionReply)
 	if !ok {
-		t.Fatalf("QueryExtension (BIG-REQUESTS): expected *wire.QueryExtensionReply, got %T", reply)
+		t.Fatalf("QueryExtension (BIG-REQUESTS): expected *wire.QueryExtensionReply, got %T", replyMsg)
 	}
 	if !queryBigReply.Present || queryBigReply.MajorOpcode != byte(wire.BigRequestsOpcode) {
 		t.Errorf("QueryExtension (BIG-REQUESTS): incorrect reply. Got present=%t, opcode=%d", queryBigReply.Present, queryBigReply.MajorOpcode)
 	}
+	clientBuffer.Reset()
 
 	// 2. Test QueryExtension for the new XInput extension
 	queryXInputReq := &wire.QueryExtensionRequest{Name: wire.XInputExtensionName}
 	reply = server.handleRequest(client, queryXInputReq, 3)
-	if reply == nil {
-		t.Fatal("QueryExtension (XInput): handleRequest returned a nil reply")
+	encodedReply = reply.EncodeMessage(client.byteOrder)
+	clientBuffer.Write(encodedReply)
+	opcodes = wire.Opcodes{Major: queryXInputReq.OpCode()}
+	wire.ExpectReply(3, opcodes)
+	replyMsg, err = wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+	if err != nil {
+		t.Fatalf("QueryExtension (XInput): failed to parse reply: %v", err)
 	}
-	queryXInputReply, ok := reply.(*wire.QueryExtensionReply)
+	queryXInputReply, ok := replyMsg.(*wire.QueryExtensionReply)
 	if !ok {
-		t.Fatalf("QueryExtension (XInput): expected *wire.QueryExtensionReply, got %T", reply)
+		t.Fatalf("QueryExtension (XInput): expected *wire.QueryExtensionReply, got %T", replyMsg)
 	}
 	if !queryXInputReply.Present || queryXInputReply.MajorOpcode != byte(wire.XInputOpcode) {
 		t.Errorf("QueryExtension (XInput): incorrect reply. Got present=%t, opcode=%d", queryXInputReply.Present, queryXInputReply.MajorOpcode)
 	}
+	clientBuffer.Reset()
 
 	// 3. Test ListExtensions
 	listReq := &wire.ListExtensionsRequest{}
 	reply = server.handleRequest(client, listReq, 4)
-	if reply == nil {
-		t.Fatal("ListExtensions: handleRequest returned a nil reply")
+	encodedReply = reply.EncodeMessage(client.byteOrder)
+	clientBuffer.Write(encodedReply)
+	opcodes = wire.Opcodes{Major: listReq.OpCode()}
+	wire.ExpectReply(4, opcodes)
+	replyMsg, err = wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+	if err != nil {
+		t.Fatalf("ListExtensions: failed to parse reply: %v", err)
 	}
-	listReply, ok := reply.(*wire.ListExtensionsReply)
+	listReply, ok := replyMsg.(*wire.ListExtensionsReply)
 	if !ok {
-		t.Fatalf("ListExtensions: expected *wire.ListExtensionsReply, got %T", reply)
+		t.Fatalf("ListExtensions: expected *wire.ListExtensionsReply, got %T", replyMsg)
 	}
 	if len(listReply.Names) != 2 || listReply.Names[0] != wire.BigRequestsExtensionName || listReply.Names[1] != wire.XInputExtensionName {
 		t.Errorf("ListExtensions: incorrect extension list. Got %v", listReply.Names)
 	}
+	clientBuffer.Reset()
 
 	// 4. Test XListInputDevices
-	listInputDevicesReq := &wire.ListInputDevicesRequest{} // Create the specific request type
+	listInputDevicesReq := &wire.ListInputDevicesRequest{}
 	reply = server.handleRequest(client, listInputDevicesReq, 5)
-	if reply == nil {
-		t.Fatal("XListInputDevices: handleRequest returned a nil reply")
+	encodedReply = reply.EncodeMessage(client.byteOrder)
+	clientBuffer.Write(encodedReply)
+	opcodes = wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XListInputDevices}
+	wire.ExpectReply(5, opcodes)
+	replyMsg, err = wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+	if err != nil {
+		t.Fatalf("XListInputDevices: failed to parse reply: %v", err)
 	}
-	listInputDevicesReply, ok := reply.(*wire.ListInputDevicesReply)
+	listInputDevicesReply, ok := replyMsg.(*wire.ListInputDevicesReply)
 	if !ok {
-		t.Fatalf("XListInputDevices: expected *wire.ListInputDevicesReply, got %T", reply)
+		t.Fatalf("XListInputDevices: expected *wire.ListInputDevicesReply, got %T", replyMsg)
 	}
 	if len(listInputDevicesReply.Devices) != 2 {
 		t.Errorf("XListInputDevices: incorrect number of devices. Expected 2, got %d", len(listInputDevicesReply.Devices))
