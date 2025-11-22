@@ -88,64 +88,98 @@ func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMes
 	return ch
 }
 
-type replyParser func(order binary.ByteOrder, b []byte) (ServerMessage, error)
-
-var replyParsers = map[ReqCode]replyParser{
-	GetWindowAttributes:    func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetWindowAttributesReply(order, b) },
-	GetGeometry:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetGeometryReply(order, b) },
-	InternAtom:             func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseInternAtomReply(order, b) },
-	GetAtomName:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetAtomNameReply(order, b) },
-	GetProperty:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetPropertyReply(order, b) },
-	ListProperties:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListPropertiesReply(order, b) },
-	QueryTextExtents:       func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryTextExtentsReply(order, b) },
-	GetMotionEvents:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetMotionEventsReply(order, b) },
-	GetSelectionOwner:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetSelectionOwnerReply(order, b) },
-	GrabPointer:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGrabPointerReply(order, b) },
-	GrabKeyboard:           func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGrabKeyboardReply(order, b) },
-	QueryPointer:           func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryPointerReply(order, b) },
-	TranslateCoords:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseTranslateCoordsReply(order, b) },
-	GetInputFocus:          func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetInputFocusReply(order, b) },
-	QueryFont:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryFontReply(order, b) },
-	ListFonts:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListFontsReply(order, b) },
-	GetImage:               func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetImageReply(order, b) },
-	AllocColor:             func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocColorReply(order, b) },
-	AllocNamedColor:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocNamedColorReply(order, b) },
-	ListInstalledColormaps: func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListInstalledColormapsReply(order, b) },
-	QueryColors:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryColorsReply(order, b) },
-	LookupColor:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseLookupColorReply(order, b) },
-	QueryBestSize:          func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryBestSizeReply(order, b) },
-	QueryExtension:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryExtensionReply(order, b) },
-	GetKeyboardMapping:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetKeyboardMappingReply(order, b) },
-	GetKeyboardControl:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetKeyboardControlReply(order, b) },
-	GetPointerMapping:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetPointerMappingReply(order, b) },
-	SetPointerMapping:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseSetPointerMappingReply(order, b) },
-	GetModifierMapping:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetModifierMappingReply(order, b) },
-	SetModifierMapping:     func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseSetModifierMappingReply(order, b) },
-	GetScreenSaver:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetScreenSaverReply(order, b) },
-	ListHosts:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListHostsReply(order, b) },
-	QueryKeymap:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryKeymapReply(order, b) },
-	GetFontPath:            func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetFontPathReply(order, b) },
-	ListFontsWithInfo:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListFontsWithInfoReply(order, b) },
-	QueryTree:              func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseQueryTreeReply(order, b) },
-	AllocColorCells:        func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocColorCellsReply(order, b) },
-	AllocColorPlanes:       func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseAllocColorPlanesReply(order, b) },
-	ListExtensions:         func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseListExtensionsReply(order, b) },
-	GetPointerControl:      func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return ParseGetPointerControlReply(order, b) },
-	XInputOpcode:           func(order binary.ByteOrder, b []byte) (ServerMessage, error) { return parseXInputReply(order, b) },
-	BigRequestsOpcode: func(order binary.ByteOrder, b []byte) (ServerMessage, error) {
-		return &BigRequestsEnableReply{
-			Sequence:         order.Uint16(b[2:4]),
-			MaxRequestLength: order.Uint32(b[8:12]),
-		}, nil
-	},
-}
-
 func ParseReply(opcode ReqCode, msg []byte, order binary.ByteOrder) (ServerMessage, error) {
-	parser, ok := replyParsers[opcode]
-	if !ok {
+	switch opcode {
+	case GetWindowAttributes:
+		return ParseGetWindowAttributesReply(order, msg)
+	case GetGeometry:
+		return ParseGetGeometryReply(order, msg)
+	case InternAtom:
+		return ParseInternAtomReply(order, msg)
+	case GetAtomName:
+		return ParseGetAtomNameReply(order, msg)
+	case GetProperty:
+		return ParseGetPropertyReply(order, msg)
+	case ListProperties:
+		return ParseListPropertiesReply(order, msg)
+	case QueryTextExtents:
+		return ParseQueryTextExtentsReply(order, msg)
+	case GetMotionEvents:
+		return ParseGetMotionEventsReply(order, msg)
+	case GetSelectionOwner:
+		return ParseGetSelectionOwnerReply(order, msg)
+	case GrabPointer:
+		return ParseGrabPointerReply(order, msg)
+	case GrabKeyboard:
+		return ParseGrabKeyboardReply(order, msg)
+	case QueryPointer:
+		return ParseQueryPointerReply(order, msg)
+	case TranslateCoords:
+		return ParseTranslateCoordsReply(order, msg)
+	case GetInputFocus:
+		return ParseGetInputFocusReply(order, msg)
+	case QueryFont:
+		return ParseQueryFontReply(order, msg)
+	case ListFonts:
+		return ParseListFontsReply(order, msg)
+	case GetImage:
+		return ParseGetImageReply(order, msg)
+	case AllocColor:
+		return ParseAllocColorReply(order, msg)
+	case AllocNamedColor:
+		return ParseAllocNamedColorReply(order, msg)
+	case ListInstalledColormaps:
+		return ParseListInstalledColormapsReply(order, msg)
+	case QueryColors:
+		return ParseQueryColorsReply(order, msg)
+	case LookupColor:
+		return ParseLookupColorReply(order, msg)
+	case QueryBestSize:
+		return ParseQueryBestSizeReply(order, msg)
+	case QueryExtension:
+		return ParseQueryExtensionReply(order, msg)
+	case GetKeyboardMapping:
+		return ParseGetKeyboardMappingReply(order, msg)
+	case GetKeyboardControl:
+		return ParseGetKeyboardControlReply(order, msg)
+	case GetPointerMapping:
+		return ParseGetPointerMappingReply(order, msg)
+	case SetPointerMapping:
+		return ParseSetPointerMappingReply(order, msg)
+	case GetModifierMapping:
+		return ParseGetModifierMappingReply(order, msg)
+	case SetModifierMapping:
+		return ParseSetModifierMappingReply(order, msg)
+	case GetScreenSaver:
+		return ParseGetScreenSaverReply(order, msg)
+	case ListHosts:
+		return ParseListHostsReply(order, msg)
+	case QueryKeymap:
+		return ParseQueryKeymapReply(order, msg)
+	case GetFontPath:
+		return ParseGetFontPathReply(order, msg)
+	case ListFontsWithInfo:
+		return ParseListFontsWithInfoReply(order, msg)
+	case QueryTree:
+		return ParseQueryTreeReply(order, msg)
+	case AllocColorCells:
+		return ParseAllocColorCellsReply(order, msg)
+	case AllocColorPlanes:
+		return ParseAllocColorPlanesReply(order, msg)
+	case ListExtensions:
+		return ParseListExtensionsReply(order, msg)
+	case GetPointerControl:
+		return ParseGetPointerControlReply(order, msg)
+	case XInputOpcode:
+		return parseXInputReply(order, msg)
+	case BigRequestsOpcode:
+		return &BigRequestsEnableReply{
+			Sequence:         order.Uint16(msg[2:4]),
+			MaxRequestLength: order.Uint32(msg[8:12]),
+		}, nil
+	default:
 		return nil, NewError(RequestErrorCode, 0, 0, byte(opcode), 0)
 	}
-	return parser(order, msg)
 }
 
 func parseXInputReply(order binary.ByteOrder, b []byte) (ServerMessage, error) {
