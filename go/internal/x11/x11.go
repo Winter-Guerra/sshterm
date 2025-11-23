@@ -220,8 +220,6 @@ type x11Server struct {
 	keyboardGrabOwner     bool
 	pointerGrabEventMask  uint16
 	keyboardGrabEventMask uint32
-	pointerGrabClientID   uint32
-	keyboardGrabClientID  uint32
 	inputFocus            xID
 	passiveGrabs          map[xID][]*passiveGrab
 	passiveDeviceGrabs    map[xID][]*passiveDeviceGrab
@@ -309,15 +307,6 @@ func (s *x11Server) UpdatePointerPosition(x, y int16) {
 	s.pointerY = y
 }
 
-func (s *x11Server) resolveWindowID(localID uint32) (xID, bool) {
-	for id := range s.windows {
-		if id.local == localID {
-			return id, true
-		}
-	}
-	return xID{}, false
-}
-
 func (s *x11Server) GetWindowAttributes(xid xID) (wire.WindowAttributes, bool) {
 	w, ok := s.windows[xid]
 	if !ok {
@@ -382,7 +371,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 			for _, grab := range grabs {
 				if grab.button == button && (grab.modifiers == wire.AnyModifier || grab.modifiers == state) {
 					s.pointerGrabWindow = originalXID
-					s.pointerGrabClientID = grab.clientID
+					s.pointerGrabWindow.client = grab.clientID
 					s.pointerGrabOwner = grab.owner
 					s.pointerGrabEventMask = grab.eventMask
 					grabActive = true
@@ -393,24 +382,34 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		}
 	}
 
-	eventWindowID := originalXID.local
-	if grabActive && !s.pointerGrabOwner {
-		eventWindowID = s.pointerGrabWindow.local
-	}
-
 	// Dispatch events.
-	// The core event is subject to grabs, but XInput events are not.
 	if grabActive {
-		client, ok := s.clients[s.pointerGrabClientID]
-		if ok && (uint32(s.pointerGrabEventMask)&eventMask) != 0 {
-			s.sendCoreMouseEvent(client, eventType, button, eventWindowID, x, y, state)
+		grabbingClient, grabberOk := s.clients[s.pointerGrabWindow.client]
+		if grabberOk && (uint32(s.pointerGrabEventMask)&eventMask) != 0 {
+			eventWindowID := originalXID.local
+			if !s.pointerGrabOwner {
+				eventWindowID = s.pointerGrabWindow.local
+			}
+			s.sendCoreMouseEvent(grabbingClient, eventType, button, eventWindowID, x, y, state)
+		}
+
+		if s.pointerGrabOwner {
+			// Also send to the original window owner if they are listening.
+			ownerClient, ownerOk := s.clients[originalXID.client]
+			if ownerOk && (!grabberOk || ownerClient.id != grabbingClient.id) {
+				if w, ok := s.windows[originalXID]; ok {
+					if w.attributes.EventMask&eventMask != 0 {
+						s.sendCoreMouseEvent(ownerClient, eventType, button, originalXID.local, x, y, state)
+					}
+				}
+			}
 		}
 	} else {
 		// If no grab is active, send core events to clients that have selected for them.
 		for _, client := range s.clients {
 			w, ok := s.windows[client.xID(xid.local)]
 			if ok && w.attributes.EventMask&eventMask != 0 {
-				s.sendCoreMouseEvent(client, eventType, button, eventWindowID, x, y, state)
+				s.sendCoreMouseEvent(client, eventType, button, originalXID.local, x, y, state)
 			}
 		}
 	}
@@ -615,10 +614,10 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 			for _, grab := range grabs {
 				if grab.key == wire.KeyCode(keycode) && (grab.modifiers == wire.AnyModifier || grab.modifiers == state) {
 					s.keyboardGrabWindow = xid
-					s.keyboardGrabClientID = grab.clientID
+					s.keyboardGrabWindow.client = grab.clientID
 					s.keyboardGrabOwner = grab.owner
 					grabActive = true
-					if client, ok := s.clients[grab.clientID]; ok {
+					if client, ok := s.clients[s.keyboardGrabWindow.client]; ok {
 						s.sendCoreKeyboardEvent(client, eventType, keycode, xid.local, state)
 					}
 					return
@@ -628,17 +627,25 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	if grabActive {
-		client, ok := s.clients[s.keyboardGrabClientID]
-		if !ok {
-			return
+		grabbingClient, grabberOk := s.clients[s.keyboardGrabWindow.client]
+		if grabberOk {
+			eventWindow := s.keyboardGrabWindow.local
+			if s.keyboardGrabOwner {
+				eventWindow = xid.local
+			}
+			s.sendCoreKeyboardEvent(grabbingClient, eventType, keycode, eventWindow, state)
 		}
 
-		eventWindow := s.keyboardGrabWindow.local
 		if s.keyboardGrabOwner {
-			eventWindow = xid.local
+			ownerClient, ownerOk := s.clients[xid.client]
+			if ownerOk && (!grabberOk || ownerClient.id != grabbingClient.id) {
+				if w, ok := s.windows[xid]; ok {
+					if w.attributes.EventMask&eventMask != 0 {
+						s.sendCoreKeyboardEvent(ownerClient, eventType, keycode, xid.local, state)
+					}
+				}
+			}
 		}
-
-		s.sendCoreKeyboardEvent(client, eventType, keycode, eventWindow, state)
 		return
 	}
 
@@ -1450,10 +1457,19 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		s.pointerGrabTime = 0
 
 	case *wire.GrabButtonRequest:
-		grabWindow, ok := s.resolveWindowID(uint32(p.GrabWindow))
-		if !ok {
+		var grabWindow xID
+		var found bool
+		for wID := range s.windows {
+			if wID.local == uint32(p.GrabWindow) {
+				grabWindow = wID
+				found = true
+				break
+			}
+		}
+		if !found {
 			return wire.NewGenericError(seq, uint32(p.GrabWindow), 0, wire.GrabButton, wire.WindowErrorCode)
 		}
+
 		grab := &passiveGrab{
 			clientID:  client.id,
 			button:    p.Button,
@@ -1502,8 +1518,16 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		s.keyboardGrabTime = 0
 
 	case *wire.GrabKeyRequest:
-		grabWindow, ok := s.resolveWindowID(uint32(p.GrabWindow))
-		if !ok {
+		var grabWindow xID
+		var found bool
+		for wID := range s.windows {
+			if wID.local == uint32(p.GrabWindow) {
+				grabWindow = wID
+				found = true
+				break
+			}
+		}
+		if !found {
 			return wire.NewGenericError(seq, uint32(p.GrabWindow), 0, wire.GrabKey, wire.WindowErrorCode)
 		}
 		grab := &passiveGrab{

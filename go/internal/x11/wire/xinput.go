@@ -2457,6 +2457,22 @@ type DeviceInfo struct {
 	EventMasks map[uint32]uint32 // window ID -> event mask
 }
 
+func (d *DeviceInfo) DeepCopy() *DeviceInfo {
+	if d == nil {
+		return nil
+	}
+	newInfo := &DeviceInfo{
+		Header:     d.Header,
+		Classes:    make([]InputClassInfo, len(d.Classes)),
+		EventMasks: make(map[uint32]uint32),
+	}
+	copy(newInfo.Classes, d.Classes)
+	for k, v := range d.EventMasks {
+		newInfo.EventMasks[k] = v
+	}
+	return newInfo
+}
+
 func (d DeviceInfo) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
 	buf.WriteByte(d.Header.DeviceID)
@@ -3725,4 +3741,19 @@ func ParseXIQueryVersionRequest(order binary.ByteOrder, body []byte, seq uint16)
 		MajorVersion: order.Uint16(body[0:2]),
 		MinorVersion: order.Uint16(body[2:4]),
 	}, nil
+}
+
+// XIGrabDevice reply
+type XIGrabDeviceReply struct {
+	Sequence uint16
+	Status   byte
+}
+
+func (r *XIGrabDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	reply[1] = r.Status
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0) // length
+	return reply
 }

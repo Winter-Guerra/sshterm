@@ -59,7 +59,7 @@ func decodeOneMessage(t *testing.T, buf *bytes.Buffer, order binary.ByteOrder) i
 	switch msgType {
 	case 4: // ButtonPress
 		return decodeButtonPressEvent(header, order)
-	case 1, 2: // KeyPress, KeyRelease
+	case 2, 3: // KeyPress, KeyRelease
 		return decodeKeyEvent(header, order)
 	// Add other core event types here as needed
 	default:
