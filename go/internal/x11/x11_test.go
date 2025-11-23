@@ -268,6 +268,7 @@ func TestSendMouseEvent_ActivePointerGrab_Redirected(t *testing.T) {
 
 	// Grab the pointer on grabWindowID
 	server.pointerGrabWindow = grabWindowID
+	server.pointerGrabClientID = client.id
 	server.pointerGrabEventMask = wire.ButtonPressMask
 	server.pointerGrabOwner = false // Event should be sent to grabWindowID
 
@@ -304,6 +305,7 @@ func TestSendMouseEvent_ActivePointerGrab_OwnerEventsTrue(t *testing.T) {
 
 	// Grab the pointer with ownerEvents = true
 	server.pointerGrabWindow = grabWindowID
+	server.pointerGrabClientID = client.id
 	server.pointerGrabEventMask = wire.ButtonPressMask
 	server.pointerGrabOwner = true // Event should be sent to originalWindowID
 
@@ -394,6 +396,7 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_Redirected(t *testing.T) {
 
 	// Grab the keyboard on grabWindowID
 	server.keyboardGrabWindow = grabWindowID
+	server.keyboardGrabClientID = client.id
 	server.keyboardGrabOwner = false // Event should be sent to grabWindowID
 
 	// Send a key press event to the original window
@@ -429,6 +432,7 @@ func TestSendKeyboardEvent_ActiveKeyboardGrab_OwnerEventsTrue(t *testing.T) {
 
 	// Grab the keyboard with ownerEvents = true
 	server.keyboardGrabWindow = grabWindowID
+	server.keyboardGrabClientID = client.id
 	server.keyboardGrabOwner = true // Event should be sent to originalWindowID
 
 	// Send a key press event to the original window

@@ -52,3 +52,21 @@ func setupTestServerWithClient(t *testing.T) (*x11Server, *x11Client, *MockX11Fr
 
 	return server, client, mockFrontend, clientBuffer
 }
+
+func newClient(t *testing.T, s *x11Server) (*x11Client, *bytes.Buffer) {
+	clientBuffer := &bytes.Buffer{}
+	mockConn := &testConn{r: &bytes.Buffer{}, w: clientBuffer}
+	id := s.nextClientID
+	s.nextClientID++
+
+	client := &x11Client{
+		id:          id,
+		conn:        mockConn,
+		byteOrder:   binary.LittleEndian,
+		sequence:    0,
+		openDevices: make(map[byte]*wire.DeviceInfo),
+		saveSet:     make(map[uint32]bool),
+	}
+	s.clients[id] = client
+	return client, clientBuffer
+}
