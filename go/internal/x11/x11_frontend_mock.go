@@ -191,6 +191,11 @@ type MockX11Frontend struct {
 	GetDeviceModifierMappingCalls   [][]any
 	GetDeviceButtonMappingCalls     [][]any
 	QueryDeviceStateCalls           [][]any
+	ComposeWindowCalls              []xID
+}
+
+func (m *MockX11Frontend) ComposeWindow(xid xID) {
+	m.ComposeWindowCalls = append(m.ComposeWindowCalls, xid)
 }
 
 func (m *MockX11Frontend) QueryDeviceState(deviceID byte) []wire.InputClassInfo {

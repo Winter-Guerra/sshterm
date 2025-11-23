@@ -24,7 +24,9 @@ type property struct {
 type windowInfo struct {
 	div             js.Value
 	canvas          js.Value
-	ctx             js.Value // 2D rendering context
+	ctx             js.Value // 2D rendering context (visible)
+	offscreenCanvas js.Value
+	offscreenCtx    js.Value // 2D rendering context (offscreen)
 	mouseEvents     map[string]js.Func
 	focusEvent      js.Func
 	blurEvent       js.Func
@@ -245,6 +247,11 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	canvas.Set("height", height)
 	canvas.Get("style").Set("display", "block")
 
+	// Create offscreen canvas
+	offscreenCanvas := w.document.Call("createElement", "canvas")
+	offscreenCanvas.Set("width", width)
+	offscreenCanvas.Set("height", height)
+
 	isTopLevel := parent == w.server.rootWindowID()
 	var titleBarHeight int
 	var titleBar, windowTitleSpan js.Value
@@ -453,6 +460,8 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 			canvas.Set("width", newWidth)
 			canvas.Set("height", newHeight-20) // Adjust for title bar height
+			offscreenCanvas.Set("width", newWidth)
+			offscreenCanvas.Set("height", newHeight-20)
 
 			return nil
 		})
@@ -495,6 +504,9 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	ctxOptions := js.Global().Get("Object").New()
 	ctxOptions.Set("alpha", true)
 	ctx := canvas.Call("getContext", "2d", ctxOptions)
+
+	// Get offscreen context
+	offscreenCtx := offscreenCanvas.Call("getContext", "2d", ctxOptions)
 
 	var finalX, finalY uint32 = x, y
 	var parentDiv js.Value = w.body
@@ -572,6 +584,8 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 		div:             windowDiv,
 		canvas:          canvas,
 		ctx:             ctx,
+		offscreenCanvas: offscreenCanvas,
+		offscreenCtx:    offscreenCtx,
 		mouseEvents:     mouseEvents,
 		focusEvent:      focusEvent,
 		blurEvent:       blurEvent,
@@ -827,11 +841,13 @@ func (w *wasmX11Frontend) ConfigureWindow(xid xID, valueMask uint16, values []ui
 		if valueMask&CWWidth != 0 {
 			style.Set("width", fmt.Sprintf("%dpx", values[valueIndex]))
 			winInfo.canvas.Set("width", values[valueIndex])
+			winInfo.offscreenCanvas.Set("width", values[valueIndex])
 			valueIndex++
 		}
 		if valueMask&CWHeight != 0 {
 			style.Set("height", fmt.Sprintf("%dpx", values[valueIndex]))
 			winInfo.canvas.Set("height", values[valueIndex])
+			winInfo.offscreenCanvas.Set("height", values[valueIndex])
 			valueIndex++
 		}
 		if valueMask&CWSibling != 0 {
@@ -1029,6 +1045,59 @@ func (w *wasmX11Frontend) SetInputFocus(focus xID, revertTo byte) {
 	})
 }
 
+func (w *wasmX11Frontend) ComposeWindow(xid xID) {
+	// Find top-level window
+	currentID := xid
+	for {
+		win, ok := w.server.windows[currentID]
+		if !ok {
+			return
+		}
+		if win.parent == w.server.rootWindowID() {
+			break
+		}
+		// Assuming same client for parent
+		currentID = xID{currentID.client, win.parent}
+	}
+	// currentID is now the top-level window
+	w.redrawWindow(currentID)
+}
+
+func (w *wasmX11Frontend) redrawWindow(xid xID) {
+	winInfo, ok := w.windows[xid]
+	if !ok {
+		return
+	}
+	// Clear visible canvas
+	width := winInfo.canvas.Get("width").Int()
+	height := winInfo.canvas.Get("height").Int()
+	winInfo.ctx.Call("clearRect", 0, 0, width, height)
+
+	w.drawTree(winInfo.ctx, xid, 0, 0)
+}
+
+func (w *wasmX11Frontend) drawTree(ctx js.Value, xid xID, x, y int) {
+	winInfo, ok := w.windows[xid]
+	if !ok {
+		return
+	}
+	// Draw this window's offscreen buffer
+	ctx.Call("drawImage", winInfo.offscreenCanvas, x, y)
+
+	// Iterate children
+	// Use server's window hierarchy
+	if win, ok := w.server.windows[xid]; ok {
+		for _, childLocalID := range win.children {
+			childXID := xID{xid.client, childLocalID}
+			if childWin, ok := w.server.windows[childXID]; ok {
+				if childWin.mapped {
+					w.drawTree(ctx, childXID, x+int(childWin.x), y+int(childWin.y))
+				}
+			}
+		}
+	}
+}
+
 func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, height uint16, dstX, dstY int16, leftPad, depth uint8, imgData []byte) {
 	gc, ok := w.gcs[gcID]
 	if !ok {
@@ -1040,7 +1109,7 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	var ctx js.Value
 	winInfo, ok := w.windows[drawable]
 	if ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		currentColormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1371,7 +1440,7 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1422,7 +1491,7 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1469,7 +1538,7 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1524,7 +1593,7 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1575,7 +1644,7 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1622,7 +1691,7 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1670,7 +1739,7 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1729,7 +1798,7 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 	var ctx js.Value
 	var colormap xID
 	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
@@ -1801,8 +1870,8 @@ func (w *wasmX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 			}
 			bgColor := fmt.Sprintf("rgb(%d, %d, %d)", r, g, b)
 			debugf("X11: ClearArea filling with fillStyle: %s", bgColor)
-			winInfo.ctx.Set("fillStyle", bgColor)
-			winInfo.ctx.Call("fillRect", x, y, width, height)
+			winInfo.offscreenCtx.Set("fillStyle", bgColor)
+			winInfo.offscreenCtx.Call("fillRect", x, y, width, height)
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1822,7 +1891,7 @@ func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX,
 	srcPixmapInfo, srcIsPixmap := w.pixmaps[srcDrawable]
 
 	if srcIsWindow {
-		srcCanvas = srcWinInfo.canvas
+		srcCanvas = srcWinInfo.offscreenCanvas
 	} else if srcIsPixmap {
 		srcCanvas = srcPixmapInfo.canvas
 	} else {
@@ -1837,7 +1906,7 @@ func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX,
 	}
 
 	if !srcCanvas.IsNull() && !dstWinInfo.canvas.IsNull() {
-		dstWinInfo.ctx.Call("drawImage", srcCanvas, srcX, srcY, width, height, dstX, dstY, width, height)
+		dstWinInfo.offscreenCtx.Call("drawImage", srcCanvas, srcX, srcY, width, height, dstX, dstY, width, height)
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyArea",
@@ -1856,7 +1925,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 	srcPixmapInfo, srcIsPixmap := w.pixmaps[srcDrawable]
 
 	if srcIsWindow {
-		srcCanvas = srcWinInfo.canvas
+		srcCanvas = srcWinInfo.offscreenCanvas
 	} else if srcIsPixmap {
 		srcCanvas = srcPixmapInfo.canvas
 	} else {
@@ -1870,7 +1939,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 	dstPixmapInfo, dstIsPixmap := w.pixmaps[dstDrawable]
 
 	if dstIsWindow {
-		dstCtx = dstWinInfo.ctx
+		dstCtx = dstWinInfo.offscreenCtx
 		currentColormap = dstWinInfo.colormap
 	} else if dstIsPixmap {
 		dstCtx = dstPixmapInfo.context
@@ -1936,7 +2005,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 func (w *wasmX11Frontend) GetImage(drawable xID, x, y, width, height int32, format uint32) ([]byte, error) {
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
-			imageData := winInfo.ctx.Call("getImageData", x, y, width, height)
+			imageData := winInfo.offscreenCtx.Call("getImageData", x, y, width, height)
 			data := imageData.Get("data") // Uint8ClampedArray
 			byteSlice := make([]byte, data.Length())
 			js.CopyBytesToGo(byteSlice, data)
@@ -1959,7 +2028,7 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 	var colormap xID
 	winInfo, ok := w.windows[drawable]
 	if ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else {
 		return
@@ -2013,7 +2082,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	var colormap xID
 	winInfo, ok := w.windows[drawable]
 	if ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else {
 		return
@@ -2060,7 +2129,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 	var colormap xID
 	winInfo, ok := w.windows[drawable]
 	if ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else {
 		return
@@ -2514,7 +2583,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 	var colormap xID
 	winInfo, ok := w.windows[drawable]
 	if ok {
-		ctx = winInfo.ctx
+		ctx = winInfo.offscreenCtx
 		colormap = winInfo.colormap
 	} else {
 		return
@@ -2625,7 +2694,7 @@ func (w *wasmX11Frontend) CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, 
 		return
 	}
 	if !srcPixmap.canvas.IsNull() && !dstWin.canvas.IsNull() {
-		dstWin.ctx.Call("drawImage", srcPixmap.canvas, srcX, srcY, width, height, dstX, dstY, width, height)
+		dstWin.offscreenCtx.Call("drawImage", srcPixmap.canvas, srcX, srcY, width, height, dstX, dstY, width, height)
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyPixmap",

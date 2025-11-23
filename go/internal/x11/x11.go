@@ -141,6 +141,7 @@ type X11FrontendAPI interface {
 	GetDeviceModifierMapping(deviceID byte) (byte, []byte)
 	GetDeviceButtonMapping(deviceID byte) []byte
 	QueryDeviceState(deviceID byte) []wire.InputClassInfo
+	ComposeWindow(xid xID)
 }
 
 type XError interface {
@@ -1864,50 +1865,62 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.ClearAreaRequest:
 		s.frontend.ClearArea(client.xID(uint32(p.Window)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
+		s.frontend.ComposeWindow(client.xID(uint32(p.Window)))
 
 	case *wire.CopyAreaRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.CopyArea(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
+		s.frontend.ComposeWindow(client.xID(uint32(p.DstDrawable)))
 
 	case *wire.CopyPlaneRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.CopyPlane(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height), int32(p.PlaneMask))
+		s.frontend.ComposeWindow(client.xID(uint32(p.DstDrawable)))
 
 	case *wire.PolyPointRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PolyPoint(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyLineRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PolyLine(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolySegmentRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PolySegment(client.xID(uint32(p.Drawable)), gcID, p.Segments)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyRectangleRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PolyRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyArcRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PolyArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.FillPolyRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.FillPoly(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyFillRectangleRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PolyFillRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyFillArcRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PolyFillArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PutImageRequest:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.PutImage(client.xID(uint32(p.Drawable)), gcID, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.GetImageRequest:
 		imgData, err := s.frontend.GetImage(client.xID(uint32(p.Drawable)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height), p.PlaneMask)
@@ -1925,18 +1938,22 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 	case *wire.PolyText8Request:
 		gcID := client.xID(uint32(p.GC))
 		s.frontend.PolyText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyText16Request:
 		gcID := client.xID(uint32(p.GC))
 		s.frontend.PolyText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.ImageText8Request:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.ImageText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.ImageText16Request:
 		gcID := client.xID(uint32(p.Gc))
 		s.frontend.ImageText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
+		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.CreateColormapRequest:
 		xid := client.xID(uint32(p.Mid))
