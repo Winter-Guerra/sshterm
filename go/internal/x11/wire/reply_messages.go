@@ -872,7 +872,12 @@ func (r *QueryFontReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 	order.PutUint32(reply[56:60], uint32(len(r.CharInfos)))
 
-	offset := 60 + 8*numFontProps
+	offset := 60
+	for _, prop := range r.FontProps {
+		order.PutUint32(reply[offset:], prop.Name)
+		order.PutUint32(reply[offset+4:], prop.Value)
+		offset += 8
+	}
 	for _, ci := range r.CharInfos {
 		order.PutUint16(reply[offset:offset+2], uint16(ci.LeftSideBearing))
 		order.PutUint16(reply[offset+2:offset+4], uint16(ci.RightSideBearing))

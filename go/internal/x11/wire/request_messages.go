@@ -1009,8 +1009,6 @@ func ParseConfigureWindowRequest(order binary.ByteOrder, requestBody []byte, seq
 	req := &ConfigureWindowRequest{}
 	req.Window = Window(order.Uint32(requestBody[0:4]))
 	req.ValueMask = order.Uint16(requestBody[4:6])
-	// TODO: This doesn't use the value-mask to determine how many values to read.
-	// It just reads to the end of the packet.
 	numValues := 0
 	for i := 0; i < 16; i++ {
 		if (req.ValueMask & (1 << i)) != 0 {
