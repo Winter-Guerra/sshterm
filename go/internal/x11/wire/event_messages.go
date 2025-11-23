@@ -7,20 +7,22 @@ import (
 	"fmt"
 )
 
+// KeyEvent represents a KeyPress or KeyRelease event.
 type KeyEvent struct {
-	Opcode         byte // KeyPress: 2, KeyRelease: 3
-	Sequence       uint16
-	Detail         byte // keycode
-	Time           uint32
-	Root           uint32
-	Event          uint32
-	Child          uint32
-	RootX, RootY   int16
-	EventX, EventY int16
-	State          uint16 // keyboard state
-	SameScreen     bool
+	Opcode         byte   // KeyPress: 2, KeyRelease: 3
+	Sequence       uint16 // Sequence number
+	Detail         byte   // keycode
+	Time           uint32 // Time of event in milliseconds
+	Root           uint32 // Root window ID
+	Event          uint32 // Event window ID
+	Child          uint32 // Child window ID (or None)
+	RootX, RootY   int16  // Pointer coordinates relative to root
+	EventX, EventY int16  // Pointer coordinates relative to event window
+	State          uint16 // Key/Button state mask
+	SameScreen     bool   // True if event and root are on same screen
 }
 
+// EncodeMessage encodes the KeyEvent into a byte slice.
 func (e *KeyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = e.Opcode
@@ -40,31 +42,32 @@ func (e *KeyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ButtonPress: 4
+// ButtonPressEvent represents a ButtonPress event (opcode 4).
 type ButtonPressEvent struct {
-	Sequence       uint16
-	Detail         byte // button
-	Time           uint32
-	Root           uint32
-	Event          uint32
-	Child          uint32
-	RootX, RootY   int16
-	EventX, EventY int16
-	State          uint16
-	SameScreen     bool
+	Sequence       uint16 // Sequence number
+	Detail         byte   // button code
+	Time           uint32 // Time of event
+	Root           uint32 // Root window ID
+	Event          uint32 // Event window ID
+	Child          uint32 // Child window ID
+	RootX, RootY   int16  // Coordinates relative to root
+	EventX, EventY int16  // Coordinates relative to event window
+	State          uint16 // Key/Button state mask
+	SameScreen     bool   // Same screen flag
 }
 
-// GraphicsExposure: 13
+// GraphicsExposureEvent represents a GraphicsExposure event (opcode 13).
 type GraphicsExposureEvent struct {
-	Sequence      uint16
-	Drawable      uint32
-	X, Y          uint16
-	Width, Height uint16
-	MinorOpcode   uint16
-	Count         uint16
-	MajorOpcode   byte
+	Sequence      uint16 // Sequence number
+	Drawable      uint32 // Drawable ID
+	X, Y          uint16 // Top-left coordinate of exposed area
+	Width, Height uint16 // Dimensions of exposed area
+	MinorOpcode   uint16 // Minor opcode of request causing event
+	Count         uint16 // Number of subsequent GraphicsExposure events
+	MajorOpcode   byte   // Major opcode of request causing event
 }
 
+// EncodeMessage encodes the GraphicsExposureEvent into a byte slice.
 func (e *GraphicsExposureEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 13 // GraphicsExposure event code
@@ -82,14 +85,15 @@ func (e *GraphicsExposureEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// NoExposure: 14
+// NoExposureEvent represents a NoExposure event (opcode 14).
 type NoExposureEvent struct {
-	Sequence    uint16
-	Drawable    uint32
-	MinorOpcode uint16
-	MajorOpcode byte
+	Sequence    uint16 // Sequence number
+	Drawable    uint32 // Drawable ID
+	MinorOpcode uint16 // Minor opcode
+	MajorOpcode byte   // Major opcode
 }
 
+// EncodeMessage encodes the NoExposureEvent into a byte slice.
 func (e *NoExposureEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 14 // NoExposure event code
@@ -102,13 +106,14 @@ func (e *NoExposureEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// VisibilityNotify: 15
+// VisibilityNotifyEvent represents a VisibilityNotify event (opcode 15).
 type VisibilityNotifyEvent struct {
-	Sequence uint16
-	Window   uint32
-	State    byte
+	Sequence uint16 // Sequence number
+	Window   uint32 // Window ID
+	State    byte   // Visibility state (Unobscured, PartiallyObscured, FullyObscured)
 }
 
+// EncodeMessage encodes the VisibilityNotifyEvent into a byte slice.
 func (e *VisibilityNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 15 // VisibilityNotify event code
@@ -120,17 +125,18 @@ func (e *VisibilityNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// CreateNotify: 16
+// CreateNotifyEvent represents a CreateNotify event (opcode 16).
 type CreateNotifyEvent struct {
-	Sequence         uint16
-	Parent           uint32
-	Window           uint32
-	X, Y             int16
-	Width, Height    uint16
-	BorderWidth      uint16
-	OverrideRedirect bool
+	Sequence         uint16 // Sequence number
+	Parent           uint32 // Parent window ID
+	Window           uint32 // Created window ID
+	X, Y             int16  // Coordinates relative to parent
+	Width, Height    uint16 // Dimensions
+	BorderWidth      uint16 // Border width
+	OverrideRedirect bool   // Override-redirect flag
 }
 
+// EncodeMessage encodes the CreateNotifyEvent into a byte slice.
 func (e *CreateNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 16 // CreateNotify event code
@@ -148,13 +154,14 @@ func (e *CreateNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// DestroyNotify: 17
+// DestroyNotifyEvent represents a DestroyNotify event (opcode 17).
 type DestroyNotifyEvent struct {
-	Sequence uint16
-	Event    uint32
-	Window   uint32
+	Sequence uint16 // Sequence number
+	Event    uint32 // Event window ID
+	Window   uint32 // Destroyed window ID
 }
 
+// EncodeMessage encodes the DestroyNotifyEvent into a byte slice.
 func (e *DestroyNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 17 // DestroyNotify event code
@@ -166,14 +173,15 @@ func (e *DestroyNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// UnmapNotify: 18
+// UnmapNotifyEvent represents an UnmapNotify event (opcode 18).
 type UnmapNotifyEvent struct {
-	Sequence      uint16
-	Event         uint32
-	Window        uint32
-	FromConfigure bool
+	Sequence      uint16 // Sequence number
+	Event         uint32 // Event window ID
+	Window        uint32 // Unmapped window ID
+	FromConfigure bool   // True if unmap was result of a resize
 }
 
+// EncodeMessage encodes the UnmapNotifyEvent into a byte slice.
 func (e *UnmapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 18 // UnmapNotify event code
@@ -186,14 +194,15 @@ func (e *UnmapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// MapNotify: 19
+// MapNotifyEvent represents a MapNotify event (opcode 19).
 type MapNotifyEvent struct {
-	Sequence         uint16
-	Event            uint32
-	Window           uint32
-	OverrideRedirect bool
+	Sequence         uint16 // Sequence number
+	Event            uint32 // Event window ID
+	Window           uint32 // Mapped window ID
+	OverrideRedirect bool   // Override-redirect flag
 }
 
+// EncodeMessage encodes the MapNotifyEvent into a byte slice.
 func (e *MapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 19 // MapNotify event code
@@ -206,13 +215,14 @@ func (e *MapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// MapRequest: 20
+// MapRequestEvent represents a MapRequest event (opcode 20).
 type MapRequestEvent struct {
-	Sequence uint16
-	Parent   uint32
-	Window   uint32
+	Sequence uint16 // Sequence number
+	Parent   uint32 // Parent window ID
+	Window   uint32 // Window ID requested to be mapped
 }
 
+// EncodeMessage encodes the MapRequestEvent into a byte slice.
 func (e *MapRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 20 // MapRequest event code
@@ -224,16 +234,17 @@ func (e *MapRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ReparentNotify: 21
+// ReparentNotifyEvent represents a ReparentNotify event (opcode 21).
 type ReparentNotifyEvent struct {
-	Sequence         uint16
-	Event            uint32
-	Window           uint32
-	Parent           uint32
-	X, Y             int16
-	OverrideRedirect bool
+	Sequence         uint16 // Sequence number
+	Event            uint32 // Event window ID
+	Window           uint32 // Reparented window ID
+	Parent           uint32 // New parent window ID
+	X, Y             int16  // Coordinates relative to new parent
+	OverrideRedirect bool   // Override-redirect flag
 }
 
+// EncodeMessage encodes the ReparentNotifyEvent into a byte slice.
 func (e *ReparentNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 21 // ReparentNotify event code
@@ -249,19 +260,20 @@ func (e *ReparentNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ConfigureRequest: 23
+// ConfigureRequestEvent represents a ConfigureRequest event (opcode 23).
 type ConfigureRequestEvent struct {
-	Sequence      uint16
-	StackMode     byte
-	Parent        uint32
-	Window        uint32
-	Sibling       uint32
-	X, Y          int16
-	Width, Height uint16
-	BorderWidth   uint16
-	ValueMask     uint16
+	Sequence      uint16 // Sequence number
+	StackMode     byte   // Stack mode (Above, Below, etc.)
+	Parent        uint32 // Parent window ID
+	Window        uint32 // Window ID
+	Sibling       uint32 // Sibling window ID
+	X, Y          int16  // Requested coordinates
+	Width, Height uint16 // Requested dimensions
+	BorderWidth   uint16 // Requested border width
+	ValueMask     uint16 // Mask indicating which values are requested
 }
 
+// EncodeMessage encodes the ConfigureRequestEvent into a byte slice.
 func (e *ConfigureRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 23 // ConfigureRequest event code
@@ -280,14 +292,15 @@ func (e *ConfigureRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// GravityNotify: 24
+// GravityNotifyEvent represents a GravityNotify event (opcode 24).
 type GravityNotifyEvent struct {
-	Sequence uint16
-	Event    uint32
-	Window   uint32
-	X, Y     int16
+	Sequence uint16 // Sequence number
+	Event    uint32 // Event window ID
+	Window   uint32 // Window ID
+	X, Y     int16  // New coordinates
 }
 
+// EncodeMessage encodes the GravityNotifyEvent into a byte slice.
 func (e *GravityNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 24 // GravityNotify event code
@@ -301,13 +314,14 @@ func (e *GravityNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ResizeRequest: 25
+// ResizeRequestEvent represents a ResizeRequest event (opcode 25).
 type ResizeRequestEvent struct {
-	Sequence      uint16
-	Window        uint32
-	Width, Height uint16
+	Sequence      uint16 // Sequence number
+	Window        uint32 // Window ID
+	Width, Height uint16 // Requested dimensions
 }
 
+// EncodeMessage encodes the ResizeRequestEvent into a byte slice.
 func (e *ResizeRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 25 // ResizeRequest event code
@@ -320,14 +334,15 @@ func (e *ResizeRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// CirculateNotify: 26
+// CirculateNotifyEvent represents a CirculateNotify event (opcode 26).
 type CirculateNotifyEvent struct {
-	Sequence uint16
-	Event    uint32
-	Window   uint32
-	Place    byte
+	Sequence uint16 // Sequence number
+	Event    uint32 // Event window ID
+	Window   uint32 // Window ID
+	Place    byte   // Place (PlaceOnTop, PlaceOnBottom)
 }
 
+// EncodeMessage encodes the CirculateNotifyEvent into a byte slice.
 func (e *CirculateNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 26 // CirculateNotify event code
@@ -340,14 +355,15 @@ func (e *CirculateNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// CirculateRequest: 27
+// CirculateRequestEvent represents a CirculateRequest event (opcode 27).
 type CirculateRequestEvent struct {
-	Sequence uint16
-	Parent   uint32
-	Window   uint32
-	Place    byte
+	Sequence uint16 // Sequence number
+	Parent   uint32 // Parent window ID
+	Window   uint32 // Window ID
+	Place    byte   // Place (PlaceOnTop, PlaceOnBottom)
 }
 
+// EncodeMessage encodes the CirculateRequestEvent into a byte slice.
 func (e *CirculateRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 27 // CirculateRequest event code
@@ -360,15 +376,16 @@ func (e *CirculateRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// PropertyNotify: 28
+// PropertyNotifyEvent represents a PropertyNotify event (opcode 28).
 type PropertyNotifyEvent struct {
-	Sequence uint16
-	Window   uint32
-	Atom     uint32
-	Time     uint32
-	State    byte
+	Sequence uint16 // Sequence number
+	Window   uint32 // Window ID
+	Atom     uint32 // Property atom
+	Time     uint32 // Time of change
+	State    byte   // State (PropertyNewValue, PropertyDelete)
 }
 
+// EncodeMessage encodes the PropertyNotifyEvent into a byte slice.
 func (e *PropertyNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 28 // PropertyNotify event code
@@ -382,14 +399,15 @@ func (e *PropertyNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// SelectionClear: 29
+// SelectionClearEvent represents a SelectionClear event (opcode 29).
 type SelectionClearEvent struct {
-	Sequence  uint16
-	Owner     uint32
-	Selection uint32
-	Time      uint32
+	Sequence  uint16 // Sequence number
+	Owner     uint32 // Window losing ownership
+	Selection uint32 // Selection atom
+	Time      uint32 // Last change time
 }
 
+// EncodeMessage encodes the SelectionClearEvent into a byte slice.
 func (e *SelectionClearEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 29 // SelectionClear event code
@@ -402,17 +420,18 @@ func (e *SelectionClearEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// SelectionRequest: 30
+// SelectionRequestEvent represents a SelectionRequest event (opcode 30).
 type SelectionRequestEvent struct {
-	Sequence  uint16
-	Owner     uint32
-	Requestor uint32
-	Selection uint32
-	Target    uint32
-	Property  uint32
-	Time      uint32
+	Sequence  uint16 // Sequence number
+	Owner     uint32 // Owner window ID
+	Requestor uint32 // Requestor window ID
+	Selection uint32 // Selection atom
+	Target    uint32 // Target atom
+	Property  uint32 // Property atom
+	Time      uint32 // Request time
 }
 
+// EncodeMessage encodes the SelectionRequestEvent into a byte slice.
 func (e *SelectionRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 30 // SelectionRequest event code
@@ -427,14 +446,15 @@ func (e *SelectionRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// MappingNotify: 34
+// MappingNotifyEvent represents a MappingNotify event (opcode 34).
 type MappingNotifyEvent struct {
-	Sequence     uint16
-	Request      byte
-	FirstKeycode byte
-	Count        byte
+	Sequence     uint16 // Sequence number
+	Request      byte   // Request (MappingModifier, MappingKeyboard, MappingPointer)
+	FirstKeycode byte   // First keycode changed
+	Count        byte   // Number of keycodes changed
 }
 
+// EncodeMessage encodes the MappingNotifyEvent into a byte slice.
 func (e *MappingNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 34 // MappingNotify event code
@@ -447,15 +467,16 @@ func (e *MappingNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// GenericEvent: 35
+// GenericEventData represents a GenericEvent (opcode 35), used for extensions like XInput2.
 type GenericEventData struct {
-	Sequence  uint16
-	Extension byte
-	EventType uint16
-	Length    uint32
-	EventData []byte
+	Sequence  uint16 // Sequence number
+	Extension byte   // Extension opcode
+	EventType uint16 // Extension event type
+	Length    uint32 // Length of event data
+	EventData []byte // Raw event data
 }
 
+// EncodeMessage encodes the GenericEventData into a byte slice.
 func (e *GenericEventData) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 35 // GenericEvent event code
@@ -467,6 +488,7 @@ func (e *GenericEventData) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
+// EncodeMessage encodes the DeviceMotionNotifyEvent into a byte slice.
 func (e *DeviceMotionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = byte(XInputOpcode)
@@ -486,6 +508,7 @@ func (e *DeviceMotionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return buf
 }
 
+// EncodeMessage encodes the ProximityInEvent into a byte slice.
 func (e *ProximityInEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = byte(XInputOpcode)
@@ -505,6 +528,7 @@ func (e *ProximityInEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return buf
 }
 
+// EncodeMessage encodes the ProximityOutEvent into a byte slice.
 func (e *ProximityOutEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = byte(XInputOpcode)
@@ -524,6 +548,7 @@ func (e *ProximityOutEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return buf
 }
 
+// ParseKeyEvent parses a KeyPress or KeyRelease event.
 func ParseKeyEvent(buf []byte, order binary.ByteOrder) (*KeyEvent, error) {
 	e := &KeyEvent{}
 	e.Opcode = buf[0]
@@ -542,6 +567,7 @@ func ParseKeyEvent(buf []byte, order binary.ByteOrder) (*KeyEvent, error) {
 	return e, nil
 }
 
+// ParseButtonPressEvent parses a ButtonPress event.
 func ParseButtonPressEvent(buf []byte, order binary.ByteOrder) (*ButtonPressEvent, error) {
 	e := &ButtonPressEvent{}
 	e.Detail = buf[1]
@@ -559,6 +585,7 @@ func ParseButtonPressEvent(buf []byte, order binary.ByteOrder) (*ButtonPressEven
 	return e, nil
 }
 
+// ParseDeviceButtonReleaseEvent parses an XInput DeviceButtonRelease event.
 func ParseDeviceButtonReleaseEvent(buf []byte, order binary.ByteOrder) (*DeviceButtonReleaseEvent, error) {
 	e := &DeviceButtonReleaseEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -576,6 +603,7 @@ func ParseDeviceButtonReleaseEvent(buf []byte, order binary.ByteOrder) (*DeviceB
 	return e, nil
 }
 
+// ParseButtonReleaseEvent parses a ButtonRelease event.
 func ParseButtonReleaseEvent(buf []byte, order binary.ByteOrder) (*ButtonReleaseEvent, error) {
 	e := &ButtonReleaseEvent{}
 	e.Detail = buf[1]
@@ -593,6 +621,7 @@ func ParseButtonReleaseEvent(buf []byte, order binary.ByteOrder) (*ButtonRelease
 	return e, nil
 }
 
+// ParseMotionNotifyEvent parses a MotionNotify event.
 func ParseMotionNotifyEvent(buf []byte, order binary.ByteOrder) (*MotionNotifyEvent, error) {
 	e := &MotionNotifyEvent{}
 	e.Detail = buf[1]
@@ -610,6 +639,7 @@ func ParseMotionNotifyEvent(buf []byte, order binary.ByteOrder) (*MotionNotifyEv
 	return e, nil
 }
 
+// ParseEnterNotifyEvent parses an EnterNotify event.
 func ParseEnterNotifyEvent(buf []byte, order binary.ByteOrder) (*EnterNotifyEvent, error) {
 	e := &EnterNotifyEvent{}
 	e.Detail = buf[1]
@@ -629,6 +659,7 @@ func ParseEnterNotifyEvent(buf []byte, order binary.ByteOrder) (*EnterNotifyEven
 	return e, nil
 }
 
+// ParseLeaveNotifyEvent parses a LeaveNotify event.
 func ParseLeaveNotifyEvent(buf []byte, order binary.ByteOrder) (*LeaveNotifyEvent, error) {
 	e := &LeaveNotifyEvent{}
 	e.Detail = buf[1]
@@ -648,6 +679,7 @@ func ParseLeaveNotifyEvent(buf []byte, order binary.ByteOrder) (*LeaveNotifyEven
 	return e, nil
 }
 
+// ParseExposeEvent parses an Expose event.
 func ParseExposeEvent(buf []byte, order binary.ByteOrder) (*ExposeEvent, error) {
 	e := &ExposeEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -660,6 +692,7 @@ func ParseExposeEvent(buf []byte, order binary.ByteOrder) (*ExposeEvent, error) 
 	return e, nil
 }
 
+// ParseConfigureNotifyEvent parses a ConfigureNotify event.
 func ParseConfigureNotifyEvent(buf []byte, order binary.ByteOrder) (*ConfigureNotifyEvent, error) {
 	e := &ConfigureNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -675,6 +708,7 @@ func ParseConfigureNotifyEvent(buf []byte, order binary.ByteOrder) (*ConfigureNo
 	return e, nil
 }
 
+// ParseSelectionNotifyEvent parses a SelectionNotify event.
 func ParseSelectionNotifyEvent(buf []byte, order binary.ByteOrder) (*SelectionNotifyEvent, error) {
 	e := &SelectionNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -686,6 +720,7 @@ func ParseSelectionNotifyEvent(buf []byte, order binary.ByteOrder) (*SelectionNo
 	return e, nil
 }
 
+// ParseColormapNotifyEvent parses a ColormapNotify event.
 func ParseColormapNotifyEvent(buf []byte, order binary.ByteOrder) (*ColormapNotifyEvent, error) {
 	e := &ColormapNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -696,6 +731,7 @@ func ParseColormapNotifyEvent(buf []byte, order binary.ByteOrder) (*ColormapNoti
 	return e, nil
 }
 
+// ParseClientMessageEvent parses a ClientMessage event.
 func ParseClientMessageEvent(buf []byte, order binary.ByteOrder) (*ClientMessageEvent, error) {
 	e := &ClientMessageEvent{}
 	e.Format = buf[1]
@@ -706,6 +742,7 @@ func ParseClientMessageEvent(buf []byte, order binary.ByteOrder) (*ClientMessage
 	return e, nil
 }
 
+// ParseDeviceKeyPressEvent parses an XInput DeviceKeyPress event.
 func ParseDeviceKeyPressEvent(buf []byte, order binary.ByteOrder) (*DeviceKeyPressEvent, error) {
 	e := &DeviceKeyPressEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -723,6 +760,7 @@ func ParseDeviceKeyPressEvent(buf []byte, order binary.ByteOrder) (*DeviceKeyPre
 	return e, nil
 }
 
+// ParseDeviceKeyReleaseEvent parses an XInput DeviceKeyRelease event.
 func ParseDeviceKeyReleaseEvent(buf []byte, order binary.ByteOrder) (*DeviceKeyReleaseEvent, error) {
 	e := &DeviceKeyReleaseEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -740,6 +778,7 @@ func ParseDeviceKeyReleaseEvent(buf []byte, order binary.ByteOrder) (*DeviceKeyR
 	return e, nil
 }
 
+// ParseDeviceButtonPressEvent parses an XInput DeviceButtonPress event.
 func ParseDeviceButtonPressEvent(buf []byte, order binary.ByteOrder) (*DeviceButtonPressEvent, error) {
 	e := &DeviceButtonPressEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -757,6 +796,7 @@ func ParseDeviceButtonPressEvent(buf []byte, order binary.ByteOrder) (*DeviceBut
 	return e, nil
 }
 
+// ParseGraphicsExposureEvent parses a GraphicsExposure event.
 func ParseGraphicsExposureEvent(buf []byte, order binary.ByteOrder) (*GraphicsExposureEvent, error) {
 	e := &GraphicsExposureEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -771,6 +811,7 @@ func ParseGraphicsExposureEvent(buf []byte, order binary.ByteOrder) (*GraphicsEx
 	return e, nil
 }
 
+// ParseNoExposureEvent parses a NoExposure event.
 func ParseNoExposureEvent(buf []byte, order binary.ByteOrder) (*NoExposureEvent, error) {
 	e := &NoExposureEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -780,6 +821,7 @@ func ParseNoExposureEvent(buf []byte, order binary.ByteOrder) (*NoExposureEvent,
 	return e, nil
 }
 
+// ParseVisibilityNotifyEvent parses a VisibilityNotify event.
 func ParseVisibilityNotifyEvent(buf []byte, order binary.ByteOrder) (*VisibilityNotifyEvent, error) {
 	e := &VisibilityNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -788,6 +830,7 @@ func ParseVisibilityNotifyEvent(buf []byte, order binary.ByteOrder) (*Visibility
 	return e, nil
 }
 
+// ParseCreateNotifyEvent parses a CreateNotify event.
 func ParseCreateNotifyEvent(buf []byte, order binary.ByteOrder) (*CreateNotifyEvent, error) {
 	e := &CreateNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -802,6 +845,7 @@ func ParseCreateNotifyEvent(buf []byte, order binary.ByteOrder) (*CreateNotifyEv
 	return e, nil
 }
 
+// ParseDestroyNotifyEvent parses a DestroyNotify event.
 func ParseDestroyNotifyEvent(buf []byte, order binary.ByteOrder) (*DestroyNotifyEvent, error) {
 	e := &DestroyNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -810,6 +854,7 @@ func ParseDestroyNotifyEvent(buf []byte, order binary.ByteOrder) (*DestroyNotify
 	return e, nil
 }
 
+// ParseUnmapNotifyEvent parses an UnmapNotify event.
 func ParseUnmapNotifyEvent(buf []byte, order binary.ByteOrder) (*UnmapNotifyEvent, error) {
 	e := &UnmapNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -819,6 +864,7 @@ func ParseUnmapNotifyEvent(buf []byte, order binary.ByteOrder) (*UnmapNotifyEven
 	return e, nil
 }
 
+// ParseMapNotifyEvent parses a MapNotify event.
 func ParseMapNotifyEvent(buf []byte, order binary.ByteOrder) (*MapNotifyEvent, error) {
 	e := &MapNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -828,6 +874,7 @@ func ParseMapNotifyEvent(buf []byte, order binary.ByteOrder) (*MapNotifyEvent, e
 	return e, nil
 }
 
+// ParseMapRequestEvent parses a MapRequest event.
 func ParseMapRequestEvent(buf []byte, order binary.ByteOrder) (*MapRequestEvent, error) {
 	e := &MapRequestEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -836,6 +883,7 @@ func ParseMapRequestEvent(buf []byte, order binary.ByteOrder) (*MapRequestEvent,
 	return e, nil
 }
 
+// ParseReparentNotifyEvent parses a ReparentNotify event.
 func ParseReparentNotifyEvent(buf []byte, order binary.ByteOrder) (*ReparentNotifyEvent, error) {
 	e := &ReparentNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -848,6 +896,7 @@ func ParseReparentNotifyEvent(buf []byte, order binary.ByteOrder) (*ReparentNoti
 	return e, nil
 }
 
+// ParseConfigureRequestEvent parses a ConfigureRequest event.
 func ParseConfigureRequestEvent(buf []byte, order binary.ByteOrder) (*ConfigureRequestEvent, error) {
 	e := &ConfigureRequestEvent{}
 	e.StackMode = buf[1]
@@ -864,6 +913,7 @@ func ParseConfigureRequestEvent(buf []byte, order binary.ByteOrder) (*ConfigureR
 	return e, nil
 }
 
+// ParseGravityNotifyEvent parses a GravityNotify event.
 func ParseGravityNotifyEvent(buf []byte, order binary.ByteOrder) (*GravityNotifyEvent, error) {
 	e := &GravityNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -874,6 +924,7 @@ func ParseGravityNotifyEvent(buf []byte, order binary.ByteOrder) (*GravityNotify
 	return e, nil
 }
 
+// ParseResizeRequestEvent parses a ResizeRequest event.
 func ParseResizeRequestEvent(buf []byte, order binary.ByteOrder) (*ResizeRequestEvent, error) {
 	e := &ResizeRequestEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -883,6 +934,7 @@ func ParseResizeRequestEvent(buf []byte, order binary.ByteOrder) (*ResizeRequest
 	return e, nil
 }
 
+// ParseCirculateNotifyEvent parses a CirculateNotify event.
 func ParseCirculateNotifyEvent(buf []byte, order binary.ByteOrder) (*CirculateNotifyEvent, error) {
 	e := &CirculateNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -892,6 +944,7 @@ func ParseCirculateNotifyEvent(buf []byte, order binary.ByteOrder) (*CirculateNo
 	return e, nil
 }
 
+// ParseCirculateRequestEvent parses a CirculateRequest event.
 func ParseCirculateRequestEvent(buf []byte, order binary.ByteOrder) (*CirculateRequestEvent, error) {
 	e := &CirculateRequestEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -901,6 +954,7 @@ func ParseCirculateRequestEvent(buf []byte, order binary.ByteOrder) (*CirculateR
 	return e, nil
 }
 
+// ParsePropertyNotifyEvent parses a PropertyNotify event.
 func ParsePropertyNotifyEvent(buf []byte, order binary.ByteOrder) (*PropertyNotifyEvent, error) {
 	e := &PropertyNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -911,6 +965,7 @@ func ParsePropertyNotifyEvent(buf []byte, order binary.ByteOrder) (*PropertyNoti
 	return e, nil
 }
 
+// ParseSelectionClearEvent parses a SelectionClear event.
 func ParseSelectionClearEvent(buf []byte, order binary.ByteOrder) (*SelectionClearEvent, error) {
 	e := &SelectionClearEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -920,6 +975,7 @@ func ParseSelectionClearEvent(buf []byte, order binary.ByteOrder) (*SelectionCle
 	return e, nil
 }
 
+// ParseSelectionRequestEvent parses a SelectionRequest event.
 func ParseSelectionRequestEvent(buf []byte, order binary.ByteOrder) (*SelectionRequestEvent, error) {
 	e := &SelectionRequestEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -932,6 +988,7 @@ func ParseSelectionRequestEvent(buf []byte, order binary.ByteOrder) (*SelectionR
 	return e, nil
 }
 
+// ParseMappingNotifyEvent parses a MappingNotify event.
 func ParseMappingNotifyEvent(buf []byte, order binary.ByteOrder) (*MappingNotifyEvent, error) {
 	e := &MappingNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -941,6 +998,7 @@ func ParseMappingNotifyEvent(buf []byte, order binary.ByteOrder) (*MappingNotify
 	return e, nil
 }
 
+// ParseGenericEvent parses a GenericEvent (XGE).
 func ParseGenericEvent(buf []byte, order binary.ByteOrder) (*GenericEventData, error) {
 	e := &GenericEventData{}
 	e.Extension = buf[1]
@@ -951,6 +1009,7 @@ func ParseGenericEvent(buf []byte, order binary.ByteOrder) (*GenericEventData, e
 	return e, nil
 }
 
+// ParseDeviceMotionNotifyEvent parses an XInput DeviceMotionNotify event.
 func ParseDeviceMotionNotifyEvent(buf []byte, order binary.ByteOrder) (*DeviceMotionNotifyEvent, error) {
 	e := &DeviceMotionNotifyEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -968,6 +1027,7 @@ func ParseDeviceMotionNotifyEvent(buf []byte, order binary.ByteOrder) (*DeviceMo
 	return e, nil
 }
 
+// ParseProximityInEvent parses an XInput ProximityIn event.
 func ParseProximityInEvent(buf []byte, order binary.ByteOrder) (*ProximityInEvent, error) {
 	e := &ProximityInEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -985,6 +1045,7 @@ func ParseProximityInEvent(buf []byte, order binary.ByteOrder) (*ProximityInEven
 	return e, nil
 }
 
+// ParseProximityOutEvent parses an XInput ProximityOut event.
 func ParseProximityOutEvent(buf []byte, order binary.ByteOrder) (*ProximityOutEvent, error) {
 	e := &ProximityOutEvent{}
 	e.Sequence = order.Uint16(buf[2:4])
@@ -1002,10 +1063,13 @@ func ParseProximityOutEvent(buf []byte, order binary.ByteOrder) (*ProximityOutEv
 	return e, nil
 }
 
+// Event is an interface that all X11 events implement.
 type Event interface {
+	// EncodeMessage encodes the event into a byte slice.
 	EncodeMessage(order binary.ByteOrder) []byte
 }
 
+// ParseEvent parses an X11 event from a byte slice.
 func ParseEvent(buf []byte, order binary.ByteOrder) (Event, error) {
 	if len(buf) < 32 {
 		return nil, fmt.Errorf("event message too short: %d", len(buf))
@@ -1092,6 +1156,7 @@ func ParseEvent(buf []byte, order binary.ByteOrder) (Event, error) {
 	return nil, fmt.Errorf("unknown event opcode: %d", buf[0])
 }
 
+// DeviceButtonReleaseEvent parses an XInput DeviceButtonRelease event.
 func (e *DeviceButtonReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = byte(XInputOpcode)
@@ -1111,6 +1176,7 @@ func (e *DeviceButtonReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte 
 	return buf
 }
 
+// EncodeMessage encodes the ButtonPressEvent into a byte slice.
 func (e *ButtonPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 4 // ButtonPress event code
@@ -1130,20 +1196,21 @@ func (e *ButtonPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ButtonRelease: 5
+// ButtonReleaseEvent represents a ButtonRelease event (opcode 5).
 type ButtonReleaseEvent struct {
-	Sequence       uint16
-	Detail         byte // button
-	Time           uint32
-	Root           uint32
-	Event          uint32
-	Child          uint32
-	RootX, RootY   int16
-	EventX, EventY int16
-	State          uint16
-	SameScreen     bool
+	Sequence       uint16 // Sequence number
+	Detail         byte   // button code
+	Time           uint32 // Time of event
+	Root           uint32 // Root window ID
+	Event          uint32 // Event window ID
+	Child          uint32 // Child window ID
+	RootX, RootY   int16  // Coordinates relative to root
+	EventX, EventY int16  // Coordinates relative to event window
+	State          uint16 // Key/Button state mask
+	SameScreen     bool   // Same screen flag
 }
 
+// EncodeMessage encodes the ButtonReleaseEvent into a byte slice.
 func (e *ButtonReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 5 // ButtonRelease event code
@@ -1163,20 +1230,21 @@ func (e *ButtonReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// MotionNotify: 6
+// MotionNotifyEvent represents a MotionNotify event (opcode 6).
 type MotionNotifyEvent struct {
-	Sequence       uint16
-	Detail         byte
-	Time           uint32
-	Root           uint32
-	Event          uint32
-	Child          uint32
-	RootX, RootY   int16
-	EventX, EventY int16
-	State          uint16
-	SameScreen     bool
+	Sequence       uint16 // Sequence number
+	Detail         byte   // Detail (Normal or Hint)
+	Time           uint32 // Time of event
+	Root           uint32 // Root window ID
+	Event          uint32 // Event window ID
+	Child          uint32 // Child window ID
+	RootX, RootY   int16  // Coordinates relative to root
+	EventX, EventY int16  // Coordinates relative to event window
+	State          uint16 // Key/Button state mask
+	SameScreen     bool   // Same screen flag
 }
 
+// EncodeMessage encodes the MotionNotifyEvent into a byte slice.
 func (e *MotionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 6 // MotionNotify event code
@@ -1196,22 +1264,23 @@ func (e *MotionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// EnterNotify: 7
+// EnterNotifyEvent represents an EnterNotify event (opcode 7).
 type EnterNotifyEvent struct {
-	Sequence       uint16
-	Detail         byte
-	Time           uint32
-	Root           uint32
-	Event          uint32
-	Child          uint32
-	RootX, RootY   int16
-	EventX, EventY int16
-	State          uint16
-	Mode           byte
-	SameScreen     bool
-	Focus          bool
+	Sequence       uint16 // Sequence number
+	Detail         byte   // Detail (Ancestor, Virtual, Inferior, Nonlinear, NonlinearVirtual)
+	Time           uint32 // Time of event
+	Root           uint32 // Root window ID
+	Event          uint32 // Event window ID
+	Child          uint32 // Child window ID
+	RootX, RootY   int16  // Coordinates relative to root
+	EventX, EventY int16  // Coordinates relative to event window
+	State          uint16 // Key/Button state mask
+	Mode           byte   // Mode (Normal, Grab, Ungrab)
+	SameScreen     bool   // Same screen flag
+	Focus          bool   // Focus flag
 }
 
+// EncodeMessage encodes the EnterNotifyEvent into a byte slice.
 func (e *EnterNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 7 // EnterNotify event code
@@ -1238,22 +1307,23 @@ func (e *EnterNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// LeaveNotify: 8
+// LeaveNotifyEvent represents a LeaveNotify event (opcode 8).
 type LeaveNotifyEvent struct {
-	Sequence       uint16
-	Detail         byte
-	Time           uint32
-	Root           uint32
-	Event          uint32
-	Child          uint32
-	RootX, RootY   int16
-	EventX, EventY int16
-	State          uint16
-	Mode           byte
-	SameScreen     bool
-	Focus          bool
+	Sequence       uint16 // Sequence number
+	Detail         byte   // Detail (Ancestor, Virtual, Inferior, Nonlinear, NonlinearVirtual)
+	Time           uint32 // Time of event
+	Root           uint32 // Root window ID
+	Event          uint32 // Event window ID
+	Child          uint32 // Child window ID
+	RootX, RootY   int16  // Coordinates relative to root
+	EventX, EventY int16  // Coordinates relative to event window
+	State          uint16 // Key/Button state mask
+	Mode           byte   // Mode (Normal, Grab, Ungrab)
+	SameScreen     bool   // Same screen flag
+	Focus          bool   // Focus flag
 }
 
+// EncodeMessage encodes the LeaveNotifyEvent into a byte slice.
 func (e *LeaveNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 8 // LeaveNotify event code
@@ -1280,15 +1350,16 @@ func (e *LeaveNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// Expose: 12
+// ExposeEvent represents an Expose event (opcode 12).
 type ExposeEvent struct {
-	Sequence      uint16
-	Window        uint32
-	X, Y          uint16
-	Width, Height uint16
-	Count         uint16
+	Sequence      uint16 // Sequence number
+	Window        uint32 // Window ID
+	X, Y          uint16 // Top-left coordinate of exposed area
+	Width, Height uint16 // Dimensions of exposed area
+	Count         uint16 // Number of subsequent Expose events
 }
 
+// EncodeMessage encodes the ExposeEvent into a byte slice.
 func (e *ExposeEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 12 // Expose event code
@@ -1304,18 +1375,19 @@ func (e *ExposeEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ConfigureNotify: 22
+// ConfigureNotifyEvent represents a ConfigureNotify event (opcode 22).
 type ConfigureNotifyEvent struct {
-	Sequence         uint16
-	Event            uint32
-	Window           uint32
-	AboveSibling     uint32
-	X, Y             int16
-	Width, Height    uint16
-	BorderWidth      uint16
-	OverrideRedirect bool
+	Sequence         uint16 // Sequence number
+	Event            uint32 // Event window ID
+	Window           uint32 // Configured window ID
+	AboveSibling     uint32 // Sibling window ID
+	X, Y             int16  // Coordinates
+	Width, Height    uint16 // Dimensions
+	BorderWidth      uint16 // Border width
+	OverrideRedirect bool   // Override-redirect flag
 }
 
+// EncodeMessage encodes the ConfigureNotifyEvent into a byte slice.
 func (e *ConfigureNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 22 // ConfigureNotify event code
@@ -1334,16 +1406,17 @@ func (e *ConfigureNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// SelectionNotify: 31
+// SelectionNotifyEvent represents a SelectionNotify event (opcode 31).
 type SelectionNotifyEvent struct {
-	Sequence  uint16
-	Requestor uint32
-	Selection uint32
-	Target    uint32
-	Property  uint32
-	Time      uint32
+	Sequence  uint16 // Sequence number
+	Requestor uint32 // Requestor window ID
+	Selection uint32 // Selection atom
+	Target    uint32 // Target atom
+	Property  uint32 // Property atom
+	Time      uint32 // Time
 }
 
+// EncodeMessage encodes the SelectionNotifyEvent into a byte slice.
 func (e *SelectionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 31 // SelectionNotify event code
@@ -1358,15 +1431,16 @@ func (e *SelectionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ColormapNotify: 32
+// ColormapNotifyEvent represents a ColormapNotify event (opcode 32).
 type ColormapNotifyEvent struct {
-	Sequence uint16
-	Window   uint32
-	Colormap uint32
-	New      bool
-	State    byte
+	Sequence uint16 // Sequence number
+	Window   uint32 // Window ID
+	Colormap uint32 // Colormap ID
+	New      bool   // True if colormap attribute changed, False if colormap installed/uninstalled
+	State    byte   // State (ColormapInstalled, ColormapUninstalled)
 }
 
+// EncodeMessage encodes the ColormapNotifyEvent into a byte slice.
 func (e *ColormapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = ColormapNotifyCode // ColormapNotify event code
@@ -1380,15 +1454,16 @@ func (e *ColormapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return event
 }
 
-// ClientMessage: 33
+// ClientMessageEvent represents a ClientMessage event (opcode 33).
 type ClientMessageEvent struct {
-	Sequence    uint16
-	Format      byte
-	Window      uint32
-	MessageType uint32
-	Data        [20]byte
+	Sequence    uint16   // Sequence number
+	Format      byte     // Data format (8, 16, or 32)
+	Window      uint32   // Window ID
+	MessageType uint32   // Message type atom
+	Data        [20]byte // Data
 }
 
+// EncodeMessage encodes the ClientMessageEvent into a byte slice.
 func (e *ClientMessageEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
 	event[0] = 33 // ClientMessage event code
@@ -1405,27 +1480,29 @@ type X11RawEvent struct {
 	Data []byte
 }
 
+// EncodeMessage encodes the X11RawEvent into a byte slice.
 func (e *X11RawEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return e.Data
 }
 
 // DeviceKeyPressEvent is an XInput key press event.
 type DeviceKeyPressEvent struct {
-	DeviceID   byte
-	Sequence   uint16
-	Time       uint32
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
-	KeyCode    byte
+	DeviceID   byte   // Device ID
+	Sequence   uint16 // Sequence number
+	Time       uint32 // Time of event
+	Root       uint32 // Root window ID
+	Event      uint32 // Event window ID
+	Child      uint32 // Child window ID
+	RootX      int16  // Root X coordinate
+	RootY      int16  // Root Y coordinate
+	EventX     int16  // Event X coordinate
+	EventY     int16  // Event Y coordinate
+	State      uint16 // Modifier state
+	SameScreen bool   // Same screen flag
+	KeyCode    byte   // Keycode
 }
 
+// EncodeMessage encodes the DeviceKeyPressEvent into a byte slice.
 func (e *DeviceKeyPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = byte(XInputOpcode)
@@ -1447,21 +1524,22 @@ func (e *DeviceKeyPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 
 // DeviceKeyReleaseEvent is an XInput key release event.
 type DeviceKeyReleaseEvent struct {
-	DeviceID   byte
-	Sequence   uint16
-	Time       uint32
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
-	KeyCode    byte
+	DeviceID   byte   // Device ID
+	Sequence   uint16 // Sequence number
+	Time       uint32 // Time of event
+	Root       uint32 // Root window ID
+	Event      uint32 // Event window ID
+	Child      uint32 // Child window ID
+	RootX      int16  // Root X coordinate
+	RootY      int16  // Root Y coordinate
+	EventX     int16  // Event X coordinate
+	EventY     int16  // Event Y coordinate
+	State      uint16 // Modifier state
+	SameScreen bool   // Same screen flag
+	KeyCode    byte   // Keycode
 }
 
+// EncodeMessage encodes the DeviceKeyReleaseEvent into a byte slice.
 func (e *DeviceKeyReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = byte(XInputOpcode)
@@ -1483,25 +1561,27 @@ func (e *DeviceKeyReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte {
 
 // DeviceButtonPressEvent is an XInput button press event.
 type DeviceButtonPressEvent struct {
-	DeviceID   byte
-	Sequence   uint16
-	Time       uint32
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
-	Detail     byte // Button
+	DeviceID   byte   // Device ID
+	Sequence   uint16 // Sequence number
+	Time       uint32 // Time of event
+	Root       uint32 // Root window ID
+	Event      uint32 // Event window ID
+	Child      uint32 // Child window ID
+	RootX      int16  // Root X coordinate
+	RootY      int16  // Root Y coordinate
+	EventX     int16  // Event X coordinate
+	EventY     int16  // Event Y coordinate
+	State      uint16 // Modifier state
+	SameScreen bool   // Same screen flag
+	Detail     byte   // Button
 }
 
+// SetSequence sets the sequence number for the DeviceButtonPressEvent.
 func (e *DeviceButtonPressEvent) SetSequence(seq uint16) {
 	e.Sequence = seq
 }
 
+// EncodeMessage encodes the DeviceButtonPressEvent into a byte slice.
 func (e *DeviceButtonPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
 	buf[0] = byte(XInputOpcode)
@@ -1521,66 +1601,70 @@ func (e *DeviceButtonPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return buf
 }
 
+// DeviceButtonReleaseEvent represents an XInput button release event.
 type DeviceButtonReleaseEvent struct {
-	Sequence   uint16
-	DeviceID   byte
-	Time       uint32
-	Button     byte
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
+	Sequence   uint16 // Sequence number
+	DeviceID   byte   // Device ID
+	Time       uint32 // Time of event
+	Button     byte   // Button code
+	Root       uint32 // Root window ID
+	Event      uint32 // Event window ID
+	Child      uint32 // Child window ID
+	RootX      int16  // Root X coordinate
+	RootY      int16  // Root Y coordinate
+	EventX     int16  // Event X coordinate
+	EventY     int16  // Event Y coordinate
+	State      uint16 // Modifier state
+	SameScreen bool   // Same screen flag
 }
 
+// DeviceMotionNotifyEvent represents an XInput motion event.
 type DeviceMotionNotifyEvent struct {
-	Sequence   uint16
-	DeviceID   byte
-	Time       uint32
-	Detail     byte
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
+	Sequence   uint16 // Sequence number
+	DeviceID   byte   // Device ID
+	Time       uint32 // Time of event
+	Detail     byte   // Detail
+	Root       uint32 // Root window ID
+	Event      uint32 // Event window ID
+	Child      uint32 // Child window ID
+	RootX      int16  // Root X coordinate
+	RootY      int16  // Root Y coordinate
+	EventX     int16  // Event X coordinate
+	EventY     int16  // Event Y coordinate
+	State      uint16 // Modifier state
+	SameScreen bool   // Same screen flag
 }
 
+// ProximityInEvent represents an XInput proximity in event.
 type ProximityInEvent struct {
-	Sequence   uint16
-	DeviceID   byte
-	Time       uint32
-	Detail     byte
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
+	Sequence   uint16 // Sequence number
+	DeviceID   byte   // Device ID
+	Time       uint32 // Time of event
+	Detail     byte   // Detail
+	Root       uint32 // Root window ID
+	Event      uint32 // Event window ID
+	Child      uint32 // Child window ID
+	RootX      int16  // Root X coordinate
+	RootY      int16  // Root Y coordinate
+	EventX     int16  // Event X coordinate
+	EventY     int16  // Event Y coordinate
+	State      uint16 // Modifier state
+	SameScreen bool   // Same screen flag
 }
 
+// ProximityOutEvent represents an XInput proximity out event.
 type ProximityOutEvent struct {
-	Sequence   uint16
-	DeviceID   byte
-	Time       uint32
-	Detail     byte
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
+	Sequence   uint16 // Sequence number
+	DeviceID   byte   // Device ID
+	Time       uint32 // Time of event
+	Detail     byte   // Detail
+	Root       uint32 // Root window ID
+	Event      uint32 // Event window ID
+	Child      uint32 // Child window ID
+	RootX      int16  // Root X coordinate
+	RootY      int16  // Root Y coordinate
+	EventX     int16  // Event X coordinate
+	EventY     int16  // Event Y coordinate
+	State      uint16 // Modifier state
+	SameScreen bool   // Same screen flag
 }

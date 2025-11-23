@@ -8,14 +8,19 @@ import (
 	"fmt"
 )
 
+// Request is an interface implemented by all X11 request structs.
 type Request interface {
+	// OpCode returns the request opcode.
 	OpCode() ReqCode
 }
 
+// PadLen returns the number of padding bytes needed to align n bytes to a 4-byte boundary.
 func PadLen(n int) int {
 	return (4 - n%4) % 4
 }
 
+// ParseRequest parses an X11 request from the given raw bytes.
+// It determines the request type based on the opcode in the header and dispatches to the appropriate parsing function.
 func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEnabled bool) (Request, error) {
 	var reqHeader [4]byte
 	if n := copy(reqHeader[:], raw); n != 4 {
@@ -419,6 +424,8 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 
 // auxiliary data structures
 
+// WindowAttributes represents the attributes of a window.
+// Used in CreateWindow and ChangeWindowAttributes requests.
 type WindowAttributes struct {
 	BackgroundPixmap  Pixmap
 	BackgroundPixel   uint32
@@ -507,52 +514,48 @@ type PolyTextItem interface {
 	isPolyTextItem()
 }
 
-// PolyText8String represents a string in a PolyText8 request.
+// PolyText8String represents a string item in a PolyText8 request.
 type PolyText8String struct {
-	Delta int8
-	Str   []byte
+	Delta int8   // Delta to apply to the current X coordinate.
+	Str   []byte // String to draw.
 }
 
 func (PolyText8String) isPolyTextItem() {}
 
-// PolyText16String represents a string in a PolyText16 request.
+// PolyText16String represents a string item in a PolyText16 request.
 type PolyText16String struct {
-	Delta int8
-	Str   []uint16
+	Delta int8     // Delta to apply to the current X coordinate.
+	Str   []uint16 // String to draw (16-bit characters).
 }
 
 func (PolyText16String) isPolyTextItem() {}
 
-// PolyTextFont represents a font change in a PolyText request.
+// PolyTextFont represents a font change item in a PolyText request.
 type PolyTextFont struct {
-	Font Font
+	Font Font // New font ID.
 }
 
 func (PolyTextFont) isPolyTextItem() {}
 
 // request messages
 
-/*
-CreateWindow
-
-1     1                               opcode
-1     DEPTH                           depth
-2     8+n                             request length
-4     WINDOW                          wid
-4     WINDOW                          parent
-2     INT16                           x
-2     INT16                           y
-2     CARD16                          width
-2     CARD16                          height
-2     CARD16                          border-width
-2     { InputOutput, InputOnly,       class
-
-	CopyFromParent }
-
-4     VISUALID                        visual
-4     BITMASK                         value-mask
-4n    LISTofVALUE                     value-list
-*/
+// CreateWindowRequest represents a CreateWindow request.
+//
+//	1     1                               opcode
+//	1     DEPTH                           depth
+//	2     8+n                             request length
+//	4     WINDOW                          wid
+//	4     WINDOW                          parent
+//	2     INT16                           x
+//	2     INT16                           y
+//	2     CARD16                          width
+//	2     CARD16                          height
+//	2     CARD16                          border-width
+//	2     { InputOutput, InputOnly,       class
+//	      CopyFromParent }
+//	4     VISUALID                        visual
+//	4     BITMASK                         value-mask
+//	4n    LISTofVALUE                     value-list
 type CreateWindowRequest struct {
 	Depth       uint8
 	Drawable    Window
@@ -591,6 +594,7 @@ func (r *CreateWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func (CreateWindowRequest) OpCode() ReqCode { return CreateWindow }
 
+// ParseCreateWindowRequest parses a CreateWindow request.
 func ParseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*CreateWindowRequest, error) {
 	if len(requestBody) < 28 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: CreateWindow, Minor: 0})
@@ -618,16 +622,14 @@ func ParseCreateWindowRequest(order binary.ByteOrder, data byte, requestBody []b
 	return req, nil
 }
 
-/*
-ChangeWindowAttributes
-
-1     2                               opcode
-1                                     unused
-2     3+n                             request length
-4     WINDOW                          window
-4     BITMASK                         value-mask
-4n    LISTofVALUE                     value-list
-*/
+// ChangeWindowAttributesRequest represents a ChangeWindowAttributes request.
+//
+//	1     2                               opcode
+//	1                                     unused
+//	2     3+n                             request length
+//	4     WINDOW                          window
+//	4     BITMASK                         value-mask
+//	4n    LISTofVALUE                     value-list
 type ChangeWindowAttributesRequest struct {
 	Window    Window
 	ValueMask uint32
@@ -649,6 +651,7 @@ func (r *ChangeWindowAttributesRequest) EncodeMessage(order binary.ByteOrder) []
 
 func (ChangeWindowAttributesRequest) OpCode() ReqCode { return ChangeWindowAttributes }
 
+// ParseChangeWindowAttributesRequest parses a ChangeWindowAttributes request.
 func ParseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ChangeWindowAttributesRequest, error) {
 	if len(requestBody) < 8 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: ChangeWindowAttributes, Minor: 0})
@@ -667,6 +670,7 @@ func ParseChangeWindowAttributesRequest(order binary.ByteOrder, requestBody []by
 	return req, nil
 }
 
+// GetWindowAttributesRequest represents a GetWindowAttributes request.
 type GetWindowAttributesRequest struct {
 	Window Window
 }
@@ -682,14 +686,12 @@ func (r *GetWindowAttributesRequest) EncodeMessage(order binary.ByteOrder) []byt
 
 func (GetWindowAttributesRequest) OpCode() ReqCode { return GetWindowAttributes }
 
-/*
-GetWindowAttributes
-
-1     3                               opcode
-1                                     unused
-2     2                               request length
-4     WINDOW                          window
-*/
+// ParseGetWindowAttributesRequest parses a GetWindowAttributes request.
+//
+//	1     3                               opcode
+//	1                                     unused
+//	2     2                               request length
+//	4     WINDOW                          window
 func ParseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*GetWindowAttributesRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: GetWindowAttributes, Minor: 0})
@@ -699,6 +701,7 @@ func ParseGetWindowAttributesRequest(order binary.ByteOrder, requestBody []byte,
 	return req, nil
 }
 
+// DestroyWindowRequest represents a DestroyWindow request.
 type DestroyWindowRequest struct {
 	Window Window
 }
@@ -714,14 +717,12 @@ func (r *DestroyWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func (DestroyWindowRequest) OpCode() ReqCode { return DestroyWindow }
 
-/*
-DestroyWindow
-
-1     4                               opcode
-1                                     unused
-2     2                               request length
-4     WINDOW                          window
-*/
+// ParseDestroyWindowRequest parses a DestroyWindow request.
+//
+//	1     4                               opcode
+//	1                                     unused
+//	2     2                               request length
+//	4     WINDOW                          window
 func ParseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroyWindowRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: DestroyWindow, Minor: 0})
@@ -731,6 +732,7 @@ func ParseDestroyWindowRequest(order binary.ByteOrder, requestBody []byte, seq u
 	return req, nil
 }
 
+// DestroySubwindowsRequest represents a DestroySubwindows request.
 type DestroySubwindowsRequest struct {
 	Window Window
 }
@@ -746,14 +748,12 @@ func (r *DestroySubwindowsRequest) EncodeMessage(order binary.ByteOrder) []byte 
 
 func (DestroySubwindowsRequest) OpCode() ReqCode { return DestroySubwindows }
 
-/*
-DestroySubwindows
-
-1     5                               opcode
-1                                     unused
-2     2                               request length
-4     WINDOW                          window
-*/
+// ParseDestroySubwindowsRequest parses a DestroySubwindows request.
+//
+//	1     5                               opcode
+//	1                                     unused
+//	2     2                               request length
+//	4     WINDOW                          window
 func ParseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*DestroySubwindowsRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: DestroySubwindows, Minor: 0})
@@ -763,6 +763,7 @@ func ParseDestroySubwindowsRequest(order binary.ByteOrder, requestBody []byte, s
 	return req, nil
 }
 
+// ChangeSaveSetRequest represents a ChangeSaveSet request.
 type ChangeSaveSetRequest struct {
 	Window Window
 	Mode   byte
@@ -779,14 +780,12 @@ func (r *ChangeSaveSetRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func (ChangeSaveSetRequest) OpCode() ReqCode { return ChangeSaveSet }
 
-/*
-ChangeSaveSet
-
-1     6                               opcode
-1     { Insert, Delete }              mode
-2     2                               request length
-4     WINDOW                          window
-*/
+// ParseChangeSaveSetRequest parses a ChangeSaveSet request.
+//
+//	1     6                               opcode
+//	1     { Insert, Delete }              mode
+//	2     2                               request length
+//	4     WINDOW                          window
 func ParseChangeSaveSetRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*ChangeSaveSetRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: ChangeSaveSet, Minor: 0})
@@ -797,6 +796,7 @@ func ParseChangeSaveSetRequest(order binary.ByteOrder, data byte, requestBody []
 	return req, nil
 }
 
+// ReparentWindowRequest represents a ReparentWindow request.
 type ReparentWindowRequest struct {
 	Window Window
 	Parent Window
@@ -818,17 +818,15 @@ func (r *ReparentWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func (ReparentWindowRequest) OpCode() ReqCode { return ReparentWindow }
 
-/*
-ReparentWindow
-
-1     7                               opcode
-1                                     unused
-2     4                               request length
-4     WINDOW                          window
-4     WINDOW                          parent
-2     INT16                           x
-2     INT16                           y
-*/
+// ParseReparentWindowRequest parses a ReparentWindow request.
+//
+//	1     7                               opcode
+//	1                                     unused
+//	2     4                               request length
+//	4     WINDOW                          window
+//	4     WINDOW                          parent
+//	2     INT16                           x
+//	2     INT16                           y
 func ParseReparentWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*ReparentWindowRequest, error) {
 	if len(requestBody) != 12 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: ReparentWindow, Minor: 0})
@@ -841,6 +839,7 @@ func ParseReparentWindowRequest(order binary.ByteOrder, requestBody []byte, seq 
 	return req, nil
 }
 
+// MapWindowRequest represents a MapWindow request.
 type MapWindowRequest struct {
 	Window Window
 }
@@ -856,14 +855,12 @@ func (r *MapWindowRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func (MapWindowRequest) OpCode() ReqCode { return MapWindow }
 
-/*
-MapWindow
-
-1     8                               opcode
-1                                     unused
-2     2                               request length
-4     WINDOW                          window
-*/
+// ParseMapWindowRequest parses a MapWindow request.
+//
+//	1     8                               opcode
+//	1                                     unused
+//	2     2                               request length
+//	4     WINDOW                          window
 func ParseMapWindowRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*MapWindowRequest, error) {
 	if len(requestBody) != 4 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: MapWindow, Minor: 0})

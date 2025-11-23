@@ -58,6 +58,7 @@ func (e *baseError) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseError parses an X11 error message from a byte slice.
 func ParseError(buf []byte, order binary.ByteOrder) (Error, error) {
 	if len(buf) < 32 {
 		return nil, fmt.Errorf("error message too short: %d", len(buf))
@@ -70,96 +71,97 @@ func ParseError(buf []byte, order binary.ByteOrder) (Error, error) {
 	return NewError(code, seq, badValue, Opcodes{Major: majorOp, Minor: minorOp}), nil
 }
 
-// RequestError: 1
+// RequestError: 1. The major or minor opcode does not specify a valid request.
 type RequestError struct {
 	baseError
 }
 
-// ValueError: 2
+// ValueError: 2. Some numeric value falls outside the range of values accepted by the request.
 type ValueError struct {
 	baseError
 }
 
-// WindowError: 3
+// WindowError: 3. A value for a Window argument does not name a defined Window.
 type WindowError struct {
 	baseError
 }
 
-// PixmapError: 4
+// PixmapError: 4. A value for a Pixmap argument does not name a defined Pixmap.
 type PixmapError struct {
 	baseError
 }
 
-// AtomError: 5
+// AtomError: 5. A value for an Atom argument does not name a defined Atom.
 type AtomError struct {
 	baseError
 }
 
-// CursorError: 6
+// CursorError: 6. A value for a Cursor argument does not name a defined Cursor.
 type CursorError struct {
 	baseError
 }
 
-// FontError: 7
+// FontError: 7. A value for a Font argument does not name a defined Font.
 type FontError struct {
 	baseError
 }
 
-// MatchError: 8
+// MatchError: 8. An InputOnly window is used as a Drawable, or arguments don't match (e.g. depth).
 type MatchError struct {
 	baseError
 }
 
-// DrawableError: 9
+// DrawableError: 9. A value for a Drawable argument does not name a defined Window or Pixmap.
 type DrawableError struct {
 	baseError
 }
 
-// AccessError: 10
+// AccessError: 10. A client attempts to grab a key/button combination already grabbed by another client.
 type AccessError struct {
 	baseError
 }
 
-// AllocError: 11
+// AllocError: 11. The server failed to allocate the requested resource (insufficient memory).
 type AllocError struct {
 	baseError
 }
 
-// ColormapError: 12
+// ColormapError: 12. A value for a Colormap argument does not name a defined Colormap.
 type ColormapError struct {
 	baseError
 }
 
-// GContextError: 13
+// GContextError: 13. A value for a GContext argument does not name a defined GContext.
 type GContextError struct {
 	baseError
 }
 
-// IDChoiceError: 14
+// IDChoiceError: 14. The value chosen for a resource identifier either is not included in the range assigned to the client or is already in use.
 type IDChoiceError struct {
 	baseError
 }
 
-// NameError: 15
+// NameError: 15. A font or color name does not exist.
 type NameError struct {
 	baseError
 }
 
-// LengthError: 16
+// LengthError: 16. The length of a request is shorter or longer than that required to minimally contain the arguments.
 type LengthError struct {
 	baseError
 }
 
-// ImplementationError: 17
+// ImplementationError: 17. The server does not implement the requested action.
 type ImplementationError struct {
 	baseError
 }
 
-// DeviceError: 20
+// DeviceError: 20. A value for a Device argument does not name a valid device.
 type DeviceError struct {
 	baseError
 }
 
+// NewError creates a new X11 error based on the error code.
 func NewError(code byte, seq uint16, badValue uint32, opcodes Opcodes) Error {
 	base := baseError{
 		code:     code,
@@ -210,6 +212,7 @@ func NewError(code byte, seq uint16, badValue uint32, opcodes Opcodes) Error {
 	}
 }
 
+// NewGenericError creates a generic error for unknown error codes.
 func NewGenericError(seq uint16, badValue uint32, minorOp byte, majorOp ReqCode, code byte) *GenericError {
 	return &GenericError{
 		seq:      seq,
