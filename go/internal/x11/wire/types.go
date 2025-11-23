@@ -2,80 +2,80 @@
 
 package wire
 
-// Window is a 32-bit value representing a window.
+// Window is a 32-bit value representing a window resource ID.
 type Window uint32
 
-// Drawable is a 32-bit value representing a drawable (window or pixmap).
+// Drawable is a 32-bit value representing a drawable (window or pixmap) resource ID.
 type Drawable uint32
 
-// Font is a 32-bit value representing a font.
+// Font is a 32-bit value representing a font resource ID.
 type Font uint32
 
-// Pixmap is a 32-bit value representing a pixmap.
+// Pixmap is a 32-bit value representing a pixmap resource ID.
 type Pixmap uint32
 
-// Cursor is a 32-bit value representing a cursor.
+// Cursor is a 32-bit value representing a cursor resource ID.
 type Cursor uint32
 
-// Colormap is a 32-bit value representing a colormap.
+// Colormap is a 32-bit value representing a colormap resource ID.
 type Colormap uint32
 
-// GContext is a 32-bit value representing a graphics context.
+// GContext is a 32-bit value representing a graphics context resource ID.
 type GContext uint32
 
-// Atom is a 32-bit value representing an atom.
+// Atom is a 32-bit value representing an atom identifier.
 type Atom uint32
 
 // VisualID is a 32-bit value representing a visual ID.
 type VisualID uint32
 
-// Timestamp is a 32-bit value representing a timestamp.
+// Timestamp is a 32-bit value representing a timestamp in milliseconds.
 type Timestamp uint32
 
-// KeyCode is an 8-bit value representing a key code.
+// KeyCode is an 8-bit value representing a physical key code.
 type KeyCode uint8
 
-// Rectangle defines a rectangle.
+// Rectangle specifies a rectangular area.
 type Rectangle struct {
-	X      int16
-	Y      int16
-	Width  uint16
-	Height uint16
+	X      int16  // X coordinate of the top-left corner.
+	Y      int16  // Y coordinate of the top-left corner.
+	Width  uint16 // Width of the rectangle.
+	Height uint16 // Height of the rectangle.
 }
 
-// KeyboardControl defines the keyboard control attributes.
+// KeyboardControl defines the attributes for keyboard control requests.
 type KeyboardControl struct {
-	KeyClickPercent int32
-	BellPercent     int32
-	BellPitch       int32
-	BellDuration    int32
-	Led             uint32
-	LedMode         uint32
-	Key             KeyCode
-	AutoRepeatMode  uint32
+	KeyClickPercent int32   // Volume for key clicks (0-100).
+	BellPercent     int32   // Base volume for the bell (0-100).
+	BellPitch       int32   // Pitch (frequency) of the bell in Hz.
+	BellDuration    int32   // Duration of the bell in milliseconds.
+	Led             uint32  // LED mask.
+	LedMode         uint32  // LED mode (On/Off).
+	Key             KeyCode // Specific key for auto-repeat control.
+	AutoRepeatMode  uint32  // Auto-repeat mode (On/Off/Default).
 }
 
-// Host defines a host address.
+// Host defines a host address for access control.
 type Host struct {
-	Family byte
-	Data   []byte
+	Family byte   // Address family (e.g., Internet, DECnet).
+	Data   []byte // Address data.
 }
 
-// XColorItem defines a color item.
+// XColorItem defines a color entry in a colormap.
 type XColorItem struct {
-	Pixel    uint32
-	Red      uint16
-	Green    uint16
-	Blue     uint16
-	Flags    byte
-	ClientID uint32
+	Pixel    uint32 // Pixel value.
+	Red      uint16 // Red component.
+	Green    uint16 // Green component.
+	Blue     uint16 // Blue component.
+	Flags    byte   // Flags indicating which components are valid (DoRed, DoGreen, DoBlue).
+	ClientID uint32 // ID of the client that allocated this color (internal use).
 }
 
-// XID is a generic X resource identifier.
+// XID is a generic 32-bit X resource identifier.
 type XID uint32
 
-// Opcodes is a struct that holds the major and minor opcodes for a request.
+// Opcodes holds the major and minor opcodes for identifying a request.
 type Opcodes struct {
-	Major ReqCode
-	Minor uint8
+	Major ReqCode // Major opcode.
+	Minor uint8   // Minor opcode (for extensions).
 }

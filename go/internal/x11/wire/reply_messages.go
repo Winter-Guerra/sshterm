@@ -9,7 +9,9 @@ import (
 	"sync"
 )
 
+// ServerMessage is an interface for any message sent from the X server to the client.
 type ServerMessage interface {
+	// EncodeMessage encodes the message into a byte slice.
 	EncodeMessage(order binary.ByteOrder) []byte
 }
 
@@ -18,12 +20,14 @@ var (
 	seqMutex         sync.Mutex
 )
 
+// ExpectReply registers an expected reply opcode for a given sequence number.
 func ExpectReply(sequence uint16, opcodes Opcodes) {
 	seqMutex.Lock()
 	defer seqMutex.Unlock()
 	sequenceToOpcode[sequence] = opcodes
 }
 
+// ReadServerMessages reads messages from the X server connection and sends them to a channel.
 func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMessage {
 	ch := make(chan ServerMessage, 1)
 	go func() {
@@ -88,6 +92,7 @@ func ReadServerMessages(conn io.Reader, order binary.ByteOrder) <-chan ServerMes
 	return ch
 }
 
+// ParseReply parses a reply message based on the request opcode.
 func ParseReply(opcodes Opcodes, msg []byte, order binary.ByteOrder) (ServerMessage, error) {
 	switch opcodes.Major {
 	case GetWindowAttributes:
@@ -178,7 +183,7 @@ func ParseReply(opcodes Opcodes, msg []byte, order binary.ByteOrder) (ServerMess
 			MaxRequestLength: order.Uint32(msg[8:12]),
 		}, nil
 	default:
-		return nil, NewError(RequestErrorCode, 0, 0, byte(opcodes.Major), 0)
+		return nil, NewError(RequestErrorCode, 0, 0, Opcodes{Major: opcodes.Major, Minor: 0})
 	}
 }
 
@@ -229,18 +234,20 @@ func parseXInputReply(minorOpcode uint8, order binary.ByteOrder, b []byte) (Serv
 	case XChangeDeviceControl:
 		return ParseChangeDeviceControlReply(order, b)
 	}
-	return nil, NewError(RequestErrorCode, 0, 0, byte(XInputOpcode), ReqCode(minorOpcode))
+	return nil, NewError(RequestErrorCode, 0, 0, Opcodes{Major: XInputOpcode, Minor: minorOpcode})
 }
 
+// XCharInfo describes font character metrics.
 type XCharInfo struct {
-	LeftSideBearing  int16
-	RightSideBearing int16
-	CharacterWidth   uint16
-	Ascent           int16
-	Descent          int16
-	Attributes       uint16
+	LeftSideBearing  int16  // Left side bearing
+	RightSideBearing int16  // Right side bearing
+	CharacterWidth   uint16 // Character width
+	Ascent           int16  // Ascent
+	Descent          int16  // Descent
+	Attributes       uint16 // Attributes
 }
 
+// BoolToByte converts a bool to a byte (1 for true, 0 for false).
 func BoolToByte(b bool) byte {
 	if b {
 		return 1
@@ -248,32 +255,34 @@ func BoolToByte(b bool) byte {
 	return 0
 }
 
+// ByteToBool converts a byte to a bool (true if non-zero, false if zero).
 func ByteToBool(b byte) bool {
 	return b != 0
 }
 
-// GetWindowAttributes: 3
+// GetWindowAttributesReply represents a reply to a GetWindowAttributes request.
 type GetWindowAttributesReply struct {
-	ReplyType          byte
-	BackingStore       byte
-	Sequence           uint16
-	Length             uint32
-	VisualID           uint32
-	Class              uint16
-	BitGravity         byte
-	WinGravity         byte
-	BackingPlanes      uint32
-	BackingPixel       uint32
-	SaveUnder          byte
-	MapIsInstalled     byte
-	MapState           byte
-	OverrideRedirect   byte
-	Colormap           uint32
-	AllEventMasks      uint32
-	YourEventMask      uint32
-	DoNotPropagateMask uint16
+	ReplyType          byte   // Always 1 for Reply
+	BackingStore       byte   // Backing store hint
+	Sequence           uint16 // Sequence number
+	Length             uint32 // Reply length
+	VisualID           uint32 // Visual ID
+	Class              uint16 // Window class (InputOutput, InputOnly)
+	BitGravity         byte   // Bit gravity
+	WinGravity         byte   // Window gravity
+	BackingPlanes      uint32 // Backing planes
+	BackingPixel       uint32 // Backing pixel
+	SaveUnder          byte   // Save under hint
+	MapIsInstalled     byte   // True if map is installed
+	MapState           byte   // Map state (Unmapped, Unviewable, Viewable)
+	OverrideRedirect   byte   // Override redirect flag
+	Colormap           uint32 // Colormap ID
+	AllEventMasks      uint32 // Set of all selected events
+	YourEventMask      uint32 // Set of events selected by this client
+	DoNotPropagateMask uint16 // Set of events not propagated
 }
 
+// EncodeMessage encodes the GetWindowAttributesReply into a byte slice.
 func (r *GetWindowAttributesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 44)
 	reply[0] = 1 // Reply type
@@ -298,9 +307,10 @@ func (r *GetWindowAttributesReply) EncodeMessage(order binary.ByteOrder) []byte 
 	return reply
 }
 
+// ParseGetWindowAttributesReply parses a GetWindowAttributes reply.
 func ParseGetWindowAttributesReply(order binary.ByteOrder, b []byte) (*GetWindowAttributesReply, error) {
 	if len(b) < 44 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetWindowAttributesReply{
 		ReplyType:          b[0],
@@ -325,16 +335,17 @@ func ParseGetWindowAttributesReply(order binary.ByteOrder, b []byte) (*GetWindow
 	return r, nil
 }
 
-// GetGeometry: 14
+// GetGeometryReply represents a reply to a GetGeometry request.
 type GetGeometryReply struct {
-	Sequence      uint16
-	Depth         byte
-	Root          uint32
-	X, Y          int16
-	Width, Height uint16
-	BorderWidth   uint16
+	Sequence      uint16 // Sequence number
+	Depth         byte   // Depth of drawable
+	Root          uint32 // Root window ID
+	X, Y          int16  // Coordinates
+	Width, Height uint16 // Dimensions
+	BorderWidth   uint16 // Border width
 }
 
+// EncodeMessage encodes the GetGeometryReply into a byte slice.
 func (r *GetGeometryReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -350,9 +361,10 @@ func (r *GetGeometryReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetGeometryReply parses a GetGeometry reply.
 func ParseGetGeometryReply(order binary.ByteOrder, b []byte) (*GetGeometryReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetGeometryReply{
 		Depth:       b[1],
@@ -367,12 +379,13 @@ func ParseGetGeometryReply(order binary.ByteOrder, b []byte) (*GetGeometryReply,
 	return r, nil
 }
 
-// InternAtom: 16
+// InternAtomReply represents a reply to an InternAtom request.
 type InternAtomReply struct {
-	Sequence uint16
-	Atom     uint32
+	Sequence uint16 // Sequence number
+	Atom     uint32 // Atom ID
 }
 
+// EncodeMessage encodes the InternAtomReply into a byte slice.
 func (r *InternAtomReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -384,9 +397,10 @@ func (r *InternAtomReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseInternAtomReply parses an InternAtom reply.
 func ParseInternAtomReply(order binary.ByteOrder, b []byte) (*InternAtomReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &InternAtomReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -395,13 +409,14 @@ func ParseInternAtomReply(order binary.ByteOrder, b []byte) (*InternAtomReply, e
 	return r, nil
 }
 
-// GetAtomName: 17
+// GetAtomNameReply represents a reply to a GetAtomName request.
 type GetAtomNameReply struct {
-	Sequence   uint16
-	NameLength uint16
-	Name       string
+	Sequence   uint16 // Sequence number
+	NameLength uint16 // Length of name
+	Name       string // Atom name
 }
 
+// EncodeMessage encodes the GetAtomNameReply into a byte slice.
 func (r *GetAtomNameReply) EncodeMessage(order binary.ByteOrder) []byte {
 	nameLen := len(r.Name)
 	p := (4 - (nameLen % 4)) % 4
@@ -416,13 +431,14 @@ func (r *GetAtomNameReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetAtomNameReply parses a GetAtomName reply.
 func ParseGetAtomNameReply(order binary.ByteOrder, b []byte) (*GetAtomNameReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nameLen := order.Uint16(b[8:10])
 	if len(b) < 32+int(nameLen) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetAtomNameReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -432,16 +448,17 @@ func ParseGetAtomNameReply(order binary.ByteOrder, b []byte) (*GetAtomNameReply,
 	return r, nil
 }
 
-// GetProperty: 20
+// GetPropertyReply represents a reply to a GetProperty request.
 type GetPropertyReply struct {
-	Sequence              uint16
-	Format                byte
-	PropertyType          uint32
-	BytesAfter            uint32
-	ValueLenInFormatUnits uint32
-	Value                 []byte
+	Sequence              uint16 // Sequence number
+	Format                byte   // Property format (8, 16, or 32)
+	PropertyType          uint32 // Type atom
+	BytesAfter            uint32 // Number of bytes remaining
+	ValueLenInFormatUnits uint32 // Length of value in format units
+	Value                 []byte // Property value data
 }
 
+// EncodeMessage encodes the GetPropertyReply into a byte slice.
 func (r *GetPropertyReply) EncodeMessage(order binary.ByteOrder) []byte {
 	n := len(r.Value)
 	p := (4 - (n % 4)) % 4
@@ -460,13 +477,14 @@ func (r *GetPropertyReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetPropertyReply parses a GetProperty reply.
 func ParseGetPropertyReply(order binary.ByteOrder, b []byte) (*GetPropertyReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	valLen := order.Uint32(b[4:8]) * 4
 	if len(b) < 32+int(valLen) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetPropertyReply{
 		Sequence:              order.Uint16(b[2:4]),
@@ -479,13 +497,14 @@ func ParseGetPropertyReply(order binary.ByteOrder, b []byte) (*GetPropertyReply,
 	return r, nil
 }
 
-// ListProperties: 21
+// ListPropertiesReply represents a reply to a ListProperties request.
 type ListPropertiesReply struct {
-	Sequence      uint16
-	NumProperties uint16
-	Atoms         []uint32
+	Sequence      uint16   // Sequence number
+	NumProperties uint16   // Number of properties
+	Atoms         []uint32 // List of property atoms
 }
 
+// EncodeMessage encodes the ListPropertiesReply into a byte slice.
 func (r *ListPropertiesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numAtoms := len(r.Atoms)
 	reply := make([]byte, 32+numAtoms*4)
@@ -501,13 +520,14 @@ func (r *ListPropertiesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseListPropertiesReply parses a ListProperties reply.
 func ParseListPropertiesReply(order binary.ByteOrder, b []byte) (*ListPropertiesReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numAtoms := order.Uint16(b[8:10])
 	if len(b) < 32+int(numAtoms)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	atoms := make([]uint32, numAtoms)
 	for i := 0; i < int(numAtoms); i++ {
@@ -521,19 +541,20 @@ func ParseListPropertiesReply(order binary.ByteOrder, b []byte) (*ListProperties
 	return r, nil
 }
 
-// QueryTextExtents: 48
+// QueryTextExtentsReply represents a reply to a QueryTextExtents request.
 type QueryTextExtentsReply struct {
-	Sequence       uint16
-	DrawDirection  byte
-	FontAscent     int16
-	FontDescent    int16
-	OverallAscent  int16
-	OverallDescent int16
-	OverallWidth   int32
-	OverallLeft    int32
-	OverallRight   int32
+	Sequence       uint16 // Sequence number
+	DrawDirection  byte   // Draw direction
+	FontAscent     int16  // Font ascent
+	FontDescent    int16  // Font descent
+	OverallAscent  int16  // Overall ascent
+	OverallDescent int16  // Overall descent
+	OverallWidth   int32  // Overall width
+	OverallLeft    int32  // Overall left bearing
+	OverallRight   int32  // Overall right bearing
 }
 
+// EncodeMessage encodes the QueryTextExtentsReply into a byte slice.
 func (r *QueryTextExtentsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -550,9 +571,10 @@ func (r *QueryTextExtentsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryTextExtentsReply parses a QueryTextExtents reply.
 func ParseQueryTextExtentsReply(order binary.ByteOrder, b []byte) (*QueryTextExtentsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryTextExtentsReply{
 		Sequence:       order.Uint16(b[2:4]),
@@ -568,18 +590,20 @@ func ParseQueryTextExtentsReply(order binary.ByteOrder, b []byte) (*QueryTextExt
 	return r, nil
 }
 
-// GetMotionEvents: 39
+// GetMotionEventsReply represents a reply to a GetMotionEvents request.
 type GetMotionEventsReply struct {
-	Sequence uint16
-	NEvents  uint32
-	Events   []TimeCoord
+	Sequence uint16      // Sequence number
+	NEvents  uint32      // Number of events
+	Events   []TimeCoord // List of time coordinates
 }
 
+// TimeCoord represents a time-coordinate pair in GetMotionEvents.
 type TimeCoord struct {
-	Time uint32
-	X, Y int16
+	Time uint32 // Time
+	X, Y int16  // Coordinates
 }
 
+// EncodeMessage encodes the GetMotionEventsReply into a byte slice.
 func (r *GetMotionEventsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.Events)*8)
 	reply[0] = 1 // Reply type
@@ -594,13 +618,14 @@ func (r *GetMotionEventsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetMotionEventsReply parses a GetMotionEvents reply.
 func ParseGetMotionEventsReply(order binary.ByteOrder, b []byte) (*GetMotionEventsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nEvents := order.Uint32(b[8:12])
 	if len(b) < 32+int(nEvents)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	events := make([]TimeCoord, nEvents)
 	for i := 0; i < int(nEvents); i++ {
@@ -618,12 +643,13 @@ func ParseGetMotionEventsReply(order binary.ByteOrder, b []byte) (*GetMotionEven
 	return r, nil
 }
 
-// GetSelectionOwner: 23
+// GetSelectionOwnerReply represents a reply to a GetSelectionOwner request.
 type GetSelectionOwnerReply struct {
-	Sequence uint16
-	Owner    uint32
+	Sequence uint16 // Sequence number
+	Owner    uint32 // Owner window ID
 }
 
+// EncodeMessage encodes the GetSelectionOwnerReply into a byte slice.
 func (r *GetSelectionOwnerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -635,9 +661,10 @@ func (r *GetSelectionOwnerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetSelectionOwnerReply parses a GetSelectionOwner reply.
 func ParseGetSelectionOwnerReply(order binary.ByteOrder, b []byte) (*GetSelectionOwnerReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetSelectionOwnerReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -646,12 +673,13 @@ func ParseGetSelectionOwnerReply(order binary.ByteOrder, b []byte) (*GetSelectio
 	return r, nil
 }
 
-// GrabPointer: 26
+// GrabPointerReply represents a reply to a GrabPointer request.
 type GrabPointerReply struct {
-	Sequence uint16
-	Status   byte
+	Sequence uint16 // Sequence number
+	Status   byte   // Grab status
 }
 
+// EncodeMessage encodes the GrabPointerReply into a byte slice.
 func (r *GrabPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -662,9 +690,10 @@ func (r *GrabPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGrabPointerReply parses a GrabPointer reply.
 func ParseGrabPointerReply(order binary.ByteOrder, b []byte) (*GrabPointerReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GrabPointerReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -673,12 +702,13 @@ func ParseGrabPointerReply(order binary.ByteOrder, b []byte) (*GrabPointerReply,
 	return r, nil
 }
 
-// GrabKeyboard: 31
+// GrabKeyboardReply represents a reply to a GrabKeyboard request.
 type GrabKeyboardReply struct {
-	Sequence uint16
-	Status   byte
+	Sequence uint16 // Sequence number
+	Status   byte   // Grab status
 }
 
+// EncodeMessage encodes the GrabKeyboardReply into a byte slice.
 func (r *GrabKeyboardReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -689,9 +719,10 @@ func (r *GrabKeyboardReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGrabKeyboardReply parses a GrabKeyboard reply.
 func ParseGrabKeyboardReply(order binary.ByteOrder, b []byte) (*GrabKeyboardReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GrabKeyboardReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -700,17 +731,18 @@ func ParseGrabKeyboardReply(order binary.ByteOrder, b []byte) (*GrabKeyboardRepl
 	return r, nil
 }
 
-// QueryPointer: 38
+// QueryPointerReply represents a reply to a QueryPointer request.
 type QueryPointerReply struct {
-	Sequence     uint16
-	SameScreen   bool
-	Root         uint32
-	Child        uint32
-	RootX, RootY int16
-	WinX, WinY   int16
-	Mask         uint16
+	Sequence     uint16 // Sequence number
+	SameScreen   bool   // Same screen flag
+	Root         uint32 // Root window ID
+	Child        uint32 // Child window ID
+	RootX, RootY int16  // Root coordinates
+	WinX, WinY   int16  // Window coordinates
+	Mask         uint16 // Modifier mask
 }
 
+// EncodeMessage encodes the QueryPointerReply into a byte slice.
 func (r *QueryPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -728,9 +760,10 @@ func (r *QueryPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryPointerReply parses a QueryPointer reply.
 func ParseQueryPointerReply(order binary.ByteOrder, b []byte) (*QueryPointerReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryPointerReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -746,14 +779,15 @@ func ParseQueryPointerReply(order binary.ByteOrder, b []byte) (*QueryPointerRepl
 	return r, nil
 }
 
-// TranslateCoords: 40
+// TranslateCoordsReply represents a reply to a TranslateCoords request.
 type TranslateCoordsReply struct {
-	Sequence   uint16
-	SameScreen bool
-	Child      uint32
-	DstX, DstY int16
+	Sequence   uint16 // Sequence number
+	SameScreen bool   // Same screen flag
+	Child      uint32 // Child window ID
+	DstX, DstY int16  // Destination coordinates
 }
 
+// EncodeMessage encodes the TranslateCoordsReply into a byte slice.
 func (r *TranslateCoordsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -767,9 +801,10 @@ func (r *TranslateCoordsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseTranslateCoordsReply parses a TranslateCoords reply.
 func ParseTranslateCoordsReply(order binary.ByteOrder, b []byte) (*TranslateCoordsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &TranslateCoordsReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -781,13 +816,14 @@ func ParseTranslateCoordsReply(order binary.ByteOrder, b []byte) (*TranslateCoor
 	return r, nil
 }
 
-// GetInputFocus: 43
+// GetInputFocusReply represents a reply to a GetInputFocus request.
 type GetInputFocusReply struct {
-	Sequence uint16
-	RevertTo byte
-	Focus    uint32
+	Sequence uint16 // Sequence number
+	RevertTo byte   // RevertTo mode
+	Focus    uint32 // Focus window ID
 }
 
+// EncodeMessage encodes the GetInputFocusReply into a byte slice.
 func (r *GetInputFocusReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -799,9 +835,10 @@ func (r *GetInputFocusReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetInputFocusReply parses a GetInputFocus reply.
 func ParseGetInputFocusReply(order binary.ByteOrder, b []byte) (*GetInputFocusReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetInputFocusReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -811,26 +848,27 @@ func ParseGetInputFocusReply(order binary.ByteOrder, b []byte) (*GetInputFocusRe
 	return r, nil
 }
 
-// QueryFont: 47
+// QueryFontReply represents a reply to a QueryFont request.
 type QueryFontReply struct {
-	Sequence       uint16
-	MinBounds      XCharInfo
-	MaxBounds      XCharInfo
-	MinCharOrByte2 uint16
-	MaxCharOrByte2 uint16
-	DefaultChar    uint16
-	NumFontProps   uint16
-	DrawDirection  uint8
-	MinByte1       uint8
-	MaxByte1       uint8
-	AllCharsExist  bool
-	FontAscent     int16
-	FontDescent    int16
-	NumCharInfos   uint32
-	CharInfos      []XCharInfo
-	FontProps      []FontProp
+	Sequence       uint16      // Sequence number
+	MinBounds      XCharInfo   // Minimum bounds
+	MaxBounds      XCharInfo   // Maximum bounds
+	MinCharOrByte2 uint16      // Minimum character or byte 2
+	MaxCharOrByte2 uint16      // Maximum character or byte 2
+	DefaultChar    uint16      // Default character
+	NumFontProps   uint16      // Number of font properties
+	DrawDirection  uint8       // Draw direction
+	MinByte1       uint8       // Minimum byte 1
+	MaxByte1       uint8       // Maximum byte 1
+	AllCharsExist  bool        // All characters exist flag
+	FontAscent     int16       // Font ascent
+	FontDescent    int16       // Font descent
+	NumCharInfos   uint32      // Number of character infos
+	CharInfos      []XCharInfo // Character infos
+	FontProps      []FontProp  // Font properties
 }
 
+// EncodeMessage encodes the QueryFontReply into a byte slice.
 func (r *QueryFontReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numFontProps := len(r.FontProps)
 	numCharInfos := len(r.CharInfos)
@@ -890,14 +928,15 @@ func (r *QueryFontReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryFontReply parses a QueryFont reply.
 func ParseQueryFontReply(order binary.ByteOrder, b []byte) (*QueryFontReply, error) {
 	if len(b) < 60 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numFontProps := order.Uint16(b[46:48])
 	numCharInfos := order.Uint32(b[56:60])
 	if len(b) < 60+8*int(numFontProps)+12*int(numCharInfos) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	var charInfos []XCharInfo
 	if numCharInfos > 0 {
@@ -964,12 +1003,13 @@ func ParseQueryFontReply(order binary.ByteOrder, b []byte) (*QueryFontReply, err
 	return r, nil
 }
 
-// ListFonts: 50
+// ListFontsReply represents a reply to a ListFonts request.
 type ListFontsReply struct {
-	Sequence  uint16
-	FontNames []string
+	Sequence  uint16   // Sequence number
+	FontNames []string // List of font names
 }
 
+// EncodeMessage encodes the ListFontsReply into a byte slice.
 func (r *ListFontsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	var namesData []byte
 	for _, name := range r.FontNames {
@@ -991,20 +1031,21 @@ func (r *ListFontsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseListFontsReply parses a ListFonts reply.
 func ParseListFontsReply(order binary.ByteOrder, b []byte) (*ListFontsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numFonts := order.Uint16(b[8:10])
 	fontNames := make([]string, numFonts)
 	offset := 32
 	for i := 0; i < int(numFonts); i++ {
 		if len(b) < offset+1 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		length := int(b[offset])
 		if len(b) < offset+1+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		fontNames[i] = string(b[offset+1 : offset+1+length])
 		offset += 1 + length
@@ -1016,14 +1057,15 @@ func ParseListFontsReply(order binary.ByteOrder, b []byte) (*ListFontsReply, err
 	return r, nil
 }
 
-// GetImage: 73
+// GetImageReply represents a reply to a GetImage request.
 type GetImageReply struct {
-	Sequence  uint16
-	Depth     byte
-	VisualID  uint32
-	ImageData []byte
+	Sequence  uint16 // Sequence number
+	Depth     byte   // Image depth
+	VisualID  uint32 // Visual ID
+	ImageData []byte // Image data
 }
 
+// EncodeMessage encodes the GetImageReply into a byte slice.
 func (r *GetImageReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.ImageData))
 	reply[0] = 1 // Reply type
@@ -1036,13 +1078,14 @@ func (r *GetImageReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetImageReply parses a GetImage reply.
 func ParseGetImageReply(order binary.ByteOrder, b []byte) (*GetImageReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	length := order.Uint32(b[4:8]) * 4
 	if len(b) < 32+int(length) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetImageReply{
 		Sequence:  order.Uint16(b[2:4]),
@@ -1053,27 +1096,16 @@ func ParseGetImageReply(order binary.ByteOrder, b []byte) (*GetImageReply, error
 	return r, nil
 }
 
-// AllocColor: 84
+// AllocColorReply represents a reply to an AllocColor request.
 type AllocColorReply struct {
-	Sequence uint16
-	Red      uint16
-	Green    uint16
-	Blue     uint16
-	Pixel    uint32
+	Sequence uint16 // Sequence number
+	Red      uint16 // Allocated Red
+	Green    uint16 // Allocated Green
+	Blue     uint16 // Allocated Blue
+	Pixel    uint32 // Pixel value
 }
 
-/*
-1     1                               Reply
-1                                     unused
-2     CARD16                          sequence number
-4     0                               reply length
-2     CARD16                          red
-2     CARD16                          green
-2     CARD16                          blue
-2                                     unused
-4     CARD32                          pixel
-12                                    unused
-*/
+// EncodeMessage encodes the AllocColorReply into a byte slice.
 func (r *AllocColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1089,9 +1121,10 @@ func (r *AllocColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseAllocColorReply parses an AllocColor reply.
 func ParseAllocColorReply(order binary.ByteOrder, b []byte) (*AllocColorReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &AllocColorReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1103,32 +1136,19 @@ func ParseAllocColorReply(order binary.ByteOrder, b []byte) (*AllocColorReply, e
 	return r, nil
 }
 
-// AllocNamedColor: 85
+// AllocNamedColorReply represents a reply to an AllocNamedColor request.
 type AllocNamedColorReply struct {
-	Sequence   uint16
-	Red        uint16
-	Green      uint16
-	Blue       uint16
-	ExactRed   uint16
-	ExactGreen uint16
-	ExactBlue  uint16
-	Pixel      uint32
+	Sequence   uint16 // Sequence number
+	Red        uint16 // Visual red
+	Green      uint16 // Visual green
+	Blue       uint16 // Visual blue
+	ExactRed   uint16 // Exact red
+	ExactGreen uint16 // Exact green
+	ExactBlue  uint16 // Exact blue
+	Pixel      uint32 // Pixel value
 }
 
-/*
-1     1                               Reply
-1                                     unused
-2     CARD16                          sequence number
-4     0                               reply length
-4     CARD32                          pixel
-2     CARD16                          exact-red
-2     CARD16                          exact-green
-2     CARD16                          exact-blue
-2     CARD16                          visual-red
-2     CARD16                          visual-green
-2     CARD16                          visual-blue
-8                                     unused
-*/
+// EncodeMessage encodes the AllocNamedColorReply into a byte slice.
 func (r *AllocNamedColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1145,9 +1165,10 @@ func (r *AllocNamedColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseAllocNamedColorReply parses an AllocNamedColor reply.
 func ParseAllocNamedColorReply(order binary.ByteOrder, b []byte) (*AllocNamedColorReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &AllocNamedColorReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -1162,13 +1183,14 @@ func ParseAllocNamedColorReply(order binary.ByteOrder, b []byte) (*AllocNamedCol
 	return r, nil
 }
 
-// ListInstalledColormaps: 85
+// ListInstalledColormapsReply represents a reply to a ListInstalledColormaps request.
 type ListInstalledColormapsReply struct {
-	Sequence     uint16
-	NumColormaps uint16
-	Colormaps    []uint32
+	Sequence     uint16   // Sequence number
+	NumColormaps uint16   // Number of colormaps
+	Colormaps    []uint32 // List of colormap IDs
 }
 
+// EncodeMessage encodes the ListInstalledColormapsReply into a byte slice.
 func (r *ListInstalledColormapsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	nColormaps := len(r.Colormaps)
 	reply := make([]byte, 32+nColormaps*4)
@@ -1184,13 +1206,14 @@ func (r *ListInstalledColormapsReply) EncodeMessage(order binary.ByteOrder) []by
 	return reply
 }
 
+// ParseListInstalledColormapsReply parses a ListInstalledColormaps reply.
 func ParseListInstalledColormapsReply(order binary.ByteOrder, b []byte) (*ListInstalledColormapsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numColormaps := order.Uint16(b[8:10])
 	if len(b) < 32+int(numColormaps)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	colormaps := make([]uint32, numColormaps)
 	for i := 0; i < int(numColormaps); i++ {
@@ -1204,12 +1227,13 @@ func ParseListInstalledColormapsReply(order binary.ByteOrder, b []byte) (*ListIn
 	return r, nil
 }
 
-// QueryColors: 91
+// QueryColorsReply represents a reply to a QueryColors request.
 type QueryColorsReply struct {
-	Sequence uint16
-	Colors   []XColorItem
+	Sequence uint16       // Sequence number
+	Colors   []XColorItem // List of color items
 }
 
+// EncodeMessage encodes the QueryColorsReply into a byte slice.
 func (r *QueryColorsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numColors := len(r.Colors)
 	replies := make([]byte, numColors*8)
@@ -1231,13 +1255,14 @@ func (r *QueryColorsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryColorsReply parses a QueryColors reply.
 func ParseQueryColorsReply(order binary.ByteOrder, b []byte) (*QueryColorsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numColors := order.Uint16(b[8:10])
 	if len(b) < 32+int(numColors)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	colors := make([]XColorItem, numColors)
 	for i := 0; i < int(numColors); i++ {
@@ -1254,17 +1279,18 @@ func ParseQueryColorsReply(order binary.ByteOrder, b []byte) (*QueryColorsReply,
 	return r, nil
 }
 
-// LookupColor: 92
+// LookupColorReply represents a reply to a LookupColor request.
 type LookupColorReply struct {
-	Sequence   uint16
-	Red        uint16
-	Green      uint16
-	Blue       uint16
-	ExactRed   uint16
-	ExactGreen uint16
-	ExactBlue  uint16
+	Sequence   uint16 // Sequence number
+	Red        uint16 // Visual red
+	Green      uint16 // Visual green
+	Blue       uint16 // Visual blue
+	ExactRed   uint16 // Exact red
+	ExactGreen uint16 // Exact green
+	ExactBlue  uint16 // Exact blue
 }
 
+// EncodeMessage encodes the LookupColorReply into a byte slice.
 func (r *LookupColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1281,9 +1307,10 @@ func (r *LookupColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseLookupColorReply parses a LookupColor reply.
 func ParseLookupColorReply(order binary.ByteOrder, b []byte) (*LookupColorReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &LookupColorReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -1297,13 +1324,14 @@ func ParseLookupColorReply(order binary.ByteOrder, b []byte) (*LookupColorReply,
 	return r, nil
 }
 
-// QueryBestSize: 97
+// QueryBestSizeReply represents a reply to a QueryBestSize request.
 type QueryBestSizeReply struct {
-	Sequence uint16
-	Width    uint16
-	Height   uint16
+	Sequence uint16 // Sequence number
+	Width    uint16 // Best width
+	Height   uint16 // Best height
 }
 
+// EncodeMessage encodes the QueryBestSizeReply into a byte slice.
 func (r *QueryBestSizeReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1316,9 +1344,10 @@ func (r *QueryBestSizeReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryBestSizeReply parses a QueryBestSize reply.
 func ParseQueryBestSizeReply(order binary.ByteOrder, b []byte) (*QueryBestSizeReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryBestSizeReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1328,24 +1357,16 @@ func ParseQueryBestSizeReply(order binary.ByteOrder, b []byte) (*QueryBestSizeRe
 	return r, nil
 }
 
-// QueryExtension: 98
+// QueryExtensionReply represents a reply to a QueryExtension request.
 type QueryExtensionReply struct {
-	Sequence    uint16
-	Present     bool
-	MajorOpcode byte
-	FirstEvent  byte
-	FirstError  byte
+	Sequence    uint16 // Sequence number
+	Present     bool   // Present flag
+	MajorOpcode byte   // Major opcode
+	FirstEvent  byte   // First event code
+	FirstError  byte   // First error code
 }
 
-// 1     1                               Reply
-// 1                                     unused
-// 2     CARD16                          sequence number
-// 4     0                               reply length
-// 1     BOOL                            present
-// 1     CARD8                           major-opcode
-// 1     CARD8                           first-event
-// 1     CARD8                           first-error
-// 20                                    unused
+// EncodeMessage encodes the QueryExtensionReply into a byte slice.
 func (r *QueryExtensionReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1359,9 +1380,10 @@ func (r *QueryExtensionReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryExtensionReply parses a QueryExtension reply.
 func ParseQueryExtensionReply(order binary.ByteOrder, b []byte) (*QueryExtensionReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryExtensionReply{
 		Sequence:    order.Uint16(b[2:4]),
@@ -1375,28 +1397,29 @@ func ParseQueryExtensionReply(order binary.ByteOrder, b []byte) (*QueryExtension
 
 // SetupResponse implements messageEncoder for the X11 setup response.
 type SetupResponse struct {
-	Success                  byte
-	Reason                   string
-	ProtocolVersion          uint16
-	ReleaseNumber            uint32
-	ResourceIDBase           uint32
-	ResourceIDMask           uint32
-	MotionBufferSize         uint32
-	VendorLength             uint16
-	MaxRequestLength         uint16
-	NumScreens               uint8
-	NumPixmapFormats         uint8
-	ImageByteOrder           uint8
-	BitmapFormatBitOrder     byte
-	BitmapFormatScanlineUnit byte
-	BitmapFormatScanlinePad  byte
-	MinKeycode               uint8
-	MaxKeycode               uint8
-	VendorString             string
-	PixmapFormats            []Format
-	Screens                  []Screen
+	Success                  byte     // Success flag (1 = success)
+	Reason                   string   // Reason for failure
+	ProtocolVersion          uint16   // Protocol major version
+	ReleaseNumber            uint32   // Release number
+	ResourceIDBase           uint32   // Resource ID base
+	ResourceIDMask           uint32   // Resource ID mask
+	MotionBufferSize         uint32   // Motion buffer size
+	VendorLength             uint16   // Vendor string length
+	MaxRequestLength         uint16   // Maximum request length
+	NumScreens               uint8    // Number of screens
+	NumPixmapFormats         uint8    // Number of pixmap formats
+	ImageByteOrder           uint8    // Image byte order
+	BitmapFormatBitOrder     byte     // Bitmap bit order
+	BitmapFormatScanlineUnit byte     // Bitmap scanline unit
+	BitmapFormatScanlinePad  byte     // Bitmap scanline pad
+	MinKeycode               uint8    // Minimum keycode
+	MaxKeycode               uint8    // Maximum keycode
+	VendorString             string   // Vendor string
+	PixmapFormats            []Format // Pixmap formats
+	Screens                  []Screen // Screens
 }
 
+// EncodeMessage encodes the SetupResponse into a byte slice.
 func (r *SetupResponse) EncodeMessage(order binary.ByteOrder) []byte {
 	if r.Success == 0 {
 		response := make([]byte, 8+len(r.Reason))
@@ -1419,69 +1442,74 @@ func (r *SetupResponse) EncodeMessage(order binary.ByteOrder) []byte {
 	return response
 }
 
-// Start of setup struct
+// Setup contains information about the X server setup.
 type Setup struct {
-	ReleaseNumber            uint32
-	ResourceIDBase           uint32
-	ResourceIDMask           uint32
-	MotionBufferSize         uint32
-	VendorLength             uint16
-	MaxRequestLength         uint16
-	NumScreens               uint8
-	NumPixmapFormats         uint8
-	ImageByteOrder           uint8
-	BitmapFormatBitOrder     uint8
-	BitmapFormatScanlineUnit uint8
-	BitmapFormatScanlinePad  uint8
-	MinKeycode               uint8
-	MaxKeycode               uint8
-	VendorString             string
-	PixmapFormats            []Format
-	Screens                  []Screen
+	ReleaseNumber            uint32   // Release number
+	ResourceIDBase           uint32   // Resource ID base
+	ResourceIDMask           uint32   // Resource ID mask
+	MotionBufferSize         uint32   // Motion buffer size
+	VendorLength             uint16   // Vendor string length
+	MaxRequestLength         uint16   // Maximum request length
+	NumScreens               uint8    // Number of screens
+	NumPixmapFormats         uint8    // Number of pixmap formats
+	ImageByteOrder           uint8    // Image byte order
+	BitmapFormatBitOrder     uint8    // Bitmap bit order
+	BitmapFormatScanlineUnit uint8    // Bitmap scanline unit
+	BitmapFormatScanlinePad  uint8    // Bitmap scanline pad
+	MinKeycode               uint8    // Minimum keycode
+	MaxKeycode               uint8    // Maximum keycode
+	VendorString             string   // Vendor string
+	PixmapFormats            []Format // Pixmap formats
+	Screens                  []Screen // Screens
 }
 
+// Format describes a pixmap format.
 type Format struct {
-	Depth        uint8
-	BitsPerPixel uint8
-	ScanlinePad  uint8
+	Depth        uint8 // Depth
+	BitsPerPixel uint8 // Bits per pixel
+	ScanlinePad  uint8 // Scanline pad
 }
 
+// Screen describes a screen.
 type Screen struct {
-	Root                uint32
-	DefaultColormap     uint32
-	WhitePixel          uint32
-	BlackPixel          uint32
-	CurrentInputMasks   uint32
-	WidthInPixels       uint16
-	HeightInPixels      uint16
-	WidthInMillimeters  uint16
-	HeightInMillimeters uint16
-	MinInstalledMaps    uint16
-	MaxInstalledMaps    uint16
-	RootVisual          uint32
-	BackingStores       uint8
-	SaveUnders          bool
-	RootDepth           uint8
-	NumDepths           uint8
-	Depths              []Depth
+	Root                uint32       // Root window ID
+	DefaultColormap     uint32       // Default colormap ID
+	WhitePixel          uint32       // White pixel value
+	BlackPixel          uint32       // Black pixel value
+	CurrentInputMasks   uint32       // Current input masks
+	WidthInPixels       uint16       // Width in pixels
+	HeightInPixels      uint16       // Height in pixels
+	WidthInMillimeters  uint16       // Width in millimeters
+	HeightInMillimeters uint16       // Height in millimeters
+	MinInstalledMaps    uint16       // Minimum installed colormaps
+	MaxInstalledMaps    uint16       // Maximum installed colormaps
+	RootVisual          uint32       // Root visual ID
+	BackingStores       uint8        // Backing stores
+	SaveUnders          bool         // Save unders flag
+	RootDepth           uint8        // Root depth
+	NumDepths           uint8        // Number of depths
+	Depths              []Depth      // Depths
 }
 
+// Depth describes a depth and its visuals.
 type Depth struct {
-	Depth      uint8
-	NumVisuals uint16
-	Visuals    []VisualType
+	Depth      uint8        // Depth
+	NumVisuals uint16       // Number of visuals
+	Visuals    []VisualType // Visuals
 }
 
+// VisualType describes a visual type.
 type VisualType struct {
-	VisualID        uint32 // visual-id
-	Class           uint8
-	BitsPerRGBValue uint8
-	ColormapEntries uint16
-	RedMask         uint32
-	GreenMask       uint32
-	BlueMask        uint32
+	VisualID        uint32 // Visual ID
+	Class           uint8  // Class
+	BitsPerRGBValue uint8  // Bits per RGB value
+	ColormapEntries uint16 // Colormap entries
+	RedMask         uint32 // Red mask
+	GreenMask       uint32 // Green mask
+	BlueMask        uint32 // Blue mask
 }
 
+// NewDefaultSetup creates a default Setup structure.
 func NewDefaultSetup() *Setup {
 	vendorString := "sshterm"
 	s := &Setup{
@@ -1632,12 +1660,13 @@ func (v *VisualType) marshal(buf *bytes.Buffer, order binary.ByteOrder) {
 	buf.Write([]byte{0, 0, 0, 0}) // 4 bytes of padding
 }
 
-// SetPointerMapping: 116
+// SetPointerMappingReply represents a reply to a SetPointerMapping request.
 type SetPointerMappingReply struct {
-	Sequence uint16
-	Status   byte
+	Sequence uint16 // Sequence number
+	Status   byte   // Status (MappingSuccess, MappingBusy)
 }
 
+// EncodeMessage encodes the SetPointerMappingReply into a byte slice.
 func (r *SetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1647,9 +1676,10 @@ func (r *SetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseSetPointerMappingReply parses a SetPointerMapping reply.
 func ParseSetPointerMappingReply(order binary.ByteOrder, b []byte) (*SetPointerMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetPointerMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1658,13 +1688,14 @@ func ParseSetPointerMappingReply(order binary.ByteOrder, b []byte) (*SetPointerM
 	return r, nil
 }
 
-// GetPointerMapping: 117
+// GetPointerMappingReply represents a reply to a GetPointerMapping request.
 type GetPointerMappingReply struct {
-	Sequence uint16
-	Length   byte
-	PMap     []byte
+	Sequence uint16 // Sequence number
+	Length   byte   // Length of map
+	PMap     []byte // Map
 }
 
+// EncodeMessage encodes the GetPointerMappingReply into a byte slice.
 func (r *GetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.PMap))
 	reply[0] = 1 // Reply type
@@ -1675,13 +1706,14 @@ func (r *GetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetPointerMappingReply parses a GetPointerMapping reply.
 func ParseGetPointerMappingReply(order binary.ByteOrder, b []byte) (*GetPointerMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	length := b[1]
 	if len(b) < 32+int(length) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetPointerMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1691,15 +1723,17 @@ func ParseGetPointerMappingReply(order binary.ByteOrder, b []byte) (*GetPointerM
 	return r, nil
 }
 
-// GetKeyboardMapping: 101
+// GetKeyboardMappingReply represents a reply to a GetKeyboardMapping request.
 type GetKeyboardMappingReply struct {
-	Sequence          uint16
-	KeySymsPerKeycode byte
-	KeySyms           []uint32
+	Sequence          uint16   // Sequence number
+	KeySymsPerKeycode byte     // Keysyms per keycode
+	KeySyms           []uint32 // List of keysyms
 }
 
+// OpCode returns the request opcode.
 func (r *GetKeyboardMappingReply) OpCode() ReqCode { return GetKeyboardMapping }
 
+// EncodeMessage encodes the GetKeyboardMappingReply into a byte slice.
 func (r *GetKeyboardMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numKeysyms := len(r.KeySyms)
 	length := uint32(numKeysyms)
@@ -1716,13 +1750,14 @@ func (r *GetKeyboardMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetKeyboardMappingReply parses a GetKeyboardMapping reply.
 func ParseGetKeyboardMappingReply(order binary.ByteOrder, b []byte) (*GetKeyboardMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	length := order.Uint32(b[4:8])
 	if len(b) < 32+int(length)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keySyms := make([]uint32, length)
 	for i := 0; i < int(length); i++ {
@@ -1736,18 +1771,19 @@ func ParseGetKeyboardMappingReply(order binary.ByteOrder, b []byte) (*GetKeyboar
 	return r, nil
 }
 
-// GetKeyboardControl: 103
+// GetKeyboardControlReply represents a reply to a GetKeyboardControl request.
 type GetKeyboardControlReply struct {
-	Sequence         uint16
-	KeyClickPercent  byte
-	BellPercent      byte
-	BellPitch        uint16
-	BellDuration     uint16
-	LedMask          uint32
-	GlobalAutoRepeat byte
-	AutoRepeats      [32]byte
+	Sequence         uint16   // Sequence number
+	KeyClickPercent  byte     // Key click volume
+	BellPercent      byte     // Bell volume
+	BellPitch        uint16   // Bell pitch
+	BellDuration     uint16   // Bell duration
+	LedMask          uint32   // LED mask
+	GlobalAutoRepeat byte     // Global auto repeat mode
+	AutoRepeats      [32]byte // Auto repeats
 }
 
+// EncodeMessage encodes the GetKeyboardControlReply into a byte slice.
 func (r *GetKeyboardControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 52)
 	reply[0] = 1 // Reply type
@@ -1764,9 +1800,10 @@ func (r *GetKeyboardControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetKeyboardControlReply parses a GetKeyboardControl reply.
 func ParseGetKeyboardControlReply(order binary.ByteOrder, b []byte) (*GetKeyboardControlReply, error) {
 	if len(b) < 52 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetKeyboardControlReply{
 		Sequence:         order.Uint16(b[2:4]),
@@ -1781,15 +1818,16 @@ func ParseGetKeyboardControlReply(order binary.ByteOrder, b []byte) (*GetKeyboar
 	return r, nil
 }
 
-// GetScreenSaver: 108
+// GetScreenSaverReply represents a reply to a GetScreenSaver request.
 type GetScreenSaverReply struct {
-	Sequence    uint16
-	Timeout     uint16
-	Interval    uint16
-	PreferBlank byte
-	AllowExpose byte
+	Sequence    uint16 // Sequence number
+	Timeout     uint16 // Timeout
+	Interval    uint16 // Interval
+	PreferBlank byte   // Prefer blanking
+	AllowExpose byte   // Allow exposures
 }
 
+// EncodeMessage encodes the GetScreenSaverReply into a byte slice.
 func (r *GetScreenSaverReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1802,9 +1840,10 @@ func (r *GetScreenSaverReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetScreenSaverReply parses a GetScreenSaver reply.
 func ParseGetScreenSaverReply(order binary.ByteOrder, b []byte) (*GetScreenSaverReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetScreenSaverReply{
 		Sequence:    order.Uint16(b[2:4]),
@@ -1816,13 +1855,14 @@ func ParseGetScreenSaverReply(order binary.ByteOrder, b []byte) (*GetScreenSaver
 	return r, nil
 }
 
-// ListHosts: 110
+// ListHostsReply represents a reply to a ListHosts request.
 type ListHostsReply struct {
-	Sequence uint16
-	NumHosts uint16
-	Hosts    []Host
+	Sequence uint16 // Sequence number
+	NumHosts uint16 // Number of hosts
+	Hosts    []Host // List of hosts
 }
 
+// EncodeMessage encodes the ListHostsReply into a byte slice.
 func (r *ListHostsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	var data []byte
 	for _, host := range r.Hosts {
@@ -1845,21 +1885,22 @@ func (r *ListHostsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseListHostsReply parses a ListHosts reply.
 func ParseListHostsReply(order binary.ByteOrder, b []byte) (*ListHostsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numHosts := order.Uint16(b[8:10])
 	hosts := make([]Host, numHosts)
 	offset := 32
 	for i := 0; i < int(numHosts); i++ {
 		if len(b) < offset+4 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		family := b[offset]
 		length := int(order.Uint16(b[offset+2 : offset+4]))
 		if len(b) < offset+4+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		data := b[offset+4 : offset+4+length]
 		hosts[i] = Host{
@@ -1876,12 +1917,13 @@ func ParseListHostsReply(order binary.ByteOrder, b []byte) (*ListHostsReply, err
 	return r, nil
 }
 
-// SetModifierMapping: 118
+// SetModifierMappingReply represents a reply to a SetModifierMapping request.
 type SetModifierMappingReply struct {
-	Sequence uint16
-	Status   byte
+	Sequence uint16 // Sequence number
+	Status   byte   // Status (MappingSuccess, MappingBusy)
 }
 
+// EncodeMessage encodes the SetModifierMappingReply into a byte slice.
 func (r *SetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -1891,9 +1933,10 @@ func (r *SetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseSetModifierMappingReply parses a SetModifierMapping reply.
 func ParseSetModifierMappingReply(order binary.ByteOrder, b []byte) (*SetModifierMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetModifierMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1902,13 +1945,14 @@ func ParseSetModifierMappingReply(order binary.ByteOrder, b []byte) (*SetModifie
 	return r, nil
 }
 
-// GetModifierMapping: 119
+// GetModifierMappingReply represents a reply to a GetModifierMapping request.
 type GetModifierMappingReply struct {
-	Sequence            uint16
-	KeyCodesPerModifier byte
-	KeyCodes            []KeyCode
+	Sequence            uint16    // Sequence number
+	KeyCodesPerModifier byte      // Keycodes per modifier
+	KeyCodes            []KeyCode // List of keycodes
 }
 
+// EncodeMessage encodes the GetModifierMappingReply into a byte slice.
 func (r *GetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	keyCodes := make([]byte, len(r.KeyCodes))
 	for i, kc := range r.KeyCodes {
@@ -1923,13 +1967,14 @@ func (r *GetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetModifierMappingReply parses a GetModifierMapping reply.
 func ParseGetModifierMappingReply(order binary.ByteOrder, b []byte) (*GetModifierMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keyCodesPerModifier := b[1]
 	if len(b) < 32+int(keyCodesPerModifier)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keyCodes := make([]KeyCode, int(keyCodesPerModifier)*8)
 	for i := 0; i < len(keyCodes); i++ {
@@ -1943,12 +1988,13 @@ func ParseGetModifierMappingReply(order binary.ByteOrder, b []byte) (*GetModifie
 	return r, nil
 }
 
-// QueryKeymap: 44
+// QueryKeymapReply represents a reply to a QueryKeymap request.
 type QueryKeymapReply struct {
-	Sequence uint16
-	Keys     [32]byte
+	Sequence uint16   // Sequence number
+	Keys     [32]byte // Keyboard state
 }
 
+// EncodeMessage encodes the QueryKeymapReply into a byte slice.
 func (r *QueryKeymapReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 40)
 	reply[0] = 1 // Reply type
@@ -1958,9 +2004,10 @@ func (r *QueryKeymapReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryKeymapReply parses a QueryKeymap reply.
 func ParseQueryKeymapReply(order binary.ByteOrder, b []byte) (*QueryKeymapReply, error) {
 	if len(b) < 40 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryKeymapReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1969,13 +2016,14 @@ func ParseQueryKeymapReply(order binary.ByteOrder, b []byte) (*QueryKeymapReply,
 	return r, nil
 }
 
-// GetFontPath: 52
+// GetFontPathReply represents a reply to a GetFontPath request.
 type GetFontPathReply struct {
-	Sequence uint16
-	NPaths   uint16
-	Paths    []string
+	Sequence uint16   // Sequence number
+	NPaths   uint16   // Number of paths
+	Paths    []string // List of paths
 }
 
+// EncodeMessage encodes the GetFontPathReply into a byte slice.
 func (r *GetFontPathReply) EncodeMessage(order binary.ByteOrder) []byte {
 	var data []byte
 	for _, path := range r.Paths {
@@ -1994,20 +2042,21 @@ func (r *GetFontPathReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetFontPathReply parses a GetFontPath reply.
 func ParseGetFontPathReply(order binary.ByteOrder, b []byte) (*GetFontPathReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nPaths := order.Uint16(b[8:10])
 	paths := make([]string, nPaths)
 	offset := 32
 	for i := 0; i < int(nPaths); i++ {
 		if len(b) < offset+1 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		length := int(b[offset])
 		if len(b) < offset+1+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		paths[i] = string(b[offset+1 : offset+1+length])
 		offset += 1 + length
@@ -2020,32 +2069,34 @@ func ParseGetFontPathReply(order binary.ByteOrder, b []byte) (*GetFontPathReply,
 	return r, nil
 }
 
-// ListFontsWithInfo: 50
+// ListFontsWithInfoReply represents a reply to a ListFontsWithInfo request.
 type ListFontsWithInfoReply struct {
-	Sequence      uint16
-	NameLength    byte
-	MinBounds     XCharInfo
-	MaxBounds     XCharInfo
-	MinChar       uint16
-	MaxChar       uint16
-	DefaultChar   uint16
-	NFontProps    uint16
-	DrawDirection byte
-	MinByte1      byte
-	MaxByte1      byte
-	AllCharsExist bool
-	FontAscent    int16
-	FontDescent   int16
-	NReplies      uint32
-	FontProps     []FontProp
-	FontName      string
+	Sequence      uint16     // Sequence number
+	NameLength    byte       // Length of name
+	MinBounds     XCharInfo  // Minimum bounds
+	MaxBounds     XCharInfo  // Maximum bounds
+	MinChar       uint16     // Minimum character
+	MaxChar       uint16     // Maximum character
+	DefaultChar   uint16     // Default character
+	NFontProps    uint16     // Number of font properties
+	DrawDirection byte       // Draw direction
+	MinByte1      byte       // Minimum byte 1
+	MaxByte1      byte       // Maximum byte 1
+	AllCharsExist bool       // All characters exist flag
+	FontAscent    int16      // Font ascent
+	FontDescent   int16      // Font descent
+	NReplies      uint32     // Number of replies remaining
+	FontProps     []FontProp // Font properties
+	FontName      string     // Font name
 }
 
+// FontProp represents a font property.
 type FontProp struct {
-	Name  uint32
-	Value uint32
+	Name  uint32 // Name atom
+	Value uint32 // Value
 }
 
+// EncodeMessage encodes the ListFontsWithInfoReply into a byte slice.
 func (r *ListFontsWithInfoReply) EncodeMessage(order binary.ByteOrder) []byte {
 	fontNameBytes := []byte(r.FontName)
 	fontNameLen := len(fontNameBytes)
@@ -2097,14 +2148,15 @@ func (r *ListFontsWithInfoReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseListFontsWithInfoReply parses a ListFontsWithInfo reply.
 func ParseListFontsWithInfoReply(order binary.ByteOrder, b []byte) (*ListFontsWithInfoReply, error) {
 	if len(b) < 60 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nameLength := b[1]
 	nFontProps := order.Uint16(b[46:48])
 	if len(b) < 60+int(nFontProps)*8+int(nameLength) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	fontProps := make([]FontProp, nFontProps)
 	offset := 60
@@ -2153,15 +2205,16 @@ func ParseListFontsWithInfoReply(order binary.ByteOrder, b []byte) (*ListFontsWi
 	return r, nil
 }
 
-// QueryTree: 15
+// QueryTreeReply represents a reply to a QueryTree request.
 type QueryTreeReply struct {
-	Sequence    uint16
-	Root        uint32
-	Parent      uint32
-	NumChildren uint16
-	Children    []uint32
+	Sequence    uint16   // Sequence number
+	Root        uint32   // Root window ID
+	Parent      uint32   // Parent window ID
+	NumChildren uint16   // Number of children
+	Children    []uint32 // List of children
 }
 
+// EncodeMessage encodes the QueryTreeReply into a byte slice.
 func (r *QueryTreeReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32+len(r.Children)*4)
 	reply[0] = 1 // Reply type
@@ -2176,13 +2229,14 @@ func (r *QueryTreeReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseQueryTreeReply parses a QueryTree reply.
 func ParseQueryTreeReply(order binary.ByteOrder, b []byte) (*QueryTreeReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numChildren := order.Uint16(b[16:18])
 	if len(b) < 32+int(numChildren)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	children := make([]uint32, numChildren)
 	for i := 0; i < int(numChildren); i++ {
@@ -2198,15 +2252,16 @@ func ParseQueryTreeReply(order binary.ByteOrder, b []byte) (*QueryTreeReply, err
 	return r, nil
 }
 
-// AllocColorCells: 86
+// AllocColorCellsReply represents a reply to an AllocColorCells request.
 type AllocColorCellsReply struct {
-	Sequence uint16
-	NPixels  uint16
-	NMasks   uint16
-	Pixels   []uint32
-	Masks    []uint32
+	Sequence uint16   // Sequence number
+	NPixels  uint16   // Number of pixels
+	NMasks   uint16   // Number of masks
+	Pixels   []uint32 // List of pixels
+	Masks    []uint32 // List of masks
 }
 
+// EncodeMessage encodes the AllocColorCellsReply into a byte slice.
 func (r *AllocColorCellsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numPixels := len(r.Pixels)
 	numMasks := len(r.Masks)
@@ -2227,14 +2282,15 @@ func (r *AllocColorCellsReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseAllocColorCellsReply parses an AllocColorCells reply.
 func ParseAllocColorCellsReply(order binary.ByteOrder, b []byte) (*AllocColorCellsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nPixels := order.Uint16(b[8:10])
 	nMasks := order.Uint16(b[10:12])
 	if len(b) < 32+int(nPixels)*4+int(nMasks)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	pixels := make([]uint32, nPixels)
 	masks := make([]uint32, nMasks)
@@ -2254,16 +2310,17 @@ func ParseAllocColorCellsReply(order binary.ByteOrder, b []byte) (*AllocColorCel
 	return r, nil
 }
 
-// AllocColorPlanes: 87
+// AllocColorPlanesReply represents a reply to an AllocColorPlanes request.
 type AllocColorPlanesReply struct {
-	Sequence  uint16
-	NPixels   uint16
-	RedMask   uint32
-	GreenMask uint32
-	BlueMask  uint32
-	Pixels    []uint32
+	Sequence  uint16   // Sequence number
+	NPixels   uint16   // Number of pixels
+	RedMask   uint32   // Red mask
+	GreenMask uint32   // Green mask
+	BlueMask  uint32   // Blue mask
+	Pixels    []uint32 // List of pixels
 }
 
+// EncodeMessage encodes the AllocColorPlanesReply into a byte slice.
 func (r *AllocColorPlanesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	numPixels := len(r.Pixels)
 	reply := make([]byte, 32+numPixels*4)
@@ -2283,13 +2340,14 @@ func (r *AllocColorPlanesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseAllocColorPlanesReply parses an AllocColorPlanes reply.
 func ParseAllocColorPlanesReply(order binary.ByteOrder, b []byte) (*AllocColorPlanesReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nPixels := order.Uint16(b[8:10])
 	if len(b) < 32+int(nPixels)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	pixels := make([]uint32, nPixels)
 	for i := 0; i < int(nPixels); i++ {
@@ -2306,27 +2364,49 @@ func ParseAllocColorPlanesReply(order binary.ByteOrder, b []byte) (*AllocColorPl
 	return r, nil
 }
 
-// ListExtensions: 99
+// ListExtensionsReply represents a reply to a ListExtensions request.
 type ListExtensionsReply struct {
-	Sequence uint16
-	NNames   byte
-	Names    []string
+	Sequence uint16   // Sequence number
+	NNames   byte     // Number of extension names
+	Names    []string // List of extension names
 }
 
+// EncodeMessage encodes the ListExtensionsReply into a byte slice.
+func (r *ListExtensionsReply) EncodeMessage(order binary.ByteOrder) []byte {
+	var namesData []byte
+	for _, name := range r.Names {
+		namesData = append(namesData, byte(len(name)))
+		namesData = append(namesData, []byte(name)...)
+	}
+
+	namesSize := len(namesData)
+	padSize := (4 - (namesSize % 4)) % 4
+
+	reply := make([]byte, 32+namesSize+padSize)
+	reply[0] = 1 // Reply
+	reply[1] = r.NNames
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], uint32((namesSize+padSize)/4)) // Reply length
+	// reply[8:32] is padding
+	copy(reply[32:], namesData)
+	return reply
+}
+
+// ParseListExtensionsReply parses a ListExtensions reply.
 func ParseListExtensionsReply(order binary.ByteOrder, b []byte) (*ListExtensionsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nNames := b[1]
 	names := make([]string, nNames)
 	offset := 32
 	for i := 0; i < int(nNames); i++ {
 		if len(b) < offset+1 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		length := int(b[offset])
 		if len(b) < offset+1+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		names[i] = string(b[offset+1 : offset+1+length])
 		offset += 1 + length
@@ -2339,14 +2419,15 @@ func ParseListExtensionsReply(order binary.ByteOrder, b []byte) (*ListExtensions
 	return r, nil
 }
 
-// GetPointerControl: 106
+// GetPointerControlReply represents a reply to a GetPointerControl request.
 type GetPointerControlReply struct {
-	Sequence         uint16
-	AccelNumerator   uint16
-	AccelDenominator uint16
-	Threshold        uint16
+	Sequence         uint16 // Sequence number
+	AccelNumerator   uint16 // Acceleration numerator
+	AccelDenominator uint16 // Acceleration denominator
+	Threshold        uint16 // Threshold
 }
 
+// EncodeMessage encodes the GetPointerControlReply into a byte slice.
 func (r *GetPointerControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	reply := make([]byte, 32)
 	reply[0] = 1 // Reply type
@@ -2360,9 +2441,10 @@ func (r *GetPointerControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ParseGetPointerControlReply parses a GetPointerControl reply.
 func ParseGetPointerControlReply(order binary.ByteOrder, b []byte) (*GetPointerControlReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetPointerControlReply{
 		Sequence:         order.Uint16(b[2:4]),
@@ -2371,20 +2453,4 @@ func ParseGetPointerControlReply(order binary.ByteOrder, b []byte) (*GetPointerC
 		Threshold:        order.Uint16(b[12:14]),
 	}
 	return r, nil
-}
-
-func (r *ListExtensionsReply) EncodeMessage(order binary.ByteOrder) []byte {
-	var data []byte
-	for _, name := range r.Names {
-		data = append(data, byte(len(name)))
-		data = append(data, name...)
-	}
-	p := (4 - (len(data) % 4)) % 4
-	reply := make([]byte, 32+len(data)+p)
-	reply[0] = 1 // Reply type
-	reply[1] = r.NNames
-	order.PutUint16(reply[2:4], r.Sequence)
-	order.PutUint32(reply[4:8], uint32((len(data)+p)/4))
-	copy(reply[32:], data)
-	return reply
 }

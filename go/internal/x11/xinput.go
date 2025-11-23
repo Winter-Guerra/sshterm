@@ -28,7 +28,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		} else if p.DeviceID == virtualKeyboard.Header.DeviceID {
 			selectedDevice = virtualKeyboard
 		} else {
-			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), byte(wire.XInputOpcode), wire.XOpenDevice)
+			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XOpenDevice})
 		}
 
 		// Create a new deviceInfo instance for the client, so event masks are not shared.
@@ -45,7 +45,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.SetDeviceModeRequest:
 		device, ok := client.openDevices[p.DeviceID]
 		if !ok {
-			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), byte(wire.XInputOpcode), wire.XSetDeviceMode)
+			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XSetDeviceMode})
 		}
 		var valuatorInfo *wire.ValuatorClassInfo
 		for _, class := range device.Classes {
@@ -55,7 +55,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 			}
 		}
 		if valuatorInfo == nil {
-			return wire.NewError(wire.MatchErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XSetDeviceMode)
+			return wire.NewError(wire.MatchErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XSetDeviceMode})
 		}
 		valuatorInfo.Mode = p.Mode
 		return &wire.SetDeviceModeReply{Sequence: seq, Status: wire.GrabSuccess}
@@ -63,7 +63,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.SetDeviceValuatorsRequest:
 		device, ok := client.openDevices[p.DeviceID]
 		if !ok {
-			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), byte(wire.XInputOpcode), wire.XSetDeviceValuators)
+			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XSetDeviceValuators})
 		}
 		var valuatorInfo *wire.ValuatorClassInfo
 		for _, class := range device.Classes {
@@ -73,10 +73,10 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 			}
 		}
 		if valuatorInfo == nil {
-			return wire.NewError(wire.MatchErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XSetDeviceValuators)
+			return wire.NewError(wire.MatchErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XSetDeviceValuators})
 		}
 		if int(p.FirstValuator)+int(p.NumValuators) > len(valuatorInfo.Axes) {
-			return wire.NewError(wire.ValueErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XSetDeviceValuators)
+			return wire.NewError(wire.ValueErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XSetDeviceValuators})
 		}
 		for i := 0; i < int(p.NumValuators); i++ {
 			valuatorInfo.Axes[int(p.FirstValuator)+i].Value = p.Valuators[i]
@@ -86,7 +86,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.GetDeviceControlRequest:
 		device, ok := client.openDevices[p.DeviceID]
 		if !ok {
-			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), byte(wire.XInputOpcode), wire.XGetDeviceControl)
+			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XGetDeviceControl})
 		}
 		var valuatorInfo *wire.ValuatorClassInfo
 		for _, class := range device.Classes {
@@ -96,7 +96,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 			}
 		}
 		if valuatorInfo == nil {
-			return wire.NewError(wire.MatchErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XGetDeviceControl)
+			return wire.NewError(wire.MatchErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XGetDeviceControl})
 		}
 		resolutions := make([]uint32, len(valuatorInfo.Axes))
 		minResolutions := make([]uint32, len(valuatorInfo.Axes))
@@ -119,7 +119,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.ChangeDeviceControlRequest:
 		device, ok := client.openDevices[p.DeviceID]
 		if !ok {
-			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), byte(wire.XInputOpcode), wire.XChangeDeviceControl)
+			return wire.NewError(wire.ValueErrorCode, seq, uint32(p.DeviceID), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeDeviceControl})
 		}
 		var valuatorInfo *wire.ValuatorClassInfo
 		for _, class := range device.Classes {
@@ -129,14 +129,14 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 			}
 		}
 		if valuatorInfo == nil {
-			return wire.NewError(wire.MatchErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XChangeDeviceControl)
+			return wire.NewError(wire.MatchErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeDeviceControl})
 		}
 		resolutionControl, ok := p.Control.(*wire.DeviceResolutionControl)
 		if !ok {
-			return wire.NewError(wire.ValueErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XChangeDeviceControl)
+			return wire.NewError(wire.ValueErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeDeviceControl})
 		}
 		if int(resolutionControl.FirstValuator)+int(resolutionControl.NumValuators) > len(valuatorInfo.Axes) {
-			return wire.NewError(wire.ValueErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XChangeDeviceControl)
+			return wire.NewError(wire.ValueErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeDeviceControl})
 		}
 		for i := 0; i < int(resolutionControl.NumValuators); i++ {
 			valuatorInfo.Axes[int(resolutionControl.FirstValuator)+i].Resolution = resolutionControl.Resolutions[i]
@@ -168,7 +168,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.ChangeDeviceDontPropagateListRequest:
 		win, ok := s.windows[client.xID(p.Window)]
 		if !ok {
-			return wire.NewError(wire.WindowErrorCode, seq, p.Window, byte(wire.XInputOpcode), wire.XChangeDeviceDontPropagateList)
+			return wire.NewError(wire.WindowErrorCode, seq, p.Window, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeDeviceDontPropagateList})
 		}
 		if win.dontPropagateDeviceEvents == nil {
 			win.dontPropagateDeviceEvents = make(map[uint32]bool)
@@ -187,15 +187,15 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return nil
 
 	case *wire.ChangeKeyboardDeviceRequest:
-		return wire.NewError(wire.DeviceErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XChangeKeyboardDevice)
+		return wire.NewError(wire.DeviceErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeKeyboardDevice})
 
 	case *wire.ChangePointerDeviceRequest:
-		return wire.NewError(wire.DeviceErrorCode, seq, 0, byte(wire.XInputOpcode), wire.XChangePointerDevice)
+		return wire.NewError(wire.DeviceErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangePointerDevice})
 
 	case *wire.GetDeviceDontPropagateListRequest:
 		win, ok := s.windows[client.xID(p.Window)]
 		if !ok {
-			return wire.NewError(wire.WindowErrorCode, seq, p.Window, byte(wire.XInputOpcode), wire.XGetDeviceDontPropagateList)
+			return wire.NewError(wire.WindowErrorCode, seq, p.Window, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XGetDeviceDontPropagateList})
 		}
 		classes := make([]uint32, 0, len(win.dontPropagateDeviceEvents))
 		for class := range win.dontPropagateDeviceEvents {
@@ -279,6 +279,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.GrabDeviceKeyRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
 		grab := &passiveDeviceGrab{
+			clientID:  client.id,
 			deviceID:  p.DeviceID,
 			key:       wire.KeyCode(p.Key),
 			modifiers: p.Modifiers,
@@ -304,6 +305,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.GrabDeviceButtonRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
 		grab := &passiveDeviceGrab{
+			clientID:  client.id,
 			deviceID:  p.DeviceID,
 			button:    p.Button,
 			modifiers: p.Modifiers,
@@ -406,7 +408,18 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		s.frontend.XIChangeHierarchy(p.Changes)
 		return nil
 
+	case *wire.XIQueryVersionRequest:
+		return &wire.XIQueryVersionReply{
+			Sequence:     seq,
+			MajorVersion: 2,
+			MinorVersion: 2,
+		}
+
+	case *wire.XISelectEventsRequest:
+		// TODO: Implement XI 2.x event masks storage
+		return nil
+
 	default:
-		return wire.NewError(wire.RequestErrorCode, seq, 0, 0, wire.XInputOpcode)
+		return wire.NewError(wire.RequestErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: 0})
 	}
 }

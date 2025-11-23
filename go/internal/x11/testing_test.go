@@ -3,24 +3,48 @@
 package x11
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"testing"
 	"time"
 )
 
+var byteOrder = binary.LittleEndian
+
 type testLogger struct {
 	t *testing.T
+	b bytes.Buffer
 }
 
 func (l *testLogger) Errorf(format string, args ...interface{}) {
-	l.t.Logf(format, args...)
+	s := fmt.Sprintf(format, args...)
+	if l.t != nil {
+		l.t.Log(s)
+	}
+	l.b.WriteString(s)
+	l.b.WriteRune('\n')
 }
 func (l *testLogger) Infof(format string, args ...interface{}) {
-	l.t.Logf(format, args...)
+	s := fmt.Sprintf(format, args...)
+	if l.t != nil {
+		l.t.Log(s)
+	}
+	l.b.WriteString(s)
+	l.b.WriteRune('\n')
 }
 func (l *testLogger) Printf(format string, args ...interface{}) {
-	l.t.Logf(format, args...)
+	s := fmt.Sprintf(format, args...)
+	if l.t != nil {
+		l.t.Log(s)
+	}
+	l.b.WriteString(s)
+	l.b.WriteRune('\n')
+}
+func (l *testLogger) String() string {
+	return l.b.String()
 }
 
 type testConn struct {

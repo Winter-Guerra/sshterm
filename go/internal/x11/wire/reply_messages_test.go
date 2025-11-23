@@ -13,7 +13,7 @@ func TestReadServerMessages(t *testing.T) {
 	order := binary.LittleEndian
 	buf := new(bytes.Buffer)
 	// Write an error
-	err := NewError(RequestErrorCode, 2, 3, 4, 5)
+	err := NewError(RequestErrorCode, 2, 3, Opcodes{Major: 5, Minor: 4})
 	buf.Write(err.EncodeMessage(order))
 	// Write a reply
 	reply := &GetGeometryReply{
