@@ -67,7 +67,7 @@ func ParseError(buf []byte, order binary.ByteOrder) (Error, error) {
 	badValue := order.Uint32(buf[4:8])
 	minorOp := byte(order.Uint16(buf[8:10]))
 	majorOp := ReqCode(buf[10])
-	return NewError(code, seq, badValue, minorOp, majorOp), nil
+	return NewError(code, seq, badValue, Opcodes{Major: majorOp, Minor: minorOp}), nil
 }
 
 // RequestError: 1
@@ -160,13 +160,13 @@ type DeviceError struct {
 	baseError
 }
 
-func NewError(code byte, seq uint16, badValue uint32, minorOp byte, majorOp ReqCode) Error {
+func NewError(code byte, seq uint16, badValue uint32, opcodes Opcodes) Error {
 	base := baseError{
 		code:     code,
 		seq:      seq,
 		badValue: badValue,
-		minorOp:  minorOp,
-		majorOp:  majorOp,
+		minorOp:  opcodes.Minor,
+		majorOp:  opcodes.Major,
 	}
 	switch code {
 	case 1:
@@ -206,7 +206,7 @@ func NewError(code byte, seq uint16, badValue uint32, minorOp byte, majorOp ReqC
 	case DeviceErrorCode:
 		return &DeviceError{base}
 	default:
-		return NewGenericError(seq, badValue, minorOp, majorOp, code)
+		return NewGenericError(seq, badValue, opcodes.Minor, opcodes.Major, code)
 	}
 }
 

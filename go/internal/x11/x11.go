@@ -1021,7 +1021,7 @@ func (s *x11Server) readRequest(client *x11Client) (wire.Request, uint16, error)
 	}
 
 	if length == 0 {
-		client.send(wire.NewError(wire.LengthErrorCode, client.sequence, 0, 0, wire.ReqCode(header[0])))
+		client.send(wire.NewError(wire.LengthErrorCode, client.sequence, 0, wire.Opcodes{Major: wire.ReqCode(header[0]), Minor: 0}))
 		return nil, 0, errParseError
 	}
 
@@ -1045,7 +1045,7 @@ func (s *x11Server) readRequest(client *x11Client) (wire.Request, uint16, error)
 		if x11Err, ok := err.(wire.Error); ok {
 			client.send(x11Err)
 		} else {
-			client.send(wire.NewError(wire.LengthErrorCode, client.sequence, 0, 0, wire.ReqCode(header[0])))
+			client.send(wire.NewError(wire.LengthErrorCode, client.sequence, 0, wire.Opcodes{Major: wire.ReqCode(header[0]), Minor: 0}))
 		}
 		return nil, 0, err
 	}
@@ -2091,13 +2091,13 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 		cm, ok := s.colormaps[cmap]
 		if !ok {
-			return wire.NewError(wire.ColormapErrorCode, seq, uint32(p.Cmap), 0, p.OpCode())
+			return wire.NewError(wire.ColormapErrorCode, seq, uint32(p.Cmap), wire.Opcodes{Major: p.OpCode(), Minor: 0})
 		}
 
 		name := string(p.Name)
 		rgb, ok := lookupColor(name)
 		if !ok {
-			return wire.NewError(wire.NameErrorCode, seq, 0, 0, p.OpCode())
+			return wire.NewError(wire.NameErrorCode, seq, 0, wire.Opcodes{Major: p.OpCode(), Minor: 0})
 		}
 
 		exactRed := scale8to16(rgb.Red)

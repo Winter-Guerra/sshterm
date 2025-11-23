@@ -197,7 +197,7 @@ func ParseXInputRequest(order binary.ByteOrder, data byte, body []byte, seq uint
 	case XIBarrierReleasePointer:
 		return ParseXIBarrierReleasePointerRequest(order, body, seq)
 	default:
-		return nil, NewError(RequestErrorCode, seq, 0, byte(XInputOpcode), ReqCode(data))
+		return nil, NewError(RequestErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: data})
 	}
 }
 
@@ -228,11 +228,11 @@ func (r *GetExtensionVersionRequest) OpCode() ReqCode {
 
 func ParseGetExtensionVersionRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetExtensionVersionRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetExtensionVersion, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetExtensionVersion})
 	}
 	length := int(order.Uint16(body[0:2]))
 	if len(body) != 4+length+PadLen(length) {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetExtensionVersion, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetExtensionVersion})
 	}
 	return &GetExtensionVersionRequest{
 		Name: string(body[4 : 4+length]),
@@ -279,7 +279,7 @@ func (r *XIWarpPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIWarpPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIWarpPointerRequest, error) {
 	if len(body) != 32 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIWarpPointer, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIWarpPointer})
 	}
 	// The protocol defines 'fp1616' fixed point numbers. We'll treat them as int32 for now,
 	// effectively ignoring the fractional part by taking the integer part.
@@ -324,7 +324,7 @@ func (r *XIChangeCursorRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIChangeCursorRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangeCursorRequest, error) {
 	if len(body) != 12 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIChangeCursor, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeCursor})
 	}
 	return &XIChangeCursorRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -423,30 +423,30 @@ func (r *XIChangeHierarchyRequest) EncodeMessage(order binary.ByteOrder) []byte 
 
 func ParseXIChangeHierarchyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangeHierarchyRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIChangeHierarchy, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 	}
 	numChanges := order.Uint16(body[0:2])
 	changes := make([]XIChangeHierarchyChange, 0, numChanges)
 	offset := 4
 	for i := 0; i < int(numChanges); i++ {
 		if len(body) < offset+4 {
-			return nil, NewError(LengthErrorCode, seq, 0, XIChangeHierarchy, XInputOpcode)
+			return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 		}
 		changeType := order.Uint16(body[offset : offset+2])
 		length := order.Uint16(body[offset+2 : offset+4])
 		if len(body) < offset+int(length) {
-			return nil, NewError(LengthErrorCode, seq, 0, XIChangeHierarchy, XInputOpcode)
+			return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 		}
 		changeBody := body[offset : offset+int(length)]
 		var change XIChangeHierarchyChange
 		switch changeType {
 		case 1: // XIAddMaster
-			return nil, NewError(ImplementationErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+			return nil, NewError(ImplementationErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 		case 2: // XIRemoveMaster
-			return nil, NewError(ImplementationErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+			return nil, NewError(ImplementationErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 		case 3: // XIAttachSlave
 			if len(changeBody) != 8 {
-				return nil, NewError(LengthErrorCode, seq, 0, XIChangeHierarchy, XInputOpcode)
+				return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 			}
 			change = &XIAttachSlave{
 				Type:     changeType,
@@ -456,7 +456,7 @@ func ParseXIChangeHierarchyRequest(order binary.ByteOrder, body []byte, seq uint
 			}
 		case 4: // XIDetachSlave
 			if len(changeBody) != 8 {
-				return nil, NewError(LengthErrorCode, seq, 0, XIChangeHierarchy, XInputOpcode)
+				return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 			}
 			change = &XIDetachSlave{
 				Type:     changeType,
@@ -464,7 +464,7 @@ func ParseXIChangeHierarchyRequest(order binary.ByteOrder, body []byte, seq uint
 				DeviceID: order.Uint16(changeBody[4:6]),
 			}
 		default:
-			return nil, NewError(ValueErrorCode, seq, 0, byte(XInputOpcode), XIChangeHierarchy)
+			return nil, NewError(ValueErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeHierarchy})
 		}
 		changes = append(changes, change)
 		offset += int(length)
@@ -501,7 +501,7 @@ func (r *XISetClientPointerRequest) EncodeMessage(order binary.ByteOrder) []byte
 
 func ParseXISetClientPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISetClientPointerRequest, error) {
 	if len(body) != 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XISetClientPointer, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XISetClientPointer})
 	}
 	return &XISetClientPointerRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -532,7 +532,7 @@ func (r *XIGetClientPointerRequest) EncodeMessage(order binary.ByteOrder) []byte
 
 func ParseXIGetClientPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetClientPointerRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIGetClientPointer, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIGetClientPointer})
 	}
 	return &XIGetClientPointerRequest{
 		Window: Window(order.Uint32(body[0:4])),
@@ -580,7 +580,7 @@ func (r *XISelectEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXISelectEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISelectEventsRequest, error) {
 	if len(body) < 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XISelectEvents, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XISelectEvents})
 	}
 	window := Window(order.Uint32(body[0:4]))
 	numMasks := order.Uint16(body[4:6])
@@ -588,13 +588,13 @@ func ParseXISelectEventsRequest(order binary.ByteOrder, body []byte, seq uint16)
 	offset := 8
 	for i := 0; i < int(numMasks); i++ {
 		if len(body) < offset+4 {
-			return nil, NewError(LengthErrorCode, seq, 0, XISelectEvents, XInputOpcode)
+			return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XISelectEvents})
 		}
 		deviceID := order.Uint16(body[offset : offset+2])
 		maskLen := order.Uint16(body[offset+2 : offset+4])
 		maskBytes := int(maskLen) * 4
 		if len(body) < offset+4+maskBytes {
-			return nil, NewError(LengthErrorCode, seq, 0, XISelectEvents, XInputOpcode)
+			return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XISelectEvents})
 		}
 		mask := body[offset+4 : offset+4+maskBytes]
 		masks = append(masks, XIEventMask{
@@ -635,7 +635,7 @@ func (r *XIQueryDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIQueryDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIQueryDeviceRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIQueryDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIQueryDevice})
 	}
 	return &XIQueryDeviceRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -670,7 +670,7 @@ func (r *XISetFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXISetFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*XISetFocusRequest, error) {
 	if len(body) != 12 {
-		return nil, NewError(LengthErrorCode, seq, 0, XISetFocus, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XISetFocus})
 	}
 	return &XISetFocusRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -703,7 +703,7 @@ func (r *XIGetFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIGetFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetFocusRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIGetFocus, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIGetFocus})
 	}
 	return &XIGetFocusRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -756,11 +756,11 @@ func (r *XIGrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGrabDeviceRequest, error) {
 	if len(body) < 24 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIGrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIGrabDevice})
 	}
 	maskLen := order.Uint16(body[20:22])
 	if len(body) != 24+int(maskLen)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIGrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIGrabDevice})
 	}
 	return &XIGrabDeviceRequest{
 		DeviceID:         order.Uint16(body[0:2]),
@@ -801,7 +801,7 @@ func (r *XIUngrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIUngrabDeviceRequest, error) {
 	if len(body) != 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIUngrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIUngrabDevice})
 	}
 	return &XIUngrabDeviceRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -841,7 +841,7 @@ func (r *XIAllowEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIAllowEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIAllowEventsRequest, error) {
 	if len(body) != 16 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIAllowEvents, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIAllowEvents})
 	}
 	return &XIAllowEventsRequest{
 		DeviceID:   order.Uint16(body[0:2]),
@@ -901,11 +901,11 @@ func (r *XIPassiveGrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byt
 
 func ParseXIPassiveGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIPassiveGrabDeviceRequest, error) {
 	if len(body) < 28 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIPassiveGrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveGrabDevice})
 	}
 	numModifiers := order.Uint16(body[20:22])
 	if len(body) != 28+int(numModifiers)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIPassiveGrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveGrabDevice})
 	}
 	return &XIPassiveGrabDeviceRequest{
 		DeviceID:         order.Uint16(body[0:2]),
@@ -958,11 +958,11 @@ func (r *XIPassiveUngrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []b
 
 func ParseXIPassiveUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIPassiveUngrabDeviceRequest, error) {
 	if len(body) < 16 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIPassiveUngrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveUngrabDevice})
 	}
 	numModifiers := order.Uint16(body[12:14])
 	if len(body) != 20+int(numModifiers)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIPassiveUngrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveUngrabDevice})
 	}
 	return &XIPassiveUngrabDeviceRequest{
 		DeviceID:     order.Uint16(body[0:2]),
@@ -998,7 +998,7 @@ func (r *XIListPropertiesRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIListPropertiesRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIListPropertiesRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIListProperties, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIListProperties})
 	}
 	return &XIListPropertiesRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -1045,7 +1045,7 @@ func pad(i int) int {
 
 func ParseXIChangePropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIChangePropertyRequest, error) {
 	if len(body) < 16 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIChangeProperty, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeProperty})
 	}
 	format := body[3]
 	numItems := order.Uint32(body[12:16])
@@ -1058,10 +1058,10 @@ func ParseXIChangePropertyRequest(order binary.ByteOrder, body []byte, seq uint1
 	case 32:
 		dataLen = int(numItems) * 4
 	default:
-		return nil, NewError(ValueErrorCode, seq, 0, byte(XInputOpcode), XIChangeProperty)
+		return nil, NewError(ValueErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeProperty})
 	}
 	if len(body) != 16+pad(dataLen) {
-		return nil, NewError(LengthErrorCode, seq, 0, XIChangeProperty, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIChangeProperty})
 	}
 	return &XIChangePropertyRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -1100,7 +1100,7 @@ func (r *XIDeletePropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIDeletePropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIDeletePropertyRequest, error) {
 	if len(body) != 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIDeleteProperty, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIDeleteProperty})
 	}
 	return &XIDeletePropertyRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -1146,7 +1146,7 @@ func (r *XIGetPropertyRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseXIGetPropertyRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetPropertyRequest, error) {
 	if len(body) != 20 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIGetProperty, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIGetProperty})
 	}
 	return &XIGetPropertyRequest{
 		DeviceID: order.Uint16(body[0:2]),
@@ -1181,7 +1181,7 @@ func (r *XIGetSelectedEventsRequest) EncodeMessage(order binary.ByteOrder) []byt
 
 func ParseXIGetSelectedEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIGetSelectedEventsRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIGetSelectedEvents, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIGetSelectedEvents})
 	}
 	return &XIGetSelectedEventsRequest{
 		Window: Window(order.Uint32(body[0:4])),
@@ -1221,11 +1221,11 @@ func (r *XIBarrierReleasePointerRequest) EncodeMessage(order binary.ByteOrder) [
 
 func ParseXIBarrierReleasePointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIBarrierReleasePointerRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIBarrierReleasePointer, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIBarrierReleasePointer})
 	}
 	numBarriers := order.Uint32(body[0:4])
 	if len(body) != 4+int(numBarriers)*8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIBarrierReleasePointer, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIBarrierReleasePointer})
 	}
 	barriers := make([]XIBarrier, numBarriers)
 	for i := 0; i < int(numBarriers); i++ {
@@ -1309,7 +1309,7 @@ func (r *GetExtensionVersionReply) EncodeMessage(order binary.ByteOrder) []byte 
 
 func ParseGetExtensionVersionReply(order binary.ByteOrder, b []byte) (*GetExtensionVersionReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetExtensionVersionReply{
 		Sequence:     order.Uint16(b[2:4]),
@@ -1339,7 +1339,7 @@ func (r *ListInputDevicesRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseListInputDevicesRequest(order binary.ByteOrder, body []byte, seq uint16) (*ListInputDevicesRequest, error) {
 	if len(body) != 0 {
-		return nil, NewError(LengthErrorCode, seq, 0, XListInputDevices, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XListInputDevices})
 	}
 	return &ListInputDevicesRequest{}, nil
 }
@@ -1368,7 +1368,7 @@ func (r *OpenDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseOpenDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*OpenDeviceRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XOpenDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XOpenDevice})
 	}
 	return &OpenDeviceRequest{
 		DeviceID: body[0],
@@ -1436,18 +1436,18 @@ func parseInputClassInfo(order binary.ByteOrder, b []byte) (InputClassInfo, int)
 
 func ParseQueryDeviceStateReply(order binary.ByteOrder, b []byte) (*QueryDeviceStateReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numClasses := b[8]
 	classes := make([]InputClassInfo, numClasses)
 	offset := 32
 	for i := 0; i < int(numClasses); i++ {
 		if len(b) < offset+2 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		class, length := parseInputClassInfo(order, b[offset:])
 		if len(b) < offset+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		classes[i] = class
 		offset += length
@@ -1479,11 +1479,11 @@ func (r *GetDeviceButtonMappingReply) EncodeMessage(order binary.ByteOrder) []by
 
 func ParseGetDeviceButtonMappingReply(order binary.ByteOrder, b []byte) (*GetDeviceButtonMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	length := b[1]
 	if len(b) < 32+int(length) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetDeviceButtonMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1512,11 +1512,11 @@ func (r *GetDeviceModifierMappingReply) EncodeMessage(order binary.ByteOrder) []
 
 func ParseGetDeviceModifierMappingReply(order binary.ByteOrder, b []byte) (*GetDeviceModifierMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numKeycodesPerMod := b[1]
 	if len(b) < 32+int(numKeycodesPerMod)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keycodes := b[32 : 32+int(numKeycodesPerMod)*8]
 	r := &GetDeviceModifierMappingReply{
@@ -1556,7 +1556,7 @@ func (r *GetFeedbackControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetFeedbackControlReply(order binary.ByteOrder, b []byte) (*GetFeedbackControlReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numEvents := order.Uint16(b[8:10])
 	feedbacks := make([]FeedbackState, numEvents)
@@ -1683,7 +1683,7 @@ func (r *GetDeviceFocusReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetDeviceFocusReply(order binary.ByteOrder, b []byte) (*GetDeviceFocusReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetDeviceFocusReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1718,18 +1718,18 @@ func (r *OpenDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseOpenDeviceReply(order binary.ByteOrder, b []byte) (*OpenDeviceReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numClasses := b[1]
 	classes := make([]InputClassInfo, numClasses)
 	offset := 32
 	for i := 0; i < int(numClasses); i++ {
 		if len(b) < offset+2 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		class, length := parseInputClassInfo(order, b[offset:])
 		if len(b) < offset+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		classes[i] = class
 		offset += length
@@ -1767,7 +1767,7 @@ func (r *SetDeviceModeRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseSetDeviceModeRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceModeRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceMode, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceMode})
 	}
 	return &SetDeviceModeRequest{
 		DeviceID: body[0],
@@ -1792,7 +1792,7 @@ func (r *SetDeviceModeReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseSetDeviceModeReply(order binary.ByteOrder, b []byte) (*SetDeviceModeReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetDeviceModeReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1834,11 +1834,11 @@ func (r *SetDeviceValuatorsRequest) EncodeMessage(order binary.ByteOrder) []byte
 
 func ParseSetDeviceValuatorsRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceValuatorsRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceValuators, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceValuators})
 	}
 	numValuators := body[2]
 	if len(body) != 4+int(numValuators)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceValuators, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceValuators})
 	}
 	valuators := make([]int32, numValuators)
 	for i := 0; i < int(numValuators); i++ {
@@ -1869,7 +1869,7 @@ func (r *SetDeviceValuatorsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseSetDeviceValuatorsReply(order binary.ByteOrder, b []byte) (*SetDeviceValuatorsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetDeviceValuatorsReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1967,7 +1967,7 @@ func (r *GetDeviceControlRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetDeviceControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceControlRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceControl, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetDeviceControl})
 	}
 	return &GetDeviceControlRequest{
 		DeviceID: body[0],
@@ -1993,17 +1993,17 @@ func (r *GetDeviceControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetDeviceControlReply(order binary.ByteOrder, b []byte) (*GetDeviceControlReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	if len(b) < 34 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	controlID := order.Uint16(b[32:34])
 	var control DeviceControlState
 	switch controlID {
 	case DeviceResolution:
 		if len(b) < 40+int(b[36])*12 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		numValuators := b[36]
 		resolutions := make([]uint32, numValuators)
@@ -2059,25 +2059,25 @@ func (r *ChangeDeviceControlRequest) EncodeMessage(order binary.ByteOrder) []byt
 
 func ParseChangeDeviceControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceControlRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceControl, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceControl})
 	}
 	controlID := order.Uint16(body[2:4])
 	if controlID != DeviceResolution {
-		return nil, NewError(ValueErrorCode, seq, 0, byte(XInputOpcode), XChangeDeviceControl)
+		return nil, NewError(ValueErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceControl})
 	}
 	if len(body) < 10 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceControl, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceControl})
 	}
 	length := order.Uint16(body[4:6])
 	firstValuator := body[6]
 	numValuators := body[7]
 	expectedControlLength := uint16(8) + uint16(numValuators)*4
 	if length != expectedControlLength {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceControl, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceControl})
 	}
 	expectedBodyLength := 2 + int(length)
 	if len(body) != expectedBodyLength {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceControl, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceControl})
 	}
 	resolutions := make([]uint32, numValuators)
 	for i := 0; i < int(numValuators); i++ {
@@ -2111,7 +2111,7 @@ func (r *ChangeDeviceControlReply) EncodeMessage(order binary.ByteOrder) []byte 
 
 func ParseChangeDeviceControlReply(order binary.ByteOrder, b []byte) (*ChangeDeviceControlReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &ChangeDeviceControlReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -2131,7 +2131,7 @@ func (r *GetSelectedExtensionEventsRequest) OpCode() ReqCode {
 
 func ParseGetSelectedExtensionEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetSelectedExtensionEventsRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetSelectedExtensionEvents, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetSelectedExtensionEvents})
 	}
 	return &GetSelectedExtensionEventsRequest{
 		Window: order.Uint32(body[0:4]),
@@ -2169,12 +2169,12 @@ func (r *GetSelectedExtensionEventsReply) EncodeMessage(order binary.ByteOrder) 
 
 func ParseGetSelectedExtensionEventsReply(order binary.ByteOrder, b []byte) (*GetSelectedExtensionEventsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	thisClientLen := order.Uint16(b[8:10])
 	allClientsLen := order.Uint16(b[10:12])
 	if len(b) < 32+int(thisClientLen)*4+int(allClientsLen)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	thisClientClasses := make([]uint32, thisClientLen)
 	allClientsClasses := make([]uint32, allClientsLen)
@@ -2208,11 +2208,11 @@ func (r *ChangeDeviceDontPropagateListRequest) OpCode() ReqCode {
 
 func ParseChangeDeviceDontPropagateListRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceDontPropagateListRequest, error) {
 	if len(body) < 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceDontPropagateList, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceDontPropagateList})
 	}
 	numClasses := order.Uint16(body[4:6])
 	if len(body) != 8+int(numClasses)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceDontPropagateList, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceDontPropagateList})
 	}
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
@@ -2236,7 +2236,7 @@ func (r *GetDeviceDontPropagateListRequest) OpCode() ReqCode {
 
 func ParseGetDeviceDontPropagateListRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceDontPropagateListRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceDontPropagateList, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetDeviceDontPropagateList})
 	}
 	return &GetDeviceDontPropagateListRequest{
 		Window: order.Uint32(body[0:4]),
@@ -2266,11 +2266,11 @@ func (r *GetDeviceDontPropagateListReply) EncodeMessage(order binary.ByteOrder) 
 
 func ParseGetDeviceDontPropagateListReply(order binary.ByteOrder, b []byte) (*GetDeviceDontPropagateListReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numClasses := order.Uint16(b[8:10])
 	if len(b) < 32+int(numClasses)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	classes := make([]uint32, numClasses)
 	offset := 32
@@ -2314,7 +2314,7 @@ func (r *AllowDeviceEventsRequest) EncodeMessage(order binary.ByteOrder) []byte 
 
 func ParseAllowDeviceEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*AllowDeviceEventsRequest, error) {
 	if len(body) != 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XAllowDeviceEvents, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XAllowDeviceEvents})
 	}
 	return &AllowDeviceEventsRequest{
 		Time:     order.Uint32(body[0:4]),
@@ -2334,7 +2334,7 @@ func (r *CloseDeviceRequest) OpCode() ReqCode {
 
 func ParseCloseDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*CloseDeviceRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XCloseDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XCloseDevice})
 	}
 	return &CloseDeviceRequest{
 		DeviceID: body[0],
@@ -2356,7 +2356,7 @@ func (r *CloseDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseCloseDeviceReply(order binary.ByteOrder, b []byte) (*CloseDeviceReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &CloseDeviceReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -2382,11 +2382,11 @@ func (r *GrabDeviceRequest) OpCode() ReqCode {
 
 func ParseGrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceRequest, error) {
 	if len(body) < 16 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGrabDevice})
 	}
 	numClasses := order.Uint16(body[12:14])
 	if len(body) != 16+int(numClasses)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGrabDevice})
 	}
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
@@ -2421,7 +2421,7 @@ func (r *GrabDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGrabDeviceReply(order binary.ByteOrder, b []byte) (*GrabDeviceReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GrabDeviceReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -2442,7 +2442,7 @@ func (r *UngrabDeviceRequest) OpCode() ReqCode {
 
 func ParseUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceRequest, error) {
 	if len(body) != 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XUngrabDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XUngrabDevice})
 	}
 	return &UngrabDeviceRequest{
 		Time:     order.Uint32(body[4:8]),
@@ -2598,18 +2598,18 @@ func (r *ListInputDevicesReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseListInputDevicesReply(order binary.ByteOrder, b []byte) (*ListInputDevicesReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nDevices := b[1]
 	devices := make([]*DeviceInfo, nDevices)
 	offset := 32
 	for i := 0; i < int(nDevices); i++ {
 		if len(b) < offset+8 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		nameLen := int(b[offset+7])
 		if len(b) < offset+8+nameLen {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		name := string(b[offset+8 : offset+8+nameLen])
 		header := DeviceHeader{
@@ -2623,11 +2623,11 @@ func ParseListInputDevicesReply(order binary.ByteOrder, b []byte) (*ListInputDev
 		classes := make([]InputClassInfo, header.NumClasses)
 		for j := 0; j < int(header.NumClasses); j++ {
 			if len(b) < offset+2 {
-				return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+				return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 			}
 			class, length := parseInputClassInfo(order, b[offset:])
 			if len(b) < offset+length {
-				return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+				return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 			}
 			classes[j] = class
 			offset += length
@@ -2646,11 +2646,11 @@ func ParseListInputDevicesReply(order binary.ByteOrder, b []byte) (*ListInputDev
 
 func ParseGetDeviceMotionEventsReply(order binary.ByteOrder, b []byte) (*GetDeviceMotionEventsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nEvents := order.Uint32(b[8:12])
 	if len(b) < 32+int(nEvents)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	events := make([]TimeCoord, nEvents)
 	for i := 0; i < int(nEvents); i++ {
@@ -2670,7 +2670,7 @@ func ParseGetDeviceMotionEventsReply(order binary.ByteOrder, b []byte) (*GetDevi
 
 func ParseChangeKeyboardDeviceReply(order binary.ByteOrder, b []byte) (*ChangeKeyboardDeviceReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &ChangeKeyboardDeviceReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -2681,7 +2681,7 @@ func ParseChangeKeyboardDeviceReply(order binary.ByteOrder, b []byte) (*ChangeKe
 
 func ParseChangePointerDeviceReply(order binary.ByteOrder, b []byte) (*ChangePointerDeviceReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &ChangePointerDeviceReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -2724,11 +2724,11 @@ func (r *SelectExtensionEventRequest) EncodeMessage(order binary.ByteOrder) []by
 
 func ParseSelectExtensionEventRequest(order binary.ByteOrder, body []byte, seq uint16) (*SelectExtensionEventRequest, error) {
 	if len(body) < 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSelectExtensionEvent, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSelectExtensionEvent})
 	}
 	numClasses := order.Uint16(body[4:6])
 	if len(body) != 8+int(numClasses)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSelectExtensionEvent, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSelectExtensionEvent})
 	}
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
@@ -2769,7 +2769,7 @@ func (r *GetDeviceMotionEventsRequest) EncodeMessage(order binary.ByteOrder) []b
 
 func ParseGetDeviceMotionEventsRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceMotionEventsRequest, error) {
 	if len(body) != 12 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceMotionEvents, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetDeviceMotionEvents})
 	}
 	return &GetDeviceMotionEventsRequest{
 		Start:    order.Uint32(body[0:4]),
@@ -2803,7 +2803,7 @@ func (r *ChangeKeyboardDeviceRequest) EncodeMessage(order binary.ByteOrder) []by
 
 func ParseChangeKeyboardDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeKeyboardDeviceRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeKeyboardDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeKeyboardDevice})
 	}
 	return &ChangeKeyboardDeviceRequest{
 		DeviceID: body[0],
@@ -2839,7 +2839,7 @@ func (r *ChangePointerDeviceRequest) EncodeMessage(order binary.ByteOrder) []byt
 
 func ParseChangePointerDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangePointerDeviceRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangePointerDevice, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangePointerDevice})
 	}
 	return &ChangePointerDeviceRequest{
 		XAxis:    body[0],
@@ -2894,11 +2894,11 @@ func (r *GrabDeviceKeyRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceKeyRequest, error) {
 	if len(body) < 13 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGrabDeviceKey, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGrabDeviceKey})
 	}
 	numClasses := order.Uint16(body[4:6])
 	if len(body) != 13+int(numClasses)*4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGrabDeviceKey, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGrabDeviceKey})
 	}
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
@@ -2948,7 +2948,7 @@ func (r *UngrabDeviceKeyRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseUngrabDeviceKeyRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceKeyRequest, error) {
 	if len(body) != 12 {
-		return nil, NewError(LengthErrorCode, seq, 0, XUngrabDeviceKey, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XUngrabDeviceKey})
 	}
 	return &UngrabDeviceKeyRequest{
 		GrabWindow: Window(order.Uint32(body[0:4])),
@@ -3004,12 +3004,12 @@ func (r *GrabDeviceButtonRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint16) (*GrabDeviceButtonRequest, error) {
 	if len(body) < 13 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGrabDeviceButton, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGrabDeviceButton})
 	}
 	numClasses := order.Uint16(body[4:6])
 	expectedLen := 13 + int(numClasses)*4
 	if len(body) != expectedLen {
-		return nil, NewError(LengthErrorCode, seq, 0, XGrabDeviceButton, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGrabDeviceButton})
 	}
 	classes := make([]uint32, numClasses)
 	for i := 0; i < int(numClasses); i++ {
@@ -3059,7 +3059,7 @@ func (r *UngrabDeviceButtonRequest) EncodeMessage(order binary.ByteOrder) []byte
 
 func ParseUngrabDeviceButtonRequest(order binary.ByteOrder, body []byte, seq uint16) (*UngrabDeviceButtonRequest, error) {
 	if len(body) != 12 {
-		return nil, NewError(LengthErrorCode, seq, 0, XUngrabDeviceButton, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XUngrabDeviceButton})
 	}
 	return &UngrabDeviceButtonRequest{
 		GrabWindow: Window(order.Uint32(body[0:4])),
@@ -3094,7 +3094,7 @@ func (r *GetDeviceFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetDeviceFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceFocusRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceFocus, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetDeviceFocus})
 	}
 	return &GetDeviceFocusRequest{
 		DeviceID: body[0],
@@ -3132,7 +3132,7 @@ func (r *SetDeviceFocusRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseSetDeviceFocusRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceFocusRequest, error) {
 	if len(body) != 12 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceFocus, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceFocus})
 	}
 	return &SetDeviceFocusRequest{
 		Focus:    Window(order.Uint32(body[0:4])),
@@ -3167,7 +3167,7 @@ func (r *GetFeedbackControlRequest) EncodeMessage(order binary.ByteOrder) []byte
 
 func ParseGetFeedbackControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetFeedbackControlRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetFeedbackControl, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetFeedbackControl})
 	}
 	return &GetFeedbackControlRequest{
 		DeviceID: body[0],
@@ -3206,7 +3206,7 @@ func (r *ChangeFeedbackControlRequest) EncodeMessage(order binary.ByteOrder) []b
 
 func ParseChangeFeedbackControlRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeFeedbackControlRequest, error) {
 	if len(body) < 8 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeFeedbackControl, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeFeedbackControl})
 	}
 	return &ChangeFeedbackControlRequest{
 		Mask:      order.Uint32(body[0:4]),
@@ -3245,7 +3245,7 @@ func (r *GetDeviceKeyMappingRequest) EncodeMessage(order binary.ByteOrder) []byt
 
 func ParseGetDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceKeyMappingRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceKeyMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetDeviceKeyMapping})
 	}
 	return &GetDeviceKeyMappingRequest{
 		DeviceID: body[0],
@@ -3279,12 +3279,12 @@ func (r *GetDeviceKeyMappingReply) EncodeMessage(order binary.ByteOrder) []byte 
 
 func ParseGetDeviceKeyMappingReply(order binary.ByteOrder, b []byte) (*GetDeviceKeyMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keysymsPerKeycode := b[8]
 	length := order.Uint32(b[4:8])
 	if len(b) < 32+int(length)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keysyms := make([]uint32, length)
 	offset := 32
@@ -3334,13 +3334,13 @@ func (r *ChangeDeviceKeyMappingRequest) EncodeMessage(order binary.ByteOrder) []
 
 func ParseChangeDeviceKeyMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*ChangeDeviceKeyMappingRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceKeyMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceKeyMapping})
 	}
 	keycodeCount := body[3]
 	keysymsPerKeycode := body[2]
 	expectedLen := 4 + int(keycodeCount)*int(keysymsPerKeycode)*4
 	if len(body) != expectedLen {
-		return nil, NewError(LengthErrorCode, seq, 0, XChangeDeviceKeyMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XChangeDeviceKeyMapping})
 	}
 	keysyms := make([]uint32, int(keycodeCount)*int(keysymsPerKeycode))
 	for i := range keysyms {
@@ -3380,7 +3380,7 @@ func (r *GetDeviceModifierMappingRequest) EncodeMessage(order binary.ByteOrder) 
 
 func ParseGetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceModifierMappingRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceModifierMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetDeviceModifierMapping})
 	}
 	return &GetDeviceModifierMappingRequest{
 		DeviceID: body[0],
@@ -3416,13 +3416,13 @@ func (r *SetDeviceModifierMappingRequest) EncodeMessage(order binary.ByteOrder) 
 
 func ParseSetDeviceModifierMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceModifierMappingRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceModifierMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceModifierMapping})
 	}
 	numKeycodesPerModifier := body[1]
 	// There are always 8 modifiers.
 	expectedLen := 4 + int(numKeycodesPerModifier)*8
 	if len(body) != expectedLen {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceModifierMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceModifierMapping})
 	}
 	return &SetDeviceModifierMappingRequest{
 		DeviceID: body[0],
@@ -3452,7 +3452,7 @@ func (r *SetDeviceModifierMappingReply) EncodeMessage(order binary.ByteOrder) []
 
 func ParseSetDeviceModifierMappingReply(order binary.ByteOrder, b []byte) (*SetDeviceModifierMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetDeviceModifierMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -3486,7 +3486,7 @@ func (r *GetDeviceButtonMappingRequest) EncodeMessage(order binary.ByteOrder) []
 
 func ParseGetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*GetDeviceButtonMappingRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XGetDeviceButtonMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XGetDeviceButtonMapping})
 	}
 	return &GetDeviceButtonMappingRequest{
 		DeviceID: body[0],
@@ -3522,12 +3522,12 @@ func (r *SetDeviceButtonMappingRequest) EncodeMessage(order binary.ByteOrder) []
 
 func ParseSetDeviceButtonMappingRequest(order binary.ByteOrder, body []byte, seq uint16) (*SetDeviceButtonMappingRequest, error) {
 	if len(body) < 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceButtonMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceButtonMapping})
 	}
 	map_size := body[1]
 	expectedLen := 4 + int(map_size)
 	if len(body) != expectedLen+PadLen(expectedLen) {
-		return nil, NewError(LengthErrorCode, seq, 0, XSetDeviceButtonMapping, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSetDeviceButtonMapping})
 	}
 	return &SetDeviceButtonMappingRequest{
 		DeviceID: body[0],
@@ -3556,7 +3556,7 @@ func (r *SetDeviceButtonMappingReply) EncodeMessage(order binary.ByteOrder) []by
 
 func ParseSetDeviceButtonMappingReply(order binary.ByteOrder, b []byte) (*SetDeviceButtonMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetDeviceButtonMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -3590,7 +3590,7 @@ func (r *QueryDeviceStateRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryDeviceStateRequest(order binary.ByteOrder, body []byte, seq uint16) (*QueryDeviceStateRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XQueryDeviceState, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XQueryDeviceState})
 	}
 	return &QueryDeviceStateRequest{
 		DeviceID: body[0],
@@ -3643,7 +3643,7 @@ func ParseSendExtensionEventRequest(order binary.ByteOrder, body []byte, seq uin
 	fixedBaseLen := 12 // 4 (Destination) + 2 (NumClasses) + 1 (NumEvents) + 1 (DeviceID) + 1 (Propagate) + 3 (Padding)
 
 	if len(body) < fixedBaseLen {
-		return nil, NewError(LengthErrorCode, seq, 0, XSendExtensionEvent, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSendExtensionEvent})
 	}
 
 	destination := Window(order.Uint32(body[0:4]))
@@ -3655,7 +3655,7 @@ func ParseSendExtensionEventRequest(order binary.ByteOrder, body []byte, seq uin
 	// Calculate expected total length
 	expectedLen := fixedBaseLen + int(numEvents)*32 + int(numClasses)*4
 	if len(body) != expectedLen {
-		return nil, NewError(LengthErrorCode, seq, 0, XSendExtensionEvent, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XSendExtensionEvent})
 	}
 
 	eventsStart := fixedBaseLen // Events start after the fixed part (including padding)
@@ -3709,7 +3709,7 @@ func (r *DeviceBellRequest) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseDeviceBellRequest(order binary.ByteOrder, body []byte, seq uint16) (*DeviceBellRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XDeviceBell, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XDeviceBell})
 	}
 	return &DeviceBellRequest{
 		DeviceID:      body[0],
@@ -3735,7 +3735,7 @@ func (r *XIQueryVersionRequest) OpCode() ReqCode {
 
 func ParseXIQueryVersionRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIQueryVersionRequest, error) {
 	if len(body) != 4 {
-		return nil, NewError(LengthErrorCode, seq, 0, XIQueryVersion, XInputOpcode)
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIQueryVersion})
 	}
 	return &XIQueryVersionRequest{
 		MajorVersion: order.Uint16(body[0:2]),

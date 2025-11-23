@@ -178,7 +178,7 @@ func ParseReply(opcodes Opcodes, msg []byte, order binary.ByteOrder) (ServerMess
 			MaxRequestLength: order.Uint32(msg[8:12]),
 		}, nil
 	default:
-		return nil, NewError(RequestErrorCode, 0, 0, byte(opcodes.Major), 0)
+		return nil, NewError(RequestErrorCode, 0, 0, Opcodes{Major: opcodes.Major, Minor: 0})
 	}
 }
 
@@ -229,7 +229,7 @@ func parseXInputReply(minorOpcode uint8, order binary.ByteOrder, b []byte) (Serv
 	case XChangeDeviceControl:
 		return ParseChangeDeviceControlReply(order, b)
 	}
-	return nil, NewError(RequestErrorCode, 0, 0, byte(XInputOpcode), ReqCode(minorOpcode))
+	return nil, NewError(RequestErrorCode, 0, 0, Opcodes{Major: XInputOpcode, Minor: minorOpcode})
 }
 
 type XCharInfo struct {
@@ -300,7 +300,7 @@ func (r *GetWindowAttributesReply) EncodeMessage(order binary.ByteOrder) []byte 
 
 func ParseGetWindowAttributesReply(order binary.ByteOrder, b []byte) (*GetWindowAttributesReply, error) {
 	if len(b) < 44 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetWindowAttributesReply{
 		ReplyType:          b[0],
@@ -352,7 +352,7 @@ func (r *GetGeometryReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetGeometryReply(order binary.ByteOrder, b []byte) (*GetGeometryReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetGeometryReply{
 		Depth:       b[1],
@@ -386,7 +386,7 @@ func (r *InternAtomReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseInternAtomReply(order binary.ByteOrder, b []byte) (*InternAtomReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &InternAtomReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -418,11 +418,11 @@ func (r *GetAtomNameReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetAtomNameReply(order binary.ByteOrder, b []byte) (*GetAtomNameReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nameLen := order.Uint16(b[8:10])
 	if len(b) < 32+int(nameLen) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetAtomNameReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -462,11 +462,11 @@ func (r *GetPropertyReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetPropertyReply(order binary.ByteOrder, b []byte) (*GetPropertyReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	valLen := order.Uint32(b[4:8]) * 4
 	if len(b) < 32+int(valLen) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetPropertyReply{
 		Sequence:              order.Uint16(b[2:4]),
@@ -503,11 +503,11 @@ func (r *ListPropertiesReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseListPropertiesReply(order binary.ByteOrder, b []byte) (*ListPropertiesReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numAtoms := order.Uint16(b[8:10])
 	if len(b) < 32+int(numAtoms)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	atoms := make([]uint32, numAtoms)
 	for i := 0; i < int(numAtoms); i++ {
@@ -552,7 +552,7 @@ func (r *QueryTextExtentsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryTextExtentsReply(order binary.ByteOrder, b []byte) (*QueryTextExtentsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryTextExtentsReply{
 		Sequence:       order.Uint16(b[2:4]),
@@ -596,11 +596,11 @@ func (r *GetMotionEventsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetMotionEventsReply(order binary.ByteOrder, b []byte) (*GetMotionEventsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nEvents := order.Uint32(b[8:12])
 	if len(b) < 32+int(nEvents)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	events := make([]TimeCoord, nEvents)
 	for i := 0; i < int(nEvents); i++ {
@@ -637,7 +637,7 @@ func (r *GetSelectionOwnerReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetSelectionOwnerReply(order binary.ByteOrder, b []byte) (*GetSelectionOwnerReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetSelectionOwnerReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -664,7 +664,7 @@ func (r *GrabPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGrabPointerReply(order binary.ByteOrder, b []byte) (*GrabPointerReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GrabPointerReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -691,7 +691,7 @@ func (r *GrabKeyboardReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGrabKeyboardReply(order binary.ByteOrder, b []byte) (*GrabKeyboardReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GrabKeyboardReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -730,7 +730,7 @@ func (r *QueryPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryPointerReply(order binary.ByteOrder, b []byte) (*QueryPointerReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryPointerReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -769,7 +769,7 @@ func (r *TranslateCoordsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseTranslateCoordsReply(order binary.ByteOrder, b []byte) (*TranslateCoordsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &TranslateCoordsReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -801,7 +801,7 @@ func (r *GetInputFocusReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetInputFocusReply(order binary.ByteOrder, b []byte) (*GetInputFocusReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetInputFocusReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -887,12 +887,12 @@ func (r *QueryFontReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryFontReply(order binary.ByteOrder, b []byte) (*QueryFontReply, error) {
 	if len(b) < 60 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numFontProps := order.Uint16(b[46:48])
 	numCharInfos := order.Uint32(b[56:60])
 	if len(b) < 60+8*int(numFontProps)+12*int(numCharInfos) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	var charInfos []XCharInfo
 	if numCharInfos > 0 {
@@ -988,18 +988,18 @@ func (r *ListFontsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseListFontsReply(order binary.ByteOrder, b []byte) (*ListFontsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numFonts := order.Uint16(b[8:10])
 	fontNames := make([]string, numFonts)
 	offset := 32
 	for i := 0; i < int(numFonts); i++ {
 		if len(b) < offset+1 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		length := int(b[offset])
 		if len(b) < offset+1+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		fontNames[i] = string(b[offset+1 : offset+1+length])
 		offset += 1 + length
@@ -1033,11 +1033,11 @@ func (r *GetImageReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetImageReply(order binary.ByteOrder, b []byte) (*GetImageReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	length := order.Uint32(b[4:8]) * 4
 	if len(b) < 32+int(length) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetImageReply{
 		Sequence:  order.Uint16(b[2:4]),
@@ -1086,7 +1086,7 @@ func (r *AllocColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseAllocColorReply(order binary.ByteOrder, b []byte) (*AllocColorReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &AllocColorReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1142,7 +1142,7 @@ func (r *AllocNamedColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseAllocNamedColorReply(order binary.ByteOrder, b []byte) (*AllocNamedColorReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &AllocNamedColorReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -1181,11 +1181,11 @@ func (r *ListInstalledColormapsReply) EncodeMessage(order binary.ByteOrder) []by
 
 func ParseListInstalledColormapsReply(order binary.ByteOrder, b []byte) (*ListInstalledColormapsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numColormaps := order.Uint16(b[8:10])
 	if len(b) < 32+int(numColormaps)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	colormaps := make([]uint32, numColormaps)
 	for i := 0; i < int(numColormaps); i++ {
@@ -1228,11 +1228,11 @@ func (r *QueryColorsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryColorsReply(order binary.ByteOrder, b []byte) (*QueryColorsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numColors := order.Uint16(b[8:10])
 	if len(b) < 32+int(numColors)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	colors := make([]XColorItem, numColors)
 	for i := 0; i < int(numColors); i++ {
@@ -1278,7 +1278,7 @@ func (r *LookupColorReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseLookupColorReply(order binary.ByteOrder, b []byte) (*LookupColorReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &LookupColorReply{
 		Sequence:   order.Uint16(b[2:4]),
@@ -1313,7 +1313,7 @@ func (r *QueryBestSizeReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryBestSizeReply(order binary.ByteOrder, b []byte) (*QueryBestSizeReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryBestSizeReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1356,7 +1356,7 @@ func (r *QueryExtensionReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryExtensionReply(order binary.ByteOrder, b []byte) (*QueryExtensionReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryExtensionReply{
 		Sequence:    order.Uint16(b[2:4]),
@@ -1644,7 +1644,7 @@ func (r *SetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseSetPointerMappingReply(order binary.ByteOrder, b []byte) (*SetPointerMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetPointerMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1672,11 +1672,11 @@ func (r *GetPointerMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetPointerMappingReply(order binary.ByteOrder, b []byte) (*GetPointerMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	length := b[1]
 	if len(b) < 32+int(length) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetPointerMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1713,11 +1713,11 @@ func (r *GetKeyboardMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetKeyboardMappingReply(order binary.ByteOrder, b []byte) (*GetKeyboardMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	length := order.Uint32(b[4:8])
 	if len(b) < 32+int(length)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keySyms := make([]uint32, length)
 	for i := 0; i < int(length); i++ {
@@ -1761,7 +1761,7 @@ func (r *GetKeyboardControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetKeyboardControlReply(order binary.ByteOrder, b []byte) (*GetKeyboardControlReply, error) {
 	if len(b) < 52 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetKeyboardControlReply{
 		Sequence:         order.Uint16(b[2:4]),
@@ -1799,7 +1799,7 @@ func (r *GetScreenSaverReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetScreenSaverReply(order binary.ByteOrder, b []byte) (*GetScreenSaverReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetScreenSaverReply{
 		Sequence:    order.Uint16(b[2:4]),
@@ -1842,19 +1842,19 @@ func (r *ListHostsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseListHostsReply(order binary.ByteOrder, b []byte) (*ListHostsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numHosts := order.Uint16(b[8:10])
 	hosts := make([]Host, numHosts)
 	offset := 32
 	for i := 0; i < int(numHosts); i++ {
 		if len(b) < offset+4 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		family := b[offset]
 		length := int(order.Uint16(b[offset+2 : offset+4]))
 		if len(b) < offset+4+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		data := b[offset+4 : offset+4+length]
 		hosts[i] = Host{
@@ -1888,7 +1888,7 @@ func (r *SetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseSetModifierMappingReply(order binary.ByteOrder, b []byte) (*SetModifierMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &SetModifierMappingReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1920,11 +1920,11 @@ func (r *GetModifierMappingReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetModifierMappingReply(order binary.ByteOrder, b []byte) (*GetModifierMappingReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keyCodesPerModifier := b[1]
 	if len(b) < 32+int(keyCodesPerModifier)*8 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	keyCodes := make([]KeyCode, int(keyCodesPerModifier)*8)
 	for i := 0; i < len(keyCodes); i++ {
@@ -1955,7 +1955,7 @@ func (r *QueryKeymapReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryKeymapReply(order binary.ByteOrder, b []byte) (*QueryKeymapReply, error) {
 	if len(b) < 40 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &QueryKeymapReply{
 		Sequence: order.Uint16(b[2:4]),
@@ -1991,18 +1991,18 @@ func (r *GetFontPathReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetFontPathReply(order binary.ByteOrder, b []byte) (*GetFontPathReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nPaths := order.Uint16(b[8:10])
 	paths := make([]string, nPaths)
 	offset := 32
 	for i := 0; i < int(nPaths); i++ {
 		if len(b) < offset+1 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		length := int(b[offset])
 		if len(b) < offset+1+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		paths[i] = string(b[offset+1 : offset+1+length])
 		offset += 1 + length
@@ -2094,12 +2094,12 @@ func (r *ListFontsWithInfoReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseListFontsWithInfoReply(order binary.ByteOrder, b []byte) (*ListFontsWithInfoReply, error) {
 	if len(b) < 60 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nameLength := b[1]
 	nFontProps := order.Uint16(b[46:48])
 	if len(b) < 60+int(nFontProps)*8+int(nameLength) {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	fontProps := make([]FontProp, nFontProps)
 	offset := 60
@@ -2173,11 +2173,11 @@ func (r *QueryTreeReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseQueryTreeReply(order binary.ByteOrder, b []byte) (*QueryTreeReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	numChildren := order.Uint16(b[16:18])
 	if len(b) < 32+int(numChildren)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	children := make([]uint32, numChildren)
 	for i := 0; i < int(numChildren); i++ {
@@ -2224,12 +2224,12 @@ func (r *AllocColorCellsReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseAllocColorCellsReply(order binary.ByteOrder, b []byte) (*AllocColorCellsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nPixels := order.Uint16(b[8:10])
 	nMasks := order.Uint16(b[10:12])
 	if len(b) < 32+int(nPixels)*4+int(nMasks)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	pixels := make([]uint32, nPixels)
 	masks := make([]uint32, nMasks)
@@ -2280,11 +2280,11 @@ func (r *AllocColorPlanesReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseAllocColorPlanesReply(order binary.ByteOrder, b []byte) (*AllocColorPlanesReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nPixels := order.Uint16(b[8:10])
 	if len(b) < 32+int(nPixels)*4 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	pixels := make([]uint32, nPixels)
 	for i := 0; i < int(nPixels); i++ {
@@ -2310,18 +2310,18 @@ type ListExtensionsReply struct {
 
 func ParseListExtensionsReply(order binary.ByteOrder, b []byte) (*ListExtensionsReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	nNames := b[1]
 	names := make([]string, nNames)
 	offset := 32
 	for i := 0; i < int(nNames); i++ {
 		if len(b) < offset+1 {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		length := int(b[offset])
 		if len(b) < offset+1+length {
-			return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+			return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 		}
 		names[i] = string(b[offset+1 : offset+1+length])
 		offset += 1 + length
@@ -2357,7 +2357,7 @@ func (r *GetPointerControlReply) EncodeMessage(order binary.ByteOrder) []byte {
 
 func ParseGetPointerControlReply(order binary.ByteOrder, b []byte) (*GetPointerControlReply, error) {
 	if len(b) < 32 {
-		return nil, NewError(LengthErrorCode, 0, 0, 0, 0)
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
 	r := &GetPointerControlReply{
 		Sequence:         order.Uint16(b[2:4]),

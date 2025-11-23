@@ -143,10 +143,11 @@ func TestXInput2_SelectEvents(t *testing.T) {
 
 	// Since it falls to default, it returns a RequestErrorCode (BadImplementation or similar default error)
 	// The default case in handleXInputRequest returns:
-	// wire.NewError(wire.RequestErrorCode, seq, 0, 0, wire.XInputOpcode)
+	// wire.NewError(wire.RequestErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: 0})
 
 	// If it was implemented, it would return nil (success).
 	// Currently, it returns nil but functionality is not fully implemented (stub).
+	// wire.NewError(wire.RequestErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: 0})
 	assert.Nil(t, reply, "XISelectEvents should be handled (return nil)")
 }
 

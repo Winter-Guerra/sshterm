@@ -35,7 +35,7 @@ func TestErrors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := NewError(tc.errorCode, 1, 2, 3, 4)
+			err := NewError(tc.errorCode, 1, 2, Opcodes{Major: 4, Minor: 3})
 			if err.Code() != tc.errorCode {
 				t.Errorf("expected error code %d, got %d", tc.errorCode, err.Code())
 			}
@@ -75,7 +75,7 @@ func TestErrors(t *testing.T) {
 	}
 
 	t.Run("GenericError", func(t *testing.T) {
-		err := NewError(99, 1, 2, 3, 4)
+		err := NewError(99, 1, 2, Opcodes{Major: 4, Minor: 3})
 		if _, ok := err.(*GenericError); !ok {
 			t.Errorf("expected GenericError, got %T", err)
 		}
