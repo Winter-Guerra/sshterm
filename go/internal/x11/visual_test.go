@@ -160,6 +160,7 @@ func TestDrawRectangle(t *testing.T) {
 	s.frontend = fe
 
 	winID := xID{client: 1, local: 1}
+	s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID)
 
@@ -167,6 +168,7 @@ func TestDrawRectangle(t *testing.T) {
 	fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 
 	fe.PolyFillRectangle(winID, gcID, []uint32{20, 20, 50, 40})
+	fe.ComposeWindow(winID)
 
 	poll(t, func() error {
 		img := getCanvasData(t, s, winID, 20, 20, 50, 40)
@@ -212,6 +214,7 @@ func TestColors(t *testing.T) {
 	s.frontend = fe
 
 	winID := xID{client: 1, local: 1}
+	s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: 200, height: 200, mapped: true}
 	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 200, 200, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID)
 
@@ -219,10 +222,12 @@ func TestColors(t *testing.T) {
 		gcID := xID{client: 1, local: 10}
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{10, 10, 20, 20})
+		fe.ComposeWindow(winID)
 
 		gcID2 := xID{client: 1, local: 11}
 		fe.CreateGC(gcID2, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.whitePixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID2, []uint32{40, 10, 20, 20})
+		fe.ComposeWindow(winID)
 
 		poll(t, func() error {
 			img := getCanvasData(t, s, winID, 10, 10, 20, 20)
@@ -245,6 +250,7 @@ func TestColors(t *testing.T) {
 		gcID := xID{client: 1, local: 12}
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: pixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{70, 10, 20, 20})
+		fe.ComposeWindow(winID)
 
 		poll(t, func() error {
 			img := getCanvasData(t, s, winID, 70, 10, 20, 20)
@@ -257,6 +263,7 @@ func TestColors(t *testing.T) {
 		gcID := xID{client: 1, local: 13}
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: pixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{100, 10, 20, 20})
+		fe.ComposeWindow(winID)
 
 		poll(t, func() error {
 			img := getCanvasData(t, s, winID, 100, 10, 20, 20)
@@ -269,6 +276,7 @@ func TestColors(t *testing.T) {
 		gcID := xID{client: 1, local: 14}
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: pixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{130, 10, 20, 20})
+		fe.ComposeWindow(winID)
 
 		poll(t, func() error {
 			// For a TrueColor visual, unallocated pixels are decoded directly
@@ -315,6 +323,7 @@ func TestDrawText(t *testing.T) {
 	s.frontend = fe
 
 	winID := xID{client: 1, local: 1}
+	s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID)
 
@@ -324,6 +333,7 @@ func TestDrawText(t *testing.T) {
 	fe.PolyText8(winID, gcID, 20, 40, []wire.PolyTextItem{
 		wire.PolyText8String{Str: []byte("Hello, world!")},
 	})
+	fe.ComposeWindow(winID)
 
 	poll(t, func() error {
 		img := getCanvasData(t, s, winID, 20, 30, 80, 20)
@@ -355,20 +365,24 @@ func TestOverlappingWindows(t *testing.T) {
 	s.frontend = fe
 
 	winID1 := xID{client: 1, local: 1}
+	s.windows[winID1] = &window{xid: winID1, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID1, s.rootWindowID(), 10, 10, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID1)
 
 	gcID1 := xID{client: 1, local: 2}
 	fe.CreateGC(gcID1, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 	fe.PolyFillRectangle(winID1, gcID1, []uint32{20, 20, 50, 40})
+	fe.ComposeWindow(winID1)
 
 	winID2 := xID{client: 1, local: 3}
+	s.windows[winID2] = &window{xid: winID2, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID2, s.rootWindowID(), 30, 30, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID2)
 
 	gcID2 := xID{client: 1, local: 4}
 	fe.CreateGC(gcID2, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 	fe.PolyFillRectangle(winID2, gcID2, []uint32{20, 20, 50, 40})
+	fe.ComposeWindow(winID2)
 
 	poll(t, func() error {
 		return checkWindow(getWindowBounds(t, winID1), image.Rect(10, 10, 110, 110))
@@ -459,6 +473,7 @@ func TestGCLogicalOperations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Logf("Starting test case: %s", tc.name)
 			t.Cleanup(func() { cleanupDOMElements(t) })
+			s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: winWidth, height: winHeight, mapped: true}
 			fe.CreateWindow(winID, s.rootWindowID(), 10, 10, winWidth, winHeight, 24, 0, wire.WindowAttributes{})
 			fe.MapWindow(winID)
 
@@ -466,6 +481,7 @@ func TestGCLogicalOperations(t *testing.T) {
 			bgGCID := xID{client: 1, local: 100}
 			fe.CreateGC(bgGCID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: dst, Function: wire.FunctionCopy, PlaneMask: 0xffffff})
 			fe.PolyFillRectangle(winID, bgGCID, []uint32{0, 0, winWidth, winHeight})
+			fe.ComposeWindow(winID)
 			poll(t, func() error {
 				img := getCanvasData(t, s, winID, 0, 0, winWidth, winHeight)
 				return checkRectangle(img, image.Rect(0, 0, winWidth, winHeight), uint8(dstR), uint8(dstG), uint8(dstB))
@@ -475,6 +491,7 @@ func TestGCLogicalOperations(t *testing.T) {
 			fgGCID := xID{client: 1, local: 200}
 			fe.CreateGC(fgGCID, wire.GCForeground|wire.GCFunction|wire.GCPlaneMask, wire.GC{Foreground: src, Function: tc.function, PlaneMask: 0xffffff})
 			fe.PolyFillRectangle(winID, fgGCID, []uint32{0, 0, 1, 1})
+			fe.ComposeWindow(winID)
 
 			// 3. Verify the result
 			poll(t, func() error {
