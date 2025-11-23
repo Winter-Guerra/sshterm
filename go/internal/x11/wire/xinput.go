@@ -3757,3 +3757,20 @@ func (r *XIGrabDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint32(reply[4:8], 0) // length
 	return reply
 }
+
+// XIQueryVersion reply
+type XIQueryVersionReply struct {
+	Sequence     uint16
+	MajorVersion uint16
+	MinorVersion uint16
+}
+
+func (r *XIQueryVersionReply) EncodeMessage(order binary.ByteOrder) []byte {
+	reply := make([]byte, 32)
+	reply[0] = 1 // Reply
+	order.PutUint16(reply[2:4], r.Sequence)
+	order.PutUint32(reply[4:8], 0) // length
+	order.PutUint16(reply[8:10], r.MajorVersion)
+	order.PutUint16(reply[10:12], r.MinorVersion)
+	return reply
+}

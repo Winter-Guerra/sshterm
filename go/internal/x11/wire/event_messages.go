@@ -54,22 +54,6 @@ type ButtonPressEvent struct {
 	SameScreen     bool
 }
 
-type DeviceButtonReleaseEvent struct {
-	Sequence   uint16
-	DeviceID   byte
-	Time       uint32
-	Button     byte
-	Root       uint32
-	Event      uint32
-	Child      uint32
-	RootX      int16
-	RootY      int16
-	EventX     int16
-	EventY     int16
-	State      uint16
-	SameScreen bool
-}
-
 // GraphicsExposure: 13
 type GraphicsExposureEvent struct {
 	Sequence      uint16
@@ -1535,6 +1519,22 @@ func (e *DeviceButtonPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf[30] = e.DeviceID
 	buf[31] = e.Detail
 	return buf
+}
+
+type DeviceButtonReleaseEvent struct {
+	Sequence   uint16
+	DeviceID   byte
+	Time       uint32
+	Button     byte
+	Root       uint32
+	Event      uint32
+	Child      uint32
+	RootX      int16
+	RootY      int16
+	EventX     int16
+	EventY     int16
+	State      uint16
+	SameScreen bool
 }
 
 type DeviceMotionNotifyEvent struct {

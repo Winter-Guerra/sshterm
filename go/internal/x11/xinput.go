@@ -279,6 +279,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.GrabDeviceKeyRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
 		grab := &passiveDeviceGrab{
+			clientID:  client.id,
 			deviceID:  p.DeviceID,
 			key:       wire.KeyCode(p.Key),
 			modifiers: p.Modifiers,
@@ -304,6 +305,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.GrabDeviceButtonRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
 		grab := &passiveDeviceGrab{
+			clientID:  client.id,
 			deviceID:  p.DeviceID,
 			button:    p.Button,
 			modifiers: p.Modifiers,
@@ -404,6 +406,17 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 
 	case *wire.XIChangeHierarchyRequest:
 		s.frontend.XIChangeHierarchy(p.Changes)
+		return nil
+
+	case *wire.XIQueryVersionRequest:
+		return &wire.XIQueryVersionReply{
+			Sequence:     seq,
+			MajorVersion: 2,
+			MinorVersion: 2,
+		}
+
+	case *wire.XISelectEventsRequest:
+		// TODO: Implement XI 2.x event masks storage
 		return nil
 
 	default:
