@@ -141,14 +141,15 @@ func TestXInput2_SelectEvents(t *testing.T) {
 	// This is expected to fail or do nothing currently as it is unhandled
 	reply := server.handleRequest(client, req, 1)
 
-	// Since it falls to default, it returns a RequestErrorCode (BadImplementation or similar default error)
-	// The default case in handleXInputRequest returns:
-	// wire.NewError(wire.RequestErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: 0})
-
-	// If it was implemented, it would return nil (success).
-	// Currently, it returns nil but functionality is not fully implemented (stub).
-	// wire.NewError(wire.RequestErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: 0})
 	assert.Nil(t, reply, "XISelectEvents should be handled (return nil)")
+
+	// Verify mask is stored
+	assert.NotNil(t, client.xi2EventMasks)
+	masks, ok := client.xi2EventMasks[windowID.local]
+	assert.True(t, ok, "Window masks should be present")
+	devMask, ok := masks[2] // Device 2
+	assert.True(t, ok, "Device mask should be present")
+	assert.Equal(t, mask, devMask)
 }
 
 func TestXInputGrab_Active(t *testing.T) {

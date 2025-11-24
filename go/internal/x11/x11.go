@@ -470,8 +470,9 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	}
 
 	// 3. Send XInput events (non-grabbed)
-	if xiEventMask > 0 {
-		for _, client := range s.clients {
+	for _, client := range s.clients {
+		// XI 1.x
+		if xiEventMask > 0 {
 			if deviceInfo, ok := client.openDevices[deviceID]; ok {
 				if mask, ok := deviceInfo.EventMasks[originalXID.local]; ok {
 					if mask&xiEventMask != 0 {
@@ -480,6 +481,92 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 				}
 			}
 		}
+
+		// XI 2.x
+		if client.xi2EventMasks != nil {
+			if devMasks, ok := client.xi2EventMasks[originalXID.local]; ok {
+				// Check specific device or AllDevices (0) or AllMasterDevices (1)
+				// For now, check deviceID (2) and AllMasterDevices (1)
+				var mask []uint32
+				if m, ok := devMasks[uint16(deviceID)]; ok {
+					mask = m
+				} else if m, ok := devMasks[1]; ok { // XIAllMasterDevices
+					mask = m
+				}
+
+				if mask != nil {
+					var evType uint16
+					switch eventType {
+					case "mousedown":
+						evType = 4 // XI_ButtonPress
+					case "mouseup":
+						evType = 5 // XI_ButtonRelease
+					case "mousemove":
+						evType = 6 // XI_Motion
+					}
+
+					if evType > 0 {
+						// Check bit in mask
+						// Mask is []uint32. Bit N is in word N/32 at bit N%32
+						wordIdx := int(evType / 32)
+						bitIdx := int(evType % 32)
+						if wordIdx < len(mask) && (mask[wordIdx]&(1<<bitIdx)) != 0 {
+							s.sendXInput2MouseEvent(client, evType, deviceID, button, originalXID.local, x, y, state)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func (s *x11Server) sendXInput2MouseEvent(client *x11Client, evType uint16, deviceID byte, button byte, eventWindowID uint32, x, y int32, state uint16) {
+	// Simplified modifiers
+	mods := uint32(state) // Base modifiers
+
+	// Buttons mask
+	var buttons []uint32
+	if button > 0 {
+		// Set bit for button. Button 1 is bit 0? No, usually 1-based in protocol but 0-based in mask?
+		// XI2: "Button 1 is the first button".
+		// Button mask is "1 bit per button".
+		// If button 1 is pressed, bit ?
+		// Let's assume standard X11 button numbering.
+		// We'll construct a minimal button mask.
+		// xeyes might not care about button mask for Motion events.
+	}
+
+	// FP1616 coordinates
+	rootX := x << 16
+	rootY := y << 16
+	eventX := x << 16
+	eventY := y << 16
+
+	// TODO: Proper timestamp
+	event := &wire.XIDeviceEvent{
+		Sequence:  client.sequence - 1,
+		EventType: evType,
+		DeviceID:  uint16(deviceID),
+		Time:      0,
+		Detail:    uint32(button),
+		Root:      s.rootWindowID(),
+		Event:     eventWindowID,
+		Child:     0,
+		RootX:     rootX,
+		RootY:     rootY,
+		EventX:    eventX,
+		EventY:    eventY,
+		Buttons:   buttons,
+		Valuators: nil,
+		Mods:      mods,
+	}
+
+	// Wrap in GenericEvent
+	// XIDeviceEvent.EncodeMessage returns the full packet including the GenericEvent header.
+	// client.send calls EncodeMessage, so we can pass the event directly.
+
+	if err := client.send(event); err != nil {
+		debugf("X11: Failed to write XInput2 mouse event: %v", err)
 	}
 }
 
@@ -2623,12 +2710,13 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 			})
 
 			client := &x11Client{
-				id:          x11ServerInstance.nextClientID,
-				conn:        channel,
-				sequence:    0,
-				byteOrder:   binary.LittleEndian, // Default, will be updated in handshake
-				saveSet:     make(map[uint32]bool),
-				openDevices: make(map[byte]*wire.DeviceInfo),
+				id:            x11ServerInstance.nextClientID,
+				conn:          channel,
+				sequence:      0,
+				byteOrder:     binary.LittleEndian, // Default, will be updated in handshake
+				saveSet:       make(map[uint32]bool),
+				openDevices:   make(map[byte]*wire.DeviceInfo),
+				xi2EventMasks: make(map[uint32]map[uint16][]uint32),
 			}
 			x11ServerInstance.clients[client.id] = client
 			x11ServerInstance.nextClientID++

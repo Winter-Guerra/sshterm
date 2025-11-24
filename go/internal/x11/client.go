@@ -23,6 +23,7 @@ type x11Client struct {
 	bigRequestsEnabled bool
 	saveSet            map[uint32]bool
 	openDevices        map[byte]*wire.DeviceInfo
+	xi2EventMasks      map[uint32]map[uint16][]uint32 // window ID -> device ID -> mask
 }
 
 func (c *x11Client) xID(local uint32) xID {

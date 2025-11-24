@@ -416,7 +416,16 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		}
 
 	case *wire.XISelectEventsRequest:
-		// TODO: Implement XI 2.x event masks storage
+		windowID := uint32(p.Window)
+		for _, mask := range p.Masks {
+			if client.xi2EventMasks == nil {
+				client.xi2EventMasks = make(map[uint32]map[uint16][]uint32)
+			}
+			if _, ok := client.xi2EventMasks[windowID]; !ok {
+				client.xi2EventMasks[windowID] = make(map[uint16][]uint32)
+			}
+			client.xi2EventMasks[windowID][mask.DeviceID] = mask.Mask
+		}
 		return nil
 
 	default:

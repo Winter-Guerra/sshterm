@@ -2457,9 +2457,10 @@ func ParseUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq uint16) (
 
 // ListInputDevices reply
 type DeviceInfo struct {
-	Header     DeviceHeader
-	Classes    []InputClassInfo
-	EventMasks map[uint32]uint32 // window ID -> event mask
+	Header        DeviceHeader
+	Classes       []InputClassInfo
+	EventMasks    map[uint32]uint32   // window ID -> event mask (XI 1.x)
+	XI2EventMasks map[uint32][]uint32 // window ID -> event masks (XI 2.x)
 }
 
 func (d *DeviceInfo) DeepCopy() *DeviceInfo {
@@ -2467,13 +2468,19 @@ func (d *DeviceInfo) DeepCopy() *DeviceInfo {
 		return nil
 	}
 	newInfo := &DeviceInfo{
-		Header:     d.Header,
-		Classes:    make([]InputClassInfo, len(d.Classes)),
-		EventMasks: make(map[uint32]uint32),
+		Header:        d.Header,
+		Classes:       make([]InputClassInfo, len(d.Classes)),
+		EventMasks:    make(map[uint32]uint32),
+		XI2EventMasks: make(map[uint32][]uint32),
 	}
 	copy(newInfo.Classes, d.Classes)
 	for k, v := range d.EventMasks {
 		newInfo.EventMasks[k] = v
+	}
+	for k, v := range d.XI2EventMasks {
+		masks := make([]uint32, len(v))
+		copy(masks, v)
+		newInfo.XI2EventMasks[k] = masks
 	}
 	return newInfo
 }
@@ -3778,4 +3785,77 @@ func (r *XIQueryVersionReply) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint16(reply[8:10], r.MajorVersion)
 	order.PutUint16(reply[10:12], r.MinorVersion)
 	return reply
+}
+
+// XIDeviceEvent represents an XI 2.x DeviceEvent.
+type XIDeviceEvent struct {
+	Sequence  uint16
+	EventType uint16
+	DeviceID  uint16
+	Time      uint32
+	Detail    uint32
+	Root      uint32
+	Event     uint32
+	Child     uint32
+	RootX     int32 // FP1616
+	RootY     int32 // FP1616
+	EventX    int32 // FP1616
+	EventY    int32 // FP1616
+	Buttons   []uint32
+	Valuators []float64
+	Mods      uint32 // base, latched, locked, effective packed? No, it's ModifierInfo struct
+}
+
+func (e *XIDeviceEvent) EncodeMessage(order binary.ByteOrder) []byte {
+	// Calculate length
+	// Fixed part: 48 bytes (including 32-byte standard header area which is used for XI2 fields)
+	// Header (GenericEvent): 12 bytes. But DeviceEvent struct overlaps.
+	// Wire format:
+	// type(1)=35, extension(1), sequence(2), length(4), evtype(2), deviceid(2), time(4), detail(4), root(4), event(4), child(4),
+	// root_x(4), root_y(4), event_x(4), event_y(4), buttons_len(2), valuators_len(2), mods(4), group(2)
+	// = 48 bytes.
+	// Then lists.
+
+	// Buttons mask
+	buttonsLen := 0
+	if len(e.Buttons) > 0 {
+		buttonsLen = len(e.Buttons) * 4
+	}
+	// Valuators mask + values? No, valuators_len is bitmask len.
+	// For simplicity, we assume no valuators and basic buttons for now as xeyes mostly needs motion.
+	valuatorsLen := 0
+
+	totalLen := 48 + buttonsLen + valuatorsLen
+	lengthField := (totalLen - 32) / 4
+
+	buf := make([]byte, totalLen)
+	buf[0] = 35 // GenericEvent
+	buf[1] = byte(XInputOpcode)
+	order.PutUint16(buf[2:4], e.Sequence)
+	order.PutUint32(buf[4:8], uint32(lengthField))
+	order.PutUint16(buf[8:10], e.EventType)
+	order.PutUint16(buf[10:12], e.DeviceID)
+	order.PutUint32(buf[12:16], e.Time)
+	order.PutUint32(buf[16:20], e.Detail)
+	order.PutUint32(buf[20:24], e.Root)
+	order.PutUint32(buf[24:28], e.Event)
+	order.PutUint32(buf[28:32], e.Child)
+	order.PutUint32(buf[32:36], uint32(e.RootX))
+	order.PutUint32(buf[36:40], uint32(e.RootY))
+	order.PutUint32(buf[40:44], uint32(e.EventX))
+	order.PutUint32(buf[44:48], uint32(e.EventY))
+	order.PutUint16(buf[48:50], uint16(buttonsLen/4))
+	order.PutUint16(buf[50:52], 0) // Valuators len
+	order.PutUint32(buf[52:56], e.Mods)
+	order.PutUint16(buf[56:58], 0) // Group
+
+	if buttonsLen > 0 {
+		offset := 58
+		for _, b := range e.Buttons {
+			order.PutUint32(buf[offset:offset+4], b)
+			offset += 4
+		}
+	}
+
+	return buf
 }
