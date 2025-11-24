@@ -35,7 +35,7 @@ func TestMapX11FontToCSS(t *testing.T) {
 		{
 			name:        "Fixed alias",
 			x11FontName: "fixed",
-			expectedCSS: "normal normal 12px monospace",
+			expectedCSS: "normal normal 12px DejaVu Sans Mono",
 		},
 		{
 			name:        "Variable alias",
@@ -45,7 +45,7 @@ func TestMapX11FontToCSS(t *testing.T) {
 		{
 			name:        "Unknown XLFD, fallback",
 			x11FontName: "some-random-font",
-			expectedCSS: "normal normal 12px monospace", // Default fallback
+			expectedCSS: "normal normal 12px DejaVu Sans Mono", // Default fallback
 		},
 		// Extended tests
 		{"Helvetica 12", "-*-helvetica-medium-r-normal-*-12-*-*-*-p-*-iso8859-1", "normal normal 12px sans-serif"},
@@ -61,7 +61,7 @@ func TestMapX11FontToCSS(t *testing.T) {
 		{"Helvetica Bold 14", "-*-helvetica-bold-r-normal-*-14-*-*-*-p-*-iso8859-1", "bold normal 14px sans-serif"},
 		{"Fixed 13", "-misc-fixed-medium-r-normal--13-120-75-75-c-70-iso8859-1", "normal normal 13px monospace"},
 		{"Fixed 6x13", "-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso8859-1", "normal normal 13px monospace"},
-		{"cursor", "cursor", "normal normal 12px monospace"},
+		{"cursor", "cursor", "normal normal 12px DejaVu Sans Mono"},
 		{"9x15 alias", "9x15", "normal normal 15px monospace"},
 	}
 
