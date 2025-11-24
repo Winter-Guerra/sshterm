@@ -5,6 +5,7 @@ package x11
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
@@ -35,6 +36,7 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 		deviceGrabs:        make(map[byte]*deviceGrab),
 		keymap:             make(map[byte]uint32),
 		defaultColormap:    1,
+		startTime:          time.Now(),
 	}
 	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
 	for k, v := range KeyCodeToKeysym {

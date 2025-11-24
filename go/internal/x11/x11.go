@@ -10,6 +10,7 @@ import (
 	"log"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -233,16 +234,24 @@ type x11Server struct {
 	fontPath              []string
 	keymap                map[byte]uint32
 	pointerState          uint16
+	startTime             time.Time
+	pointerGrabMode       byte
+	keyboardGrabMode      byte
+	pointerGrabConfineTo  xID
+	pointerGrabCursor     xID
 }
 
 type passiveGrab struct {
-	clientID  uint32
-	button    byte
-	key       wire.KeyCode
-	modifiers uint16
-	owner     bool
-	eventMask uint16
-	cursor    xID
+	clientID     uint32
+	button       byte
+	key          wire.KeyCode
+	modifiers    uint16
+	owner        bool
+	eventMask    uint16
+	cursor       xID
+	pointerMode  byte
+	keyboardMode byte
+	confineTo    xID
 }
 
 type passiveDeviceGrab struct {
@@ -311,6 +320,10 @@ func (s *x11Server) SetRootWindowSize(width, height uint16) {
 	s.rootWindowHeight = height
 }
 
+func (s *x11Server) serverTime() uint32 {
+	return uint32(time.Since(s.startTime).Milliseconds())
+}
+
 func (s *x11Server) UpdatePointerPosition(x, y int16) {
 	s.pointerX = x
 	s.pointerY = y
@@ -371,7 +384,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 						ownerEvents:  grab.owner,
 						eventMask:    grab.eventMask,
 						xi2EventMask: grab.xi2EventMask,
-						time:         0, // TODO
+						time:         s.serverTime(),
 					}
 					s.deviceGrabs[deviceID] = activeDeviceGrab
 					deviceGrabbed = true
@@ -479,6 +492,11 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 					s.pointerGrabWindow.client = grab.clientID
 					s.pointerGrabOwner = grab.owner
 					s.pointerGrabEventMask = grab.eventMask
+					s.pointerGrabMode = grab.pointerMode
+					s.keyboardGrabMode = grab.keyboardMode
+					s.pointerGrabConfineTo = grab.confineTo
+					s.pointerGrabCursor = grab.cursor
+					s.pointerGrabTime = s.serverTime()
 					grabActive = true
 					s.frontend.SetWindowCursor(originalXID, grab.cursor)
 					break
@@ -607,12 +625,11 @@ func (s *x11Server) sendXInput2MouseEvent(client *x11Client, evType uint16, devi
 	eventX := x << 16
 	eventY := y << 16
 
-	// TODO: Proper timestamp
 	event := &wire.XIDeviceEvent{
 		Sequence:  client.sequence - 1,
 		EventType: evType,
 		DeviceID:  uint16(deviceID),
-		Time:      0,
+		Time:      s.serverTime(),
 		Detail:    uint32(button),
 		Root:      s.rootWindowID(),
 		Event:     eventWindowID,
@@ -668,7 +685,7 @@ func (s *x11Server) sendXInput2KeyboardEvent(client *x11Client, evType uint16, d
 		Sequence:  client.sequence - 1,
 		EventType: evType,
 		DeviceID:  uint16(deviceID),
-		Time:      0,
+		Time:      s.serverTime(),
 		Detail:    uint32(keycode),
 		Root:      s.rootWindowID(),
 		Event:     eventWindowID,
@@ -696,7 +713,7 @@ func (s *x11Server) sendCoreMouseEvent(client *x11Client, eventType string, butt
 		event = &wire.ButtonPressEvent{
 			Sequence:   client.sequence - 1,
 			Detail:     button,
-			Time:       0, // 0 for now
+			Time:       s.serverTime(),
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
 			Child:      0, // 0 for now
@@ -711,7 +728,7 @@ func (s *x11Server) sendCoreMouseEvent(client *x11Client, eventType string, butt
 		event = &wire.ButtonReleaseEvent{
 			Sequence:   client.sequence - 1,
 			Detail:     button,
-			Time:       0, // 0 for now
+			Time:       s.serverTime(),
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
 			Child:      0, // 0 for now
@@ -726,7 +743,7 @@ func (s *x11Server) sendCoreMouseEvent(client *x11Client, eventType string, butt
 		event = &wire.MotionNotifyEvent{
 			Sequence:   client.sequence - 1,
 			Detail:     0, // 0 for Normal
-			Time:       0, // 0 for now
+			Time:       s.serverTime(),
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
 			Child:      0, // 0 for now
@@ -753,7 +770,7 @@ func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, de
 		xiEvent = &wire.DeviceButtonPressEvent{
 			Sequence:   client.sequence - 1,
 			DeviceID:   deviceID,
-			Time:       0, // Timestamp
+			Time:       s.serverTime(),
 			Detail:     button,
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
@@ -769,7 +786,7 @@ func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, de
 		xiEvent = &wire.DeviceButtonReleaseEvent{
 			Sequence:   client.sequence - 1,
 			DeviceID:   deviceID,
-			Time:       0, // Timestamp
+			Time:       s.serverTime(),
 			Button:     button,
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
@@ -846,7 +863,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 						ownerEvents:  grab.owner,
 						eventMask:    grab.eventMask,
 						xi2EventMask: grab.xi2EventMask,
-						time:         0,
+						time:         s.serverTime(),
 					}
 					s.deviceGrabs[deviceID] = activeDeviceGrab
 					deviceGrabbed = true
@@ -923,6 +940,9 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 					s.keyboardGrabWindow = xid
 					s.keyboardGrabWindow.client = grab.clientID
 					s.keyboardGrabOwner = grab.owner
+					s.pointerGrabMode = grab.pointerMode
+					s.keyboardGrabMode = grab.keyboardMode
+					s.keyboardGrabTime = s.serverTime()
 					grabActive = true
 					if client, ok := s.clients[s.keyboardGrabWindow.client]; ok {
 						s.sendCoreKeyboardEvent(client, eventType, keycode, xid.local, state)
@@ -983,7 +1003,7 @@ func (s *x11Server) sendCoreKeyboardEvent(client *x11Client, eventType string, k
 	event := &wire.KeyEvent{
 		Sequence:   client.sequence - 1,
 		Detail:     keycode,
-		Time:       0, // TODO: Get actual time
+		Time:       s.serverTime(),
 		Root:       s.rootWindowID(),
 		Event:      eventWindowID,
 		Child:      0, // No child for now
@@ -1016,7 +1036,7 @@ func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string,
 		xiEvent = &wire.DeviceKeyPressEvent{
 			Sequence:   client.sequence - 1,
 			DeviceID:   virtualKeyboard.Header.DeviceID,
-			Time:       0, // Timestamp
+			Time:       s.serverTime(),
 			KeyCode:    keycode,
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
@@ -1032,7 +1052,7 @@ func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string,
 		xiEvent = &wire.DeviceKeyReleaseEvent{
 			Sequence:   client.sequence - 1,
 			DeviceID:   virtualKeyboard.Header.DeviceID,
-			Time:       0, // Timestamp
+			Time:       s.serverTime(),
 			KeyCode:    keycode,
 			Root:       s.rootWindowID(),
 			Event:      eventWindowID,
@@ -1065,7 +1085,7 @@ func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY
 		event = &wire.EnterNotifyEvent{
 			Sequence:   client.sequence - 1,
 			Detail:     detail,
-			Time:       0, // Timestamp (not implemented)
+			Time:       s.serverTime(),
 			Root:       s.rootWindowID(),
 			Event:      xid.local,
 			Child:      0, // Or a child window ID if applicable
@@ -1082,7 +1102,7 @@ func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY
 		event = &wire.LeaveNotifyEvent{
 			Sequence:   client.sequence - 1,
 			Detail:     detail,
-			Time:       0, // Timestamp (not implemented)
+			Time:       s.serverTime(),
 			Root:       s.rootWindowID(),
 			Event:      xid.local,
 			Child:      0, // Or a child window ID if applicable
@@ -1185,7 +1205,7 @@ func (s *x11Server) SendSelectionNotify(requestor xID, selection, target, proper
 		Selection: selection,
 		Target:    target,
 		Property:  property,
-		Time:      0, // TODO: Get actual time
+		Time:      s.serverTime(),
 	}
 	s.sendEvent(client, event)
 }
@@ -1732,7 +1752,13 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.GrabPointerRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
-		if s.pointerGrabWindow.local != 0 {
+		if p.Time != 0 {
+			if uint32(p.Time) < s.pointerGrabTime || uint32(p.Time) > s.serverTime() {
+				return &wire.GrabPointerReply{Sequence: seq, Status: wire.GrabInvalidTime}
+			}
+		}
+
+		if s.pointerGrabWindow.local != 0 && s.pointerGrabWindow.client != client.id {
 			return &wire.GrabPointerReply{
 				Sequence: seq,
 				Status:   wire.AlreadyGrabbed,
@@ -1740,9 +1766,21 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 		s.pointerGrabWindow = grabWindow
+		s.pointerGrabWindow.client = client.id
 		s.pointerGrabOwner = p.OwnerEvents
 		s.pointerGrabEventMask = p.EventMask
 		s.pointerGrabTime = uint32(p.Time)
+		if s.pointerGrabTime == 0 {
+			s.pointerGrabTime = s.serverTime()
+		}
+		s.pointerGrabMode = p.PointerMode
+		s.keyboardGrabMode = p.KeyboardMode
+		s.pointerGrabConfineTo = client.xID(uint32(p.ConfineTo))
+		s.pointerGrabCursor = client.xID(uint32(p.Cursor))
+
+		if p.Cursor != 0 {
+			s.frontend.SetWindowCursor(grabWindow, s.pointerGrabCursor)
+		}
 
 		return &wire.GrabPointerReply{
 			Sequence: seq,
@@ -1750,10 +1788,18 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.UngrabPointerRequest:
+		if p.Time != 0 && uint32(p.Time) < s.pointerGrabTime {
+			// Ignore
+			return nil
+		}
 		s.pointerGrabWindow = xID{}
 		s.pointerGrabOwner = false
 		s.pointerGrabEventMask = 0
 		s.pointerGrabTime = 0
+		s.pointerGrabMode = 0
+		s.keyboardGrabMode = 0
+		s.pointerGrabConfineTo = xID{}
+		s.pointerGrabCursor = xID{}
 
 	case *wire.GrabButtonRequest:
 		var grabWindow xID
@@ -1770,12 +1816,15 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 		grab := &passiveGrab{
-			clientID:  client.id,
-			button:    p.Button,
-			modifiers: p.Modifiers,
-			owner:     p.OwnerEvents,
-			eventMask: p.EventMask,
-			cursor:    client.xID(uint32(p.Cursor)),
+			clientID:     client.id,
+			button:       p.Button,
+			modifiers:    p.Modifiers,
+			owner:        p.OwnerEvents,
+			eventMask:    p.EventMask,
+			cursor:       client.xID(uint32(p.Cursor)),
+			pointerMode:  p.PointerMode,
+			keyboardMode: p.KeyboardMode,
+			confineTo:    client.xID(uint32(p.ConfineTo)),
 		}
 		s.passiveGrabs[grabWindow] = append(s.passiveGrabs[grabWindow], grab)
 
@@ -1807,7 +1856,13 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.GrabKeyboardRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
-		if s.keyboardGrabWindow.local != 0 {
+		if p.Time != 0 {
+			if uint32(p.Time) < s.keyboardGrabTime || uint32(p.Time) > s.serverTime() {
+				return &wire.GrabKeyboardReply{Sequence: seq, Status: wire.GrabInvalidTime}
+			}
+		}
+
+		if s.keyboardGrabWindow.local != 0 && s.keyboardGrabWindow.client != client.id {
 			return &wire.GrabKeyboardReply{
 				Sequence: seq,
 				Status:   wire.AlreadyGrabbed,
@@ -1815,8 +1870,14 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 		s.keyboardGrabWindow = grabWindow
+		s.keyboardGrabWindow.client = client.id
 		s.keyboardGrabOwner = p.OwnerEvents
 		s.keyboardGrabTime = uint32(p.Time)
+		if s.keyboardGrabTime == 0 {
+			s.keyboardGrabTime = s.serverTime()
+		}
+		s.keyboardGrabMode = p.KeyboardMode
+		s.pointerGrabMode = p.PointerMode
 
 		return &wire.GrabKeyboardReply{
 			Sequence: seq,
@@ -1824,9 +1885,14 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.UngrabKeyboardRequest:
+		if p.Time != 0 && uint32(p.Time) < s.keyboardGrabTime {
+			// Ignore
+			return nil
+		}
 		s.keyboardGrabWindow = xID{}
 		s.keyboardGrabOwner = false
 		s.keyboardGrabTime = 0
+		s.keyboardGrabMode = 0
 
 	case *wire.GrabKeyRequest:
 		var grabWindow xID
@@ -1842,10 +1908,12 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			return wire.NewGenericError(seq, uint32(p.GrabWindow), 0, wire.GrabKey, wire.WindowErrorCode)
 		}
 		grab := &passiveGrab{
-			clientID:  client.id,
-			key:       p.Key,
-			modifiers: p.Modifiers,
-			owner:     p.OwnerEvents,
+			clientID:     client.id,
+			key:          p.Key,
+			modifiers:    p.Modifiers,
+			owner:        p.OwnerEvents,
+			pointerMode:  p.PointerMode,
+			keyboardMode: p.KeyboardMode,
 		}
 		s.passiveGrabs[grabWindow] = append(s.passiveGrabs[grabWindow], grab)
 
@@ -2906,6 +2974,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					authProtocol:       authProtocol,
 					authCookie:         authCookie,
 					keymap:             make(map[byte]uint32),
+					startTime:          time.Now(),
 				}
 				for k, v := range KeyCodeToKeysym {
 					x11ServerInstance.keymap[k] = v
