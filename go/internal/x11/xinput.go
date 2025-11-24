@@ -259,8 +259,12 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		if _, ok := s.deviceGrabs[p.DeviceID]; ok {
 			return &wire.GrabDeviceReply{Sequence: seq, Status: wire.AlreadyGrabbed}
 		}
+		grabWindow := client.xID(p.GrabWindow)
+		if err := s.checkWindow(grabWindow, seq, wire.XInputOpcode, byte(wire.XGrabDevice)); err != nil {
+			return err
+		}
 		grab := &deviceGrab{
-			window:      client.xID(p.GrabWindow),
+			window:      grabWindow,
 			ownerEvents: p.OwnerEvents,
 			eventMask:   p.Classes,
 			time:        p.Time,
@@ -414,8 +418,13 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 			maskU32[i/4] |= uint32(p.Mask[i]) << ((i % 4) * 8)
 		}
 
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		if err := s.checkWindow(grabWindow, seq, wire.XInputOpcode, byte(wire.XIGrabDevice)); err != nil {
+			return err
+		}
+
 		grab := &deviceGrab{
-			window:       client.xID(uint32(p.GrabWindow)),
+			window:       grabWindow,
 			ownerEvents:  p.OwnerEvents,
 			xi2EventMask: maskU32,
 			time:         p.Time,
@@ -624,6 +633,9 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 
 	case *wire.XISelectEventsRequest:
 		windowID := uint32(p.Window)
+		if err := s.checkWindow(client.xID(windowID), seq, wire.XInputOpcode, byte(wire.XISelectEvents)); err != nil {
+			return err
+		}
 		for _, mask := range p.Masks {
 			if client.xi2EventMasks == nil {
 				client.xi2EventMasks = make(map[uint32]map[uint16][]uint32)

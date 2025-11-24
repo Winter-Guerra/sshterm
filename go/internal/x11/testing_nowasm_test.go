@@ -35,6 +35,7 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 		passiveDeviceGrabs: make(map[xID][]*passiveDeviceGrab),
 		deviceGrabs:        make(map[byte]*deviceGrab),
 		keymap:             make(map[byte]uint32),
+		fonts:              make(map[xID]bool),
 		defaultColormap:    1,
 		startTime:          time.Now(),
 	}

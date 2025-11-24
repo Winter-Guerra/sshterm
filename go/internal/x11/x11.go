@@ -239,6 +239,7 @@ type x11Server struct {
 	keyboardGrabMode      byte
 	pointerGrabConfineTo  xID
 	pointerGrabCursor     xID
+	fonts                 map[xID]bool
 }
 
 type passiveGrab struct {
@@ -335,6 +336,64 @@ func (s *x11Server) GetWindowAttributes(xid xID) (wire.WindowAttributes, bool) {
 		return wire.WindowAttributes{}, false
 	}
 	return w.attributes, true
+}
+
+func (s *x11Server) checkWindow(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if _, ok := s.windows[xid]; !ok {
+		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.WindowErrorCode)
+	}
+	return nil
+}
+
+func (s *x11Server) checkPixmap(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if _, ok := s.pixmaps[xid]; !ok {
+		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.PixmapErrorCode)
+	}
+	return nil
+}
+
+func (s *x11Server) checkDrawable(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if _, ok := s.windows[xid]; ok {
+		return nil
+	}
+	if _, ok := s.pixmaps[xid]; ok {
+		return nil
+	}
+	if xid.local == s.rootWindowID() {
+		return nil
+	}
+	return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.DrawableErrorCode)
+}
+
+func (s *x11Server) checkGC(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if _, ok := s.gcs[xid]; !ok {
+		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.GContextErrorCode)
+	}
+	return nil
+}
+
+func (s *x11Server) checkCursor(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if _, ok := s.cursors[xid]; !ok {
+		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.CursorErrorCode)
+	}
+	return nil
+}
+
+func (s *x11Server) checkColormap(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if xid.local == s.defaultColormap {
+		xid.client = 0
+	}
+	if _, ok := s.colormaps[xid]; !ok {
+		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.ColormapErrorCode)
+	}
+	return nil
+}
+
+func (s *x11Server) checkFont(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if _, ok := s.fonts[xid]; !ok {
+		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.FontErrorCode)
+	}
+	return nil
 }
 
 func NewWindowAttributes() wire.WindowAttributes {
@@ -1397,6 +1456,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.ChangeWindowAttributesRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.ChangeWindowAttributes, 0); err != nil {
+			return err
+		}
 		if w, ok := s.windows[xid]; ok {
 			if p.ValueMask&wire.CWBackPixmap != 0 {
 				w.attributes.BackgroundPixmap = p.Values.BackgroundPixmap
@@ -1449,10 +1511,10 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.GetWindowAttributesRequest:
 		xid := client.xID(uint32(p.Window))
-		attrs, ok := s.GetWindowAttributes(xid)
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.GetWindowAttributes, wire.WindowErrorCode)
+		if err := s.checkWindow(xid, seq, wire.GetWindowAttributes, 0); err != nil {
+			return err
 		}
+		attrs, _ := s.GetWindowAttributes(xid)
 		return &wire.GetWindowAttributesReply{
 			Sequence:           seq,
 			BackingStore:       byte(attrs.BackingStore),
@@ -1474,11 +1536,20 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.DestroyWindowRequest:
 		xid := client.xID(uint32(p.Window))
+		if xid.local == s.rootWindowID() {
+			return nil
+		}
+		if err := s.checkWindow(xid, seq, wire.DestroyWindow, 0); err != nil {
+			return err
+		}
 		delete(s.windows, xid)
 		s.frontend.DestroyWindow(xid)
 
 	case *wire.DestroySubwindowsRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.DestroySubwindows, 0); err != nil {
+			return err
+		}
 		if parent, ok := s.windows[xid]; ok {
 			var destroy func(uint32)
 			destroy = func(windowID uint32) {
@@ -1498,6 +1569,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		s.frontend.DestroySubwindows(xid)
 
 	case *wire.ChangeSaveSetRequest:
+		if err := s.checkWindow(client.xID(uint32(p.Window)), seq, wire.ChangeSaveSet, 0); err != nil {
+			return err
+		}
 		if p.Mode == 0 { // Insert
 			client.saveSet[uint32(p.Window)] = true
 		} else { // Delete
@@ -1507,18 +1581,18 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 	case *wire.ReparentWindowRequest:
 		windowXID := client.xID(uint32(p.Window))
 		parentXID := client.xID(uint32(p.Parent))
-		window, ok := s.windows[windowXID]
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.ReparentWindow, wire.WindowErrorCode)
+		if err := s.checkWindow(windowXID, seq, wire.ReparentWindow, 0); err != nil {
+			return err
 		}
+		if err := s.checkWindow(parentXID, seq, wire.ReparentWindow, 0); err != nil {
+			return err
+		}
+		window := s.windows[windowXID]
 		oldParent, ok := s.windows[client.xID(window.parent)]
 		if !ok {
 			return wire.NewGenericError(seq, window.parent, 0, wire.ReparentWindow, wire.WindowErrorCode)
 		}
-		newParent, ok := s.windows[parentXID]
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.Parent), 0, wire.ReparentWindow, wire.WindowErrorCode)
-		}
+		newParent := s.windows[parentXID]
 
 		// Remove from old parent's children
 		for i, childID := range oldParent.children {
@@ -1540,6 +1614,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.MapWindowRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.MapWindow, 0); err != nil {
+			return err
+		}
 		if w, ok := s.windows[xid]; ok {
 			w.mapped = true
 			s.frontend.MapWindow(xid)
@@ -1548,6 +1625,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.MapSubwindowsRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.MapSubwindows, 0); err != nil {
+			return err
+		}
 		if parentWindow, ok := s.windows[xid]; ok {
 			for _, childID := range parentWindow.children {
 				childXID := xID{client: xid.client, local: childID}
@@ -1561,6 +1641,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.UnmapWindowRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.UnmapWindow, 0); err != nil {
+			return err
+		}
 		if w, ok := s.windows[xid]; ok {
 			w.mapped = false
 		}
@@ -1568,6 +1651,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.UnmapSubwindowsRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.UnmapSubwindows, 0); err != nil {
+			return err
+		}
 		if parentWindow, ok := s.windows[xid]; ok {
 			for _, childID := range parentWindow.children {
 				childXID := xID{client: xid.client, local: childID}
@@ -1580,14 +1666,17 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.ConfigureWindowRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.ConfigureWindow, 0); err != nil {
+			return err
+		}
 		s.frontend.ConfigureWindow(xid, p.ValueMask, p.Values)
 
 	case *wire.CirculateWindowRequest:
 		xid := client.xID(uint32(p.Window))
-		window, ok := s.windows[xid]
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.CirculateWindow, wire.WindowErrorCode)
+		if err := s.checkWindow(xid, seq, wire.CirculateWindow, 0); err != nil {
+			return err
 		}
+		window := s.windows[xid]
 		parent, ok := s.windows[client.xID(window.parent)]
 		if !ok {
 			return wire.NewGenericError(seq, window.parent, 0, wire.CirculateWindow, wire.WindowErrorCode)
@@ -1619,6 +1708,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.GetGeometryRequest:
 		xid := client.xID(uint32(p.Drawable))
+		if err := s.checkDrawable(xid, seq, wire.GetGeometry, 0); err != nil {
+			return err
+		}
 		if xid.local == s.rootWindowID() {
 			return &wire.GetGeometryReply{
 				Sequence:    seq,
@@ -1631,27 +1723,36 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 				BorderWidth: 0,
 			}
 		}
-		w, ok := s.windows[xid]
-		if !ok {
-			return nil
+		if w, ok := s.windows[xid]; ok {
+			return &wire.GetGeometryReply{
+				Sequence:    seq,
+				Depth:       w.depth,
+				Root:        s.rootWindowID(),
+				X:           w.x,
+				Y:           w.y,
+				Width:       w.width,
+				Height:      w.height,
+				BorderWidth: 0, // Border width is not stored in window struct, assuming 0 for now
+			}
 		}
+		// Must be a pixmap
 		return &wire.GetGeometryReply{
 			Sequence:    seq,
-			Depth:       w.depth,
+			Depth:       24, // Assumption
 			Root:        s.rootWindowID(),
-			X:           w.x,
-			Y:           w.y,
-			Width:       w.width,
-			Height:      w.height,
-			BorderWidth: 0, // Border width is not stored in window struct, assuming 0 for now
+			X:           0,
+			Y:           0,
+			Width:       1, // Dummy
+			Height:      1, // Dummy
+			BorderWidth: 0,
 		}
 
 	case *wire.QueryTreeRequest:
 		xid := client.xID(uint32(p.Window))
-		window, ok := s.windows[xid]
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.QueryTree, wire.WindowErrorCode)
+		if err := s.checkWindow(xid, seq, wire.QueryTree, 0); err != nil {
+			return err
 		}
+		window := s.windows[xid]
 		return &wire.QueryTreeReply{
 			Sequence:    seq,
 			Root:        s.rootWindowID(),
@@ -1678,14 +1779,23 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.ChangePropertyRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.ChangeProperty, 0); err != nil {
+			return err
+		}
 		s.frontend.ChangeProperty(xid, uint32(p.Property), uint32(p.Type), uint32(p.Format), p.Data)
 
 	case *wire.DeletePropertyRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.DeleteProperty, 0); err != nil {
+			return err
+		}
 		s.frontend.DeleteProperty(xid, uint32(p.Property))
 
 	case *wire.GetPropertyRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.GetProperty, 0); err != nil {
+			return err
+		}
 		data, typ, format, bytesAfter := s.frontend.GetProperty(xid, uint32(p.Property), p.Offset, p.Length)
 
 		if data == nil {
@@ -1724,6 +1834,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.ListPropertiesRequest:
 		xid := client.xID(uint32(p.Window))
+		if err := s.checkWindow(xid, seq, wire.ListProperties, 0); err != nil {
+			return err
+		}
 		atoms := s.frontend.ListProperties(xid)
 		return &wire.ListPropertiesReply{
 			Sequence:      seq,
@@ -1752,6 +1865,20 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.GrabPointerRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
+		if err := s.checkWindow(grabWindow, seq, wire.GrabPointer, 0); err != nil {
+			return err
+		}
+		if p.ConfineTo != 0 {
+			if err := s.checkWindow(client.xID(uint32(p.ConfineTo)), seq, wire.GrabPointer, 0); err != nil {
+				return err
+			}
+		}
+		if p.Cursor != 0 {
+			if err := s.checkCursor(client.xID(uint32(p.Cursor)), seq, wire.GrabPointer, 0); err != nil {
+				return err
+			}
+		}
+
 		if p.Time != 0 {
 			if uint32(p.Time) < s.pointerGrabTime || uint32(p.Time) > s.serverTime() {
 				return &wire.GrabPointerReply{Sequence: seq, Status: wire.GrabInvalidTime}
@@ -1830,6 +1957,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.UngrabButtonRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
+		if err := s.checkWindow(grabWindow, seq, wire.UngrabButton, 0); err != nil {
+			return err
+		}
 		if grabs, ok := s.passiveGrabs[grabWindow]; ok {
 			for i, grab := range grabs {
 				if grab.button == p.Button && grab.modifiers == p.Modifiers {
@@ -1843,8 +1973,8 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		if s.pointerGrabWindow.client == client.id && s.pointerGrabWindow.local != 0 {
 			if p.Cursor != 0 {
 				cursorXID := client.xID(uint32(p.Cursor))
-				if _, ok := s.cursors[cursorXID]; !ok {
-					return wire.NewGenericError(seq, uint32(p.Cursor), 0, wire.ChangeActivePointerGrab, wire.CursorErrorCode)
+				if err := s.checkCursor(cursorXID, seq, wire.ChangeActivePointerGrab, 0); err != nil {
+					return err
 				}
 				s.frontend.SetWindowCursor(s.pointerGrabWindow, cursorXID)
 			}
@@ -1856,6 +1986,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.GrabKeyboardRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
+		if err := s.checkWindow(grabWindow, seq, wire.GrabKeyboard, 0); err != nil {
+			return err
+		}
 		if p.Time != 0 {
 			if uint32(p.Time) < s.keyboardGrabTime || uint32(p.Time) > s.serverTime() {
 				return &wire.GrabKeyboardReply{Sequence: seq, Status: wire.GrabInvalidTime}
@@ -1919,6 +2052,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.UngrabKeyRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))
+		if err := s.checkWindow(grabWindow, seq, wire.UngrabKey, 0); err != nil {
+			return err
+		}
 		if grabs, ok := s.passiveGrabs[grabWindow]; ok {
 			newGrabs := make([]*passiveGrab, 0, len(grabs))
 			for _, grab := range grabs {
@@ -1944,6 +2080,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.QueryPointerRequest:
 		xid := client.xID(uint32(p.Drawable))
+		if err := s.checkDrawable(xid, seq, wire.QueryPointer, 0); err != nil {
+			return err
+		}
 		debugf("X11: QueryPointer drawable=%d", xid)
 		return &wire.QueryPointerReply{
 			Sequence:   seq,
@@ -1967,13 +2106,16 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		srcWindow := client.xID(uint32(p.SrcWindow))
 		dstWindow := client.xID(uint32(p.DstWindow))
 
-		// Simplified implementation: assume windows are direct children of the root
-		src, srcOk := s.windows[srcWindow]
-		dst, dstOk := s.windows[dstWindow]
-		if !srcOk || !dstOk {
-			// One of the windows doesn't exist, can't translate
-			return nil
+		if err := s.checkWindow(srcWindow, seq, wire.TranslateCoords, 0); err != nil {
+			return err
 		}
+		if err := s.checkWindow(dstWindow, seq, wire.TranslateCoords, 0); err != nil {
+			return err
+		}
+
+		// Simplified implementation: assume windows are direct children of the root
+		src := s.windows[srcWindow]
+		dst := s.windows[dstWindow]
 
 		dstX := src.x + p.SrcX - dst.x
 		dstY := src.y + p.SrcY - dst.y
@@ -1987,10 +2129,26 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.WarpPointerRequest:
+		if p.SrcWindow != 0 {
+			if err := s.checkWindow(client.xID(p.SrcWindow), seq, wire.WarpPointer, 0); err != nil {
+				return err
+			}
+		}
+		if p.DstWindow != 0 {
+			if err := s.checkWindow(client.xID(p.DstWindow), seq, wire.WarpPointer, 0); err != nil {
+				return err
+			}
+		}
 		s.frontend.WarpPointer(p.DstX, p.DstY)
 
 	case *wire.SetInputFocusRequest:
 		xid := client.xID(uint32(p.Focus))
+		// Focus can be None(0) or PointerRoot(1).
+		if uint32(p.Focus) > 1 {
+			if err := s.checkWindow(xid, seq, wire.SetInputFocus, 0); err != nil {
+				return err
+			}
+		}
 		s.inputFocus = xid
 		s.frontend.SetInputFocus(xid, p.RevertTo)
 
@@ -2008,13 +2166,27 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.OpenFontRequest:
-		s.frontend.OpenFont(client.xID(uint32(p.Fid)), p.Name)
+		fid := client.xID(uint32(p.Fid))
+		if _, exists := s.fonts[fid]; exists {
+			return wire.NewGenericError(seq, uint32(p.Fid), 0, wire.OpenFont, wire.IDChoiceErrorCode)
+		}
+		s.fonts[fid] = true
+		s.frontend.OpenFont(fid, p.Name)
 
 	case *wire.CloseFontRequest:
-		s.frontend.CloseFont(client.xID(uint32(p.Fid)))
+		fid := client.xID(uint32(p.Fid))
+		if err := s.checkFont(fid, seq, wire.CloseFont, 0); err != nil {
+			return err
+		}
+		delete(s.fonts, fid)
+		s.frontend.CloseFont(fid)
 
 	case *wire.QueryFontRequest:
-		minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, charInfos, fontProps := s.frontend.QueryFont(client.xID(uint32(p.Fid)))
+		fid := client.xID(uint32(p.Fid))
+		if err := s.checkFont(fid, seq, wire.QueryFont, 0); err != nil {
+			return err
+		}
+		minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, charInfos, fontProps := s.frontend.QueryFont(fid)
 
 		return &wire.QueryFontReply{
 			Sequence:       seq,
@@ -2036,7 +2208,11 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.QueryTextExtentsRequest:
-		drawDirection, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight := s.frontend.QueryTextExtents(client.xID(uint32(p.Fid)), p.Text)
+		fid := client.xID(uint32(p.Fid))
+		if err := s.checkFont(fid, seq, wire.QueryTextExtents, 0); err != nil {
+			return err
+		}
+		drawDirection, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight := s.frontend.QueryTextExtents(fid, p.Text)
 		return &wire.QueryTextExtentsReply{
 			Sequence:       seq,
 			DrawDirection:  drawDirection,
@@ -2113,12 +2289,18 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			s.logger.Errorf("X11: CreatePixmap: ID %s already in use", xid)
 			return wire.NewGenericError(seq, uint32(p.Pid), 0, wire.CreatePixmap, wire.IDChoiceErrorCode)
 		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.CreatePixmap, 0); err != nil {
+			return err
+		}
 
 		s.pixmaps[xid] = true // Mark pixmap ID as used
 		s.frontend.CreatePixmap(xid, client.xID(uint32(p.Drawable)), uint32(p.Width), uint32(p.Height), uint32(p.Depth))
 
 	case *wire.FreePixmapRequest:
 		xid := client.xID(uint32(p.Pid))
+		if err := s.checkPixmap(xid, seq, wire.FreePixmap, 0); err != nil {
+			return err
+		}
 		delete(s.pixmaps, xid)
 		s.frontend.FreePixmap(xid)
 
@@ -2130,12 +2312,18 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			s.logger.Errorf("X11: CreateGC: ID %s already in use", xid)
 			return wire.NewGenericError(seq, uint32(xid.local), 0, wire.CreateGC, wire.IDChoiceErrorCode)
 		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.CreateGC, 0); err != nil {
+			return err
+		}
 
 		s.gcs[xid] = p.Values
 		s.frontend.CreateGC(xid, p.ValueMask, p.Values)
 
 	case *wire.ChangeGCRequest:
 		xid := client.xID(uint32(p.Gc))
+		if err := s.checkGC(xid, seq, wire.ChangeGC, 0); err != nil {
+			return err
+		}
 		if existingGC, ok := s.gcs[xid]; ok {
 			if p.ValueMask&wire.GCFunction != 0 {
 				existingGC.Function = p.Values.Function
@@ -2212,82 +2400,177 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 	case *wire.CopyGCRequest:
 		srcGC := client.xID(uint32(p.SrcGC))
 		dstGC := client.xID(uint32(p.DstGC))
+		if err := s.checkGC(srcGC, seq, wire.CopyGC, 0); err != nil {
+			return err
+		}
+		if err := s.checkGC(dstGC, seq, wire.CopyGC, 0); err != nil {
+			return err
+		}
 		s.frontend.CopyGC(srcGC, dstGC)
 
 	case *wire.SetDashesRequest:
-		s.frontend.SetDashes(client.xID(uint32(p.GC)), p.DashOffset, p.Dashes)
+		gc := client.xID(uint32(p.GC))
+		if err := s.checkGC(gc, seq, wire.SetDashes, 0); err != nil {
+			return err
+		}
+		s.frontend.SetDashes(gc, p.DashOffset, p.Dashes)
 
 	case *wire.SetClipRectanglesRequest:
-		s.frontend.SetClipRectangles(client.xID(uint32(p.GC)), p.ClippingX, p.ClippingY, p.Rectangles, p.Ordering)
+		gc := client.xID(uint32(p.GC))
+		if err := s.checkGC(gc, seq, wire.SetClipRectangles, 0); err != nil {
+			return err
+		}
+		s.frontend.SetClipRectangles(gc, p.ClippingX, p.ClippingY, p.Rectangles, p.Ordering)
 
 	case *wire.FreeGCRequest:
 		gcID := client.xID(uint32(p.GC))
+		if err := s.checkGC(gcID, seq, wire.FreeGC, 0); err != nil {
+			return err
+		}
+		delete(s.gcs, gcID)
 		s.frontend.FreeGC(gcID)
 
 	case *wire.ClearAreaRequest:
+		if err := s.checkWindow(client.xID(uint32(p.Window)), seq, wire.ClearArea, 0); err != nil {
+			return err
+		}
 		s.frontend.ClearArea(client.xID(uint32(p.Window)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
 		s.frontend.ComposeWindow(client.xID(uint32(p.Window)))
 
 	case *wire.CopyAreaRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.CopyArea, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.SrcDrawable)), seq, wire.CopyArea, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.DstDrawable)), seq, wire.CopyArea, 0); err != nil {
+			return err
+		}
 		s.frontend.CopyArea(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
 		s.frontend.ComposeWindow(client.xID(uint32(p.DstDrawable)))
 
 	case *wire.CopyPlaneRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.CopyPlane, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.SrcDrawable)), seq, wire.CopyPlane, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.DstDrawable)), seq, wire.CopyPlane, 0); err != nil {
+			return err
+		}
 		s.frontend.CopyPlane(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height), int32(p.PlaneMask))
 		s.frontend.ComposeWindow(client.xID(uint32(p.DstDrawable)))
 
 	case *wire.PolyPointRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PolyPoint, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyPoint, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyPoint(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyLineRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PolyLine, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyLine, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyLine(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolySegmentRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PolySegment, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolySegment, 0); err != nil {
+			return err
+		}
 		s.frontend.PolySegment(client.xID(uint32(p.Drawable)), gcID, p.Segments)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyRectangleRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PolyRectangle, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyRectangle, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyArcRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PolyArc, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyArc, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.FillPolyRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.FillPoly, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.FillPoly, 0); err != nil {
+			return err
+		}
 		s.frontend.FillPoly(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyFillRectangleRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PolyFillRectangle, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyFillRectangle, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyFillRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyFillArcRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PolyFillArc, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyFillArc, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyFillArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PutImageRequest:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.PutImage, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PutImage, 0); err != nil {
+			return err
+		}
 		s.frontend.PutImage(client.xID(uint32(p.Drawable)), gcID, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.GetImageRequest:
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.GetImage, 0); err != nil {
+			return err
+		}
 		imgData, err := s.frontend.GetImage(client.xID(uint32(p.Drawable)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height), p.PlaneMask)
 		if err != nil {
-			s.logger.Errorf("Failed to get image: %v", err)
-			return nil
+			return wire.NewGenericError(seq, 0, 0, wire.GetImage, wire.MatchErrorCode)
 		}
 		return &wire.GetImageReply{
 			Sequence:  seq,
@@ -2298,21 +2581,45 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.PolyText8Request:
 		gcID := client.xID(uint32(p.GC))
+		if err := s.checkGC(gcID, seq, wire.PolyText8, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyText8, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.PolyText16Request:
 		gcID := client.xID(uint32(p.GC))
+		if err := s.checkGC(gcID, seq, wire.PolyText16, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyText16, 0); err != nil {
+			return err
+		}
 		s.frontend.PolyText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.ImageText8Request:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.ImageText8, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.ImageText8, 0); err != nil {
+			return err
+		}
 		s.frontend.ImageText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
 	case *wire.ImageText16Request:
 		gcID := client.xID(uint32(p.Gc))
+		if err := s.checkGC(gcID, seq, wire.ImageText16, 0); err != nil {
+			return err
+		}
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.ImageText16, 0); err != nil {
+			return err
+		}
 		s.frontend.ImageText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
 		s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
 
@@ -2320,7 +2627,10 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		xid := client.xID(uint32(p.Mid))
 
 		if _, exists := s.colormaps[xid]; exists {
-			return wire.NewGenericError(seq, uint32(p.Mid), 0, wire.CreateColormap, wire.ColormapErrorCode)
+			return wire.NewGenericError(seq, uint32(p.Mid), 0, wire.CreateColormap, wire.IDChoiceErrorCode)
+		}
+		if err := s.checkWindow(client.xID(uint32(p.Window)), seq, wire.CreateColormap, 0); err != nil {
+			return err
 		}
 
 		newColormap := &colormap{
@@ -2337,17 +2647,17 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.FreeColormapRequest:
 		xid := client.xID(uint32(p.Cmap))
-		if _, ok := s.colormaps[xid]; !ok {
-			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.FreeColormap, wire.ColormapErrorCode)
+		if err := s.checkColormap(xid, seq, wire.FreeColormap, 0); err != nil {
+			return err
 		}
 		delete(s.colormaps, xid)
 
 	case *wire.CopyColormapAndFreeRequest:
 		srcCmapID := client.xID(uint32(p.SrcCmap))
-		srcCmap, ok := s.colormaps[srcCmapID]
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.SrcCmap), 0, wire.CopyColormapAndFree, wire.ColormapErrorCode)
+		if err := s.checkColormap(srcCmapID, seq, wire.CopyColormapAndFree, 0); err != nil {
+			return err
 		}
+		srcCmap := s.colormaps[srcCmapID]
 
 		newCmapID := client.xID(uint32(p.Mid))
 		if _, exists := s.colormaps[newCmapID]; exists {
@@ -2368,9 +2678,8 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.InstallColormapRequest:
 		xid := client.xID(uint32(p.Cmap))
-		_, ok := s.colormaps[xid]
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.InstallColormap, wire.ColormapErrorCode)
+		if err := s.checkColormap(xid, seq, wire.InstallColormap, 0); err != nil {
+			return err
 		}
 
 		s.installedColormap = xid
@@ -2396,9 +2705,8 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 
 	case *wire.UninstallColormapRequest:
 		xid := client.xID(uint32(p.Cmap))
-		_, ok := s.colormaps[xid]
-		if !ok {
-			return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.UninstallColormap, wire.ColormapErrorCode)
+		if err := s.checkColormap(xid, seq, wire.UninstallColormap, 0); err != nil {
+			return err
 		}
 
 		if s.installedColormap == xid {
@@ -2425,6 +2733,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		return nil
 
 	case *wire.ListInstalledColormapsRequest:
+		if err := s.checkWindow(client.xID(uint32(p.Window)), seq, wire.ListInstalledColormaps, 0); err != nil {
+			return err
+		}
 		var colormaps []uint32
 		if s.installedColormap.local != 0 {
 			colormaps = append(colormaps, s.installedColormap.local)
@@ -2625,9 +2936,18 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			return wire.NewGenericError(seq, uint32(p.Cid), 0, wire.CreateCursor, wire.IDChoiceErrorCode)
 		}
 
-		s.cursors[cursorXID] = true
 		sourceXID := client.xID(uint32(p.Source))
+		if err := s.checkPixmap(sourceXID, seq, wire.CreateCursor, 0); err != nil {
+			return err
+		}
 		maskXID := client.xID(uint32(p.Mask))
+		if p.Mask != 0 {
+			if err := s.checkPixmap(maskXID, seq, wire.CreateCursor, 0); err != nil {
+				return err
+			}
+		}
+
+		s.cursors[cursorXID] = true
 		foreColor := [3]uint16{p.ForeRed, p.ForeGreen, p.ForeBlue}
 		backColor := [3]uint16{p.BackRed, p.BackGreen, p.BackBlue}
 		s.frontend.CreateCursor(cursorXID, sourceXID, maskXID, foreColor, backColor, p.X, p.Y)
@@ -2638,19 +2958,36 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			s.logger.Errorf("X11: CreateGlyphCursor: ID %d already in use", p.Cid)
 			return wire.NewGenericError(seq, uint32(p.Cid), 0, wire.CreateGlyphCursor, wire.IDChoiceErrorCode)
 		}
+		if err := s.checkFont(client.xID(uint32(p.SourceFont)), seq, wire.CreateGlyphCursor, 0); err != nil {
+			return err
+		}
+		if p.MaskFont != 0 {
+			if err := s.checkFont(client.xID(uint32(p.MaskFont)), seq, wire.CreateGlyphCursor, 0); err != nil {
+				return err
+			}
+		}
 
 		s.cursors[client.xID(uint32(p.Cid))] = true
 		s.frontend.CreateCursorFromGlyph(uint32(p.Cid), p.SourceChar)
 
 	case *wire.FreeCursorRequest:
 		xid := client.xID(uint32(p.Cursor))
+		if err := s.checkCursor(xid, seq, wire.FreeCursor, 0); err != nil {
+			return err
+		}
 		delete(s.cursors, xid)
 		s.frontend.FreeCursor(xid)
 
 	case *wire.RecolorCursorRequest:
+		if err := s.checkCursor(client.xID(uint32(p.Cursor)), seq, wire.RecolorCursor, 0); err != nil {
+			return err
+		}
 		s.frontend.RecolorCursor(client.xID(uint32(p.Cursor)), p.ForeColor, p.BackColor)
 
 	case *wire.QueryBestSizeRequest:
+		if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.QueryBestSize, 0); err != nil {
+			return err
+		}
 		debugf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", p.Class, p.Drawable, p.Width, p.Height)
 
 		return &wire.QueryBestSizeReply{
@@ -2825,8 +3162,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 	case *wire.GetModifierMappingRequest:
 		keyCodes, err := s.frontend.GetModifierMapping()
 		if err != nil {
-			// TODO: proper error handling
-			return nil
+			return wire.NewGenericError(seq, 0, 0, wire.GetModifierMapping, wire.ImplementationErrorCode)
 		}
 		return &wire.GetModifierMappingReply{
 			Sequence:            seq,
@@ -2974,6 +3310,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					authProtocol:       authProtocol,
 					authCookie:         authCookie,
 					keymap:             make(map[byte]uint32),
+					fonts:              make(map[xID]bool),
 					startTime:          time.Now(),
 				}
 				for k, v := range KeyCodeToKeysym {
