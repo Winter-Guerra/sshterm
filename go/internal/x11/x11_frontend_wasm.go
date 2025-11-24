@@ -153,6 +153,14 @@ func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc wire.GC) (out string) 
 	return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
 }
 
+func (w *wasmX11Frontend) getBackgroundColor(cmap xID, gc wire.GC) (out string) {
+	defer func() {
+		debugf("getBackgroundColor: cmap:%s gc=%+v %s", cmap, gc, out)
+	}()
+	r, g, b := w.GetRGBColor(cmap, gc.Background)
+	return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+}
+
 func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values wire.WindowAttributes) {
 	debugf("X11: createWindow xid=%s parent=%d x=%d y=%d width=%d height=%d depth=%d values=%+v", xid, parent, x, y, width, height, depth, values)
 
@@ -1188,7 +1196,10 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 
 	if gc.Font != 0 {
 		if font, ok := w.fonts[xID{client: clientID, local: gc.Font}]; ok {
+			debugf("applyGCState: setting font to %q for gc.Font=%d", font.cssFont, gc.Font)
 			ctx.Set("font", font.cssFont)
+		} else {
+			debugf("applyGCState: font %d not found for client %d", gc.Font, clientID)
 		}
 	}
 	if gc.ClippingRectangles != nil && len(gc.ClippingRectangles) > 0 {
@@ -1950,13 +1961,37 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 	ctx.Call("restore")
 
 	width := int(math.Ceil(metrics.Get("width").Float()))
-	ascent := int(math.Ceil(metrics.Get("actualBoundingBoxAscent").Float()))
-	descent := int(math.Ceil(metrics.Get("actualBoundingBoxDescent").Float()))
+	// Use font bounding box if available for more consistent background clearing
+	var ascent, descent int
+	if !metrics.Get("fontBoundingBoxAscent").IsUndefined() {
+		ascent = int(math.Ceil(metrics.Get("fontBoundingBoxAscent").Float()))
+		descent = int(math.Ceil(metrics.Get("fontBoundingBoxDescent").Float()))
+	} else {
+		ascent = int(math.Ceil(metrics.Get("actualBoundingBoxAscent").Float()))
+		descent = int(math.Ceil(metrics.Get("actualBoundingBoxDescent").Float()))
+	}
+	// Ensure reasonable minimums
+	if ascent == 0 {
+		ascent = 10
+	}
+	if descent == 0 {
+		descent = 2
+	}
+
 	opBounds := image.Rect(int(x), int(y)-ascent, int(x)+width, int(y)+descent)
 
 	color := w.getForegroundColor(colormap, gc)
+	bgColor := w.getBackgroundColor(colormap, gc)
+	debugf("ImageText8: bounds=%v color=%s bg=%s", opBounds, color, bgColor)
 
 	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		// Fill background rectangle
+		targetCtx.Call("save")
+		targetCtx.Set("fillStyle", bgColor)
+		targetCtx.Call("fillRect", int(x), int(y)-ascent, width, ascent+descent)
+		targetCtx.Call("restore")
+
+		// Draw text
 		targetCtx.Call("fillText", decodedText, x, y)
 	}, opBounds)
 
@@ -2004,13 +2039,35 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	ctx.Call("restore")
 
 	width := int(math.Ceil(metrics.Get("width").Float()))
-	ascent := int(math.Ceil(metrics.Get("actualBoundingBoxAscent").Float()))
-	descent := int(math.Ceil(metrics.Get("actualBoundingBoxDescent").Float()))
+	// Use font bounding box if available for more consistent background clearing
+	var ascent, descent int
+	if !metrics.Get("fontBoundingBoxAscent").IsUndefined() {
+		ascent = int(math.Ceil(metrics.Get("fontBoundingBoxAscent").Float()))
+		descent = int(math.Ceil(metrics.Get("fontBoundingBoxDescent").Float()))
+	} else {
+		ascent = int(math.Ceil(metrics.Get("actualBoundingBoxAscent").Float()))
+		descent = int(math.Ceil(metrics.Get("actualBoundingBoxDescent").Float()))
+	}
+	if ascent == 0 {
+		ascent = 10
+	}
+	if descent == 0 {
+		descent = 2
+	}
+
 	opBounds := image.Rect(int(x), int(y)-ascent, int(x)+width, int(y)+descent)
 
 	color := w.getForegroundColor(colormap, gc)
+	bgColor := w.getBackgroundColor(colormap, gc)
+	debugf("ImageText16: bounds=%v color=%s bg=%s", opBounds, color, bgColor)
 
 	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+		// Fill background rectangle
+		targetCtx.Call("save")
+		targetCtx.Set("fillStyle", bgColor)
+		targetCtx.Call("fillRect", int(x), int(y)-ascent, width, ascent+descent)
+		targetCtx.Call("restore")
+
 		targetCtx.Call("fillText", decodedText, x, y)
 	}, opBounds)
 
@@ -3150,9 +3207,20 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInf
 	var cssFont string = "12px monospace" // Default fallback
 	if font, ok := w.fonts[fid]; ok {
 		cssFont = font.cssFont
-		// Parse font size from cssFont string (e.g., "12px monospace")
-		sizeStr := strings.Split(font.cssFont, " ")[0] // Get "12px"
-		sizeStr = strings.TrimSuffix(sizeStr, "px")
+		// Parse font size from cssFont string (e.g., "12px monospace" or "normal normal 13px monospace")
+		parts := strings.Split(font.cssFont, " ")
+		var sizeStr string
+		for _, p := range parts {
+			if strings.HasSuffix(p, "px") {
+				sizeStr = strings.TrimSuffix(p, "px")
+				break
+			}
+		}
+		// Fallback to first part if no px suffix found (old behavior)
+		if sizeStr == "" && len(parts) > 0 {
+			sizeStr = strings.TrimSuffix(parts[0], "px")
+		}
+
 		if size, err := strconv.ParseFloat(sizeStr, 64); err == nil {
 			// Derive ascent, descent from the font size
 			fontAscent = int16(math.Round(size * 0.8))
