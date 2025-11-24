@@ -245,20 +245,25 @@ type passiveGrab struct {
 }
 
 type passiveDeviceGrab struct {
-	clientID  uint32
-	deviceID  byte
-	key       wire.KeyCode
-	button    byte
-	modifiers uint16
-	owner     bool
-	eventMask []uint32
+	clientID     uint32
+	deviceID     byte
+	key          wire.KeyCode
+	button       byte
+	detail       uint32
+	modifiers    uint16
+	xi2Modifiers []uint32
+	owner        bool
+	eventMask    []uint32
+	xi2EventMask []uint32
+	xi2GrabType  int
 }
 
 type deviceGrab struct {
-	window      xID
-	ownerEvents bool
-	eventMask   []uint32
-	time        uint32
+	window       xID
+	ownerEvents  bool
+	eventMask    []uint32
+	xi2EventMask []uint32
+	time         uint32
 }
 
 var virtualPointer = &wire.DeviceInfo{
@@ -343,12 +348,29 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	if !deviceGrabbed && eventType == "mousedown" {
 		if grabs, ok := s.passiveDeviceGrabs[originalXID]; ok {
 			for _, grab := range grabs {
-				if grab.deviceID == deviceID && grab.button == button && (grab.modifiers == wire.AnyModifier || grab.modifiers == state) {
+				xi1Match := grab.xi2GrabType == 0 && grab.deviceID == deviceID && grab.button == button && (grab.modifiers == wire.AnyModifier || grab.modifiers == state)
+
+				xi2Match := false
+				if grab.xi2GrabType == wire.XI_ButtonPress && grab.deviceID == deviceID && byte(grab.detail) == button {
+					if len(grab.xi2Modifiers) == 0 {
+						xi2Match = true
+					} else {
+						for _, mod := range grab.xi2Modifiers {
+							if (mod & 0xFFFF) == uint32(state) {
+								xi2Match = true
+								break
+							}
+						}
+					}
+				}
+
+				if xi1Match || xi2Match {
 					activeDeviceGrab = &deviceGrab{
-						window:      originalXID, // Grab is on this window
-						ownerEvents: grab.owner,
-						eventMask:   grab.eventMask,
-						time:        0, // TODO
+						window:       originalXID, // Grab is on this window
+						ownerEvents:  grab.owner,
+						eventMask:    grab.eventMask,
+						xi2EventMask: grab.xi2EventMask,
+						time:         0, // TODO
 					}
 					s.deviceGrabs[deviceID] = activeDeviceGrab
 					deviceGrabbed = true
@@ -370,21 +392,44 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	if deviceGrabbed {
 		// Send XInput event to grabbing client if mask matches
 		grabbingClient, clientExists := s.clients[activeDeviceGrab.window.client]
-		if clientExists && xiEventMask > 0 {
-			// Check against grab.eventMask
-			match := false
-			for _, class := range activeDeviceGrab.eventMask {
-				// class is (mask << 8) | deviceID
-				if byte(class&0xFF) == deviceID {
-					mask := class >> 8
-					if mask&uint32(xiEventMask) != 0 {
-						match = true
-						break
+		if clientExists {
+			// XI 1.x
+			if xiEventMask > 0 {
+				match := false
+				for _, class := range activeDeviceGrab.eventMask {
+					// class is (mask << 8) | deviceID
+					if byte(class&0xFF) == deviceID {
+						mask := class >> 8
+						if mask&uint32(xiEventMask) != 0 {
+							match = true
+							break
+						}
 					}
 				}
+				if match {
+					s.sendXInputMouseEvent(grabbingClient, eventType, deviceID, button, originalXID.local, x, y, state)
+				}
 			}
-			if match {
-				s.sendXInputMouseEvent(grabbingClient, eventType, deviceID, button, originalXID.local, x, y, state)
+
+			// XI 2.x
+			if activeDeviceGrab.xi2EventMask != nil {
+				var evType uint16
+				switch eventType {
+				case "mousedown":
+					evType = wire.XI_ButtonPress
+				case "mouseup":
+					evType = wire.XI_ButtonRelease
+				case "mousemove":
+					evType = wire.XI_Motion
+				}
+
+				if evType > 0 {
+					wordIdx := int(evType / 32)
+					bitIdx := int(evType % 32)
+					if wordIdx < len(activeDeviceGrab.xi2EventMask) && (activeDeviceGrab.xi2EventMask[wordIdx]&(1<<bitIdx)) != 0 {
+						s.sendXInput2MouseEvent(grabbingClient, evType, deviceID, button, originalXID.local, x, y, state)
+					}
+				}
 			}
 		}
 		// Core events are suppressed when device is grabbed
@@ -591,6 +636,58 @@ func (s *x11Server) sendXInput2MouseEvent(client *x11Client, evType uint16, devi
 	}
 }
 
+func (s *x11Server) sendXInput2KeyboardEvent(client *x11Client, evType uint16, deviceID byte, keycode byte, eventWindowID uint32, state uint16) {
+	mods := wire.ModifierInfo{
+		Base:      uint32(state),
+		Latched:   0,
+		Locked:    0,
+		Effective: uint32(state),
+	}
+
+	buttonMask := uint32(0)
+	if state&wire.Button1Mask != 0 {
+		buttonMask |= (1 << 0)
+	}
+	if state&wire.Button2Mask != 0 {
+		buttonMask |= (1 << 1)
+	}
+	if state&wire.Button3Mask != 0 {
+		buttonMask |= (1 << 2)
+	}
+	if state&wire.Button4Mask != 0 {
+		buttonMask |= (1 << 3)
+	}
+	if state&wire.Button5Mask != 0 {
+		buttonMask |= (1 << 4)
+	}
+
+	buttons := []uint32{buttonMask}
+
+	event := &wire.XIDeviceEvent{
+		Sequence:  client.sequence - 1,
+		EventType: evType,
+		DeviceID:  uint16(deviceID),
+		Time:      0,
+		Detail:    uint32(keycode),
+		Root:      s.rootWindowID(),
+		Event:     eventWindowID,
+		Child:     0,
+		RootX:     int32(s.pointerX) << 16,
+		RootY:     int32(s.pointerY) << 16,
+		EventX:    int32(s.pointerX) << 16,
+		EventY:    int32(s.pointerY) << 16,
+		Buttons:   buttons,
+		Valuators: nil,
+		SourceID:  uint16(deviceID),
+		Mods:      mods,
+		Group:     wire.GroupInfo{},
+	}
+
+	if err := client.send(event); err != nil {
+		debugf("X11: Failed to write XInput2 keyboard event: %v", err)
+	}
+}
+
 func (s *x11Server) sendCoreMouseEvent(client *x11Client, eventType string, button byte, eventWindowID uint32, x, y int32, state uint16) {
 	var event messageEncoder
 	switch eventType {
@@ -726,12 +823,29 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	if !deviceGrabbed && eventType == "keydown" {
 		if grabs, ok := s.passiveDeviceGrabs[xid]; ok {
 			for _, grab := range grabs {
-				if grab.deviceID == deviceID && grab.key == wire.KeyCode(keycode) && (grab.modifiers == wire.AnyModifier || grab.modifiers == state) {
+				xi1Match := grab.xi2GrabType == 0 && grab.deviceID == deviceID && grab.key == wire.KeyCode(keycode) && (grab.modifiers == wire.AnyModifier || grab.modifiers == state)
+
+				xi2Match := false
+				if grab.xi2GrabType == wire.XI_KeyPress && grab.deviceID == deviceID && byte(grab.detail) == byte(keycode) {
+					if len(grab.xi2Modifiers) == 0 {
+						xi2Match = true
+					} else {
+						for _, mod := range grab.xi2Modifiers {
+							if (mod & 0xFFFF) == uint32(state) {
+								xi2Match = true
+								break
+							}
+						}
+					}
+				}
+
+				if xi1Match || xi2Match {
 					activeDeviceGrab = &deviceGrab{
-						window:      xid,
-						ownerEvents: grab.owner,
-						eventMask:   grab.eventMask,
-						time:        0,
+						window:       xid,
+						ownerEvents:  grab.owner,
+						eventMask:    grab.eventMask,
+						xi2EventMask: grab.xi2EventMask,
+						time:         0,
 					}
 					s.deviceGrabs[deviceID] = activeDeviceGrab
 					deviceGrabbed = true
@@ -752,19 +866,39 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 
 	if deviceGrabbed {
 		grabbingClient, clientExists := s.clients[activeDeviceGrab.window.client]
-		if clientExists && xiEventMask > 0 {
-			match := false
-			for _, class := range activeDeviceGrab.eventMask {
-				if byte(class&0xFF) == deviceID {
-					mask := class >> 8
-					if mask&uint32(xiEventMask) != 0 {
-						match = true
-						break
+		if clientExists {
+			if xiEventMask > 0 {
+				match := false
+				for _, class := range activeDeviceGrab.eventMask {
+					if byte(class&0xFF) == deviceID {
+						mask := class >> 8
+						if mask&uint32(xiEventMask) != 0 {
+							match = true
+							break
+						}
 					}
 				}
+				if match {
+					s.sendXInputKeyboardEvent(grabbingClient, eventType, keycode, s.inputFocus.local, state)
+				}
 			}
-			if match {
-				s.sendXInputKeyboardEvent(grabbingClient, eventType, keycode, s.inputFocus.local, state)
+
+			if activeDeviceGrab.xi2EventMask != nil {
+				var evType uint16
+				switch eventType {
+				case "keydown":
+					evType = wire.XI_KeyPress
+				case "keyup":
+					evType = wire.XI_KeyRelease
+				}
+
+				if evType > 0 {
+					wordIdx := int(evType / 32)
+					bitIdx := int(evType % 32)
+					if wordIdx < len(activeDeviceGrab.xi2EventMask) && (activeDeviceGrab.xi2EventMask[wordIdx]&(1<<bitIdx)) != 0 {
+						s.sendXInput2KeyboardEvent(grabbingClient, evType, deviceID, keycode, s.inputFocus.local, state)
+					}
+				}
 			}
 		}
 		return
@@ -1656,7 +1790,15 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.ChangeActivePointerGrabRequest:
-		// TODO: implement
+		if s.pointerGrabWindow.client == client.id && s.pointerGrabWindow.local != 0 {
+			if p.Cursor != 0 {
+				s.frontend.SetWindowCursor(s.pointerGrabWindow, client.xID(uint32(p.Cursor)))
+			}
+			s.pointerGrabEventMask = p.EventMask
+			if p.Time == 0 || uint32(p.Time) >= s.pointerGrabTime {
+				s.pointerGrabTime = uint32(p.Time)
+			}
+		}
 
 	case *wire.GrabKeyboardRequest:
 		grabWindow := client.xID(uint32(p.GrabWindow))

@@ -192,6 +192,7 @@ type MockX11Frontend struct {
 	GetDeviceButtonMappingCalls     [][]any
 	QueryDeviceStateCalls           [][]any
 	ComposeWindowCalls              []xID
+	AllowEventsCalls                [][]any
 }
 
 func (m *MockX11Frontend) ComposeWindow(xid xID) {
@@ -540,7 +541,7 @@ func (m *MockX11Frontend) OpenFont(fid xID, name string) {
 }
 
 func (m *MockX11Frontend) AllowEvents(clientID uint32, mode byte, time uint32) {
-	// Dummy implementation for mock
+	m.AllowEventsCalls = append(m.AllowEventsCalls, []any{clientID, mode, time})
 }
 
 func (m *MockX11Frontend) SendConfigureAndExposeEvent(windowID xID, x, y int16, width, height uint16) {

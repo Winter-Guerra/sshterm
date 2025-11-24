@@ -867,10 +867,12 @@ type XIPassiveGrabDeviceRequest struct {
 	Cursor           uint32
 	Detail           uint32
 	NumModifiers     uint16
+	MaskLen          uint16
 	GrabType         byte
 	GrabMode         byte
 	PairedDeviceMode byte
 	OwnerEvents      bool
+	Mask             []byte
 	Modifiers        []byte
 }
 
@@ -880,7 +882,7 @@ func (r *XIPassiveGrabDeviceRequest) OpCode() ReqCode {
 
 func (r *XIPassiveGrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
-	length := uint16(8 + len(r.Modifiers)/4)
+	length := uint16(8 + len(r.Mask)/4 + len(r.Modifiers)/4)
 
 	binary.Write(buf, order, r.OpCode())
 	buf.WriteByte(XIPassiveGrabDevice)
@@ -893,7 +895,7 @@ func (r *XIPassiveGrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byt
 	binary.Write(buf, order, r.Cursor)
 	binary.Write(buf, order, r.Detail)
 	binary.Write(buf, order, r.NumModifiers)
-	buf.Write([]byte{0, 0}) // padding
+	binary.Write(buf, order, r.MaskLen)
 	buf.WriteByte(r.GrabType)
 	buf.WriteByte(r.GrabMode)
 	buf.WriteByte(r.PairedDeviceMode)
@@ -902,6 +904,7 @@ func (r *XIPassiveGrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byt
 	} else {
 		buf.WriteByte(0)
 	}
+	buf.Write(r.Mask)
 	buf.Write(r.Modifiers)
 	return buf.Bytes()
 }
@@ -911,9 +914,15 @@ func ParseXIPassiveGrabDeviceRequest(order binary.ByteOrder, body []byte, seq ui
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveGrabDevice})
 	}
 	numModifiers := order.Uint16(body[20:22])
-	if len(body) != 28+int(numModifiers)*4 {
+	maskLen := order.Uint16(body[22:24])
+	expectedLen := 28 + int(maskLen)*4 + int(numModifiers)*4
+	if len(body) != expectedLen {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveGrabDevice})
 	}
+
+	mask := body[28 : 28+int(maskLen)*4]
+	modifiers := body[28+int(maskLen)*4:]
+
 	return &XIPassiveGrabDeviceRequest{
 		DeviceID:         order.Uint16(body[0:2]),
 		GrabWindow:       Window(order.Uint32(body[4:8])),
@@ -921,12 +930,47 @@ func ParseXIPassiveGrabDeviceRequest(order binary.ByteOrder, body []byte, seq ui
 		Cursor:           order.Uint32(body[12:16]),
 		Detail:           order.Uint32(body[16:20]),
 		NumModifiers:     numModifiers,
+		MaskLen:          maskLen,
 		GrabType:         body[24],
 		GrabMode:         body[25],
 		PairedDeviceMode: body[26],
 		OwnerEvents:      body[27] != 0,
-		Modifiers:        body[28:],
+		Mask:             mask,
+		Modifiers:        modifiers,
 	}, nil
+}
+
+// XIGrabModifierInfo structure
+type XIGrabModifierInfo struct {
+	Status    byte
+	Modifiers uint32
+}
+
+// XIPassiveGrabDevice reply
+type XIPassiveGrabDeviceReply struct {
+	Sequence     uint16
+	NumModifiers uint16
+	Modifiers    []XIGrabModifierInfo
+}
+
+func (r *XIPassiveGrabDeviceReply) EncodeMessage(order binary.ByteOrder) []byte {
+	totalLen := 32 + int(r.NumModifiers)*8
+	lengthField := (totalLen - 32) / 4
+
+	buf := make([]byte, totalLen)
+	buf[0] = 1 // Reply
+	order.PutUint16(buf[2:4], r.Sequence)
+	order.PutUint32(buf[4:8], uint32(lengthField))
+	order.PutUint16(buf[8:10], r.NumModifiers)
+	// pad0 (10-32) is 0
+
+	offset := 32
+	for _, mod := range r.Modifiers {
+		buf[offset] = mod.Status
+		order.PutUint32(buf[offset+4:offset+8], mod.Modifiers)
+		offset += 8
+	}
+	return buf
 }
 
 // XIPassiveUngrabDevice request
@@ -945,7 +989,7 @@ func (r *XIPassiveUngrabDeviceRequest) OpCode() ReqCode {
 
 func (r *XIPassiveUngrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := new(bytes.Buffer)
-	length := uint16(6 + len(r.Modifiers)/4)
+	length := uint16(5 + len(r.Modifiers)/4)
 
 	binary.Write(buf, order, r.OpCode())
 	buf.WriteByte(XIPassiveUngrabDevice)
@@ -956,9 +1000,8 @@ func (r *XIPassiveUngrabDeviceRequest) EncodeMessage(order binary.ByteOrder) []b
 	binary.Write(buf, order, r.GrabWindow)
 	binary.Write(buf, order, r.Detail)
 	binary.Write(buf, order, r.NumModifiers)
-	buf.Write([]byte{0, 0}) // padding
 	buf.WriteByte(r.GrabType)
-	buf.Write([]byte{0, 0, 0}) // padding
+	buf.WriteByte(0) // padding
 	buf.Write(r.Modifiers)
 	return buf.Bytes()
 }
@@ -968,7 +1011,7 @@ func ParseXIPassiveUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq 
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveUngrabDevice})
 	}
 	numModifiers := order.Uint16(body[12:14])
-	if len(body) != 20+int(numModifiers)*4 {
+	if len(body) != 16+int(numModifiers)*4 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIPassiveUngrabDevice})
 	}
 	return &XIPassiveUngrabDeviceRequest{
@@ -976,8 +1019,8 @@ func ParseXIPassiveUngrabDeviceRequest(order binary.ByteOrder, body []byte, seq 
 		GrabWindow:   Window(order.Uint32(body[4:8])),
 		Detail:       order.Uint32(body[8:12]),
 		NumModifiers: numModifiers,
-		GrabType:     body[16],
-		Modifiers:    body[20:],
+		GrabType:     body[14],
+		Modifiers:    body[16:],
 	}, nil
 }
 
@@ -3983,4 +4026,97 @@ func (r *XIQueryPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
 	}
 
 	return buf
+}
+
+func ParseXIGrabDeviceReply(order binary.ByteOrder, b []byte) (*XIGrabDeviceReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
+	}
+	r := &XIGrabDeviceReply{
+		Sequence: order.Uint16(b[2:4]),
+		Status:   b[1],
+	}
+	return r, nil
+}
+
+func ParseXIQueryVersionReply(order binary.ByteOrder, b []byte) (*XIQueryVersionReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
+	}
+	r := &XIQueryVersionReply{
+		Sequence:     order.Uint16(b[2:4]),
+		MajorVersion: order.Uint16(b[8:10]),
+		MinorVersion: order.Uint16(b[10:12]),
+	}
+	return r, nil
+}
+
+func ParseXIPassiveGrabDeviceReply(order binary.ByteOrder, b []byte) (*XIPassiveGrabDeviceReply, error) {
+	if len(b) < 32 {
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
+	}
+	numModifiers := order.Uint16(b[8:10])
+	if len(b) < 32+int(numModifiers)*8 {
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
+	}
+	modifiers := make([]XIGrabModifierInfo, numModifiers)
+	offset := 32
+	for i := 0; i < int(numModifiers); i++ {
+		modifiers[i] = XIGrabModifierInfo{
+			Status:    b[offset],
+			Modifiers: order.Uint32(b[offset+4 : offset+8]),
+		}
+		offset += 8
+	}
+
+	r := &XIPassiveGrabDeviceReply{
+		Sequence:     order.Uint16(b[2:4]),
+		NumModifiers: numModifiers,
+		Modifiers:    modifiers,
+	}
+	return r, nil
+}
+
+func ParseXIQueryPointerReply(order binary.ByteOrder, b []byte) (*XIQueryPointerReply, error) {
+	if len(b) < 56 {
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
+	}
+	buttonsLen := int(order.Uint16(b[34:36])) * 4
+	if len(b) < 56+buttonsLen {
+		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
+	}
+
+	r := &XIQueryPointerReply{
+		Sequence:   order.Uint16(b[2:4]),
+		Root:       Window(order.Uint32(b[8:12])),
+		Child:      Window(order.Uint32(b[12:16])),
+		RootX:      int32(order.Uint32(b[16:20])),
+		RootY:      int32(order.Uint32(b[20:24])),
+		WinX:       int32(order.Uint32(b[24:28])),
+		WinY:       int32(order.Uint32(b[28:32])),
+		SameScreen: b[32] != 0,
+		Mods: ModifierInfo{
+			Base:      order.Uint32(b[36:40]),
+			Latched:   order.Uint32(b[40:44]),
+			Locked:    order.Uint32(b[44:48]),
+			Effective: order.Uint32(b[48:52]),
+		},
+		Group: GroupInfo{
+			Base:      b[52],
+			Latched:   b[53],
+			Locked:    b[54],
+			Effective: b[55],
+		},
+	}
+
+	if buttonsLen > 0 {
+		r.Buttons = make([]uint32, buttonsLen/4)
+		offset := 56
+		for i := 0; i < int(buttonsLen/4); i++ {
+			r.Buttons[i] = order.Uint32(b[offset : offset+4])
+			offset += 4
+		}
+	}
+
+	return r, nil
 }

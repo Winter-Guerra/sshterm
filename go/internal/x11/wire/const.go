@@ -210,13 +210,18 @@ const (
 
 // XInput 2.0 Event Types
 const (
-	XI_DeviceButtonPress   = 1  // XI2 DeviceButtonPress
-	XI_DeviceButtonRelease = 2  // XI2 DeviceButtonRelease
-	XI_DeviceKeyPress      = 3  // XI2 DeviceKeyPress
-	XI_DeviceKeyRelease    = 4  // XI2 DeviceKeyRelease
-	XI_DeviceFocusIn       = 6  // XI2 DeviceFocusIn
-	XI_DeviceStateNotify   = 9  // XI2 DeviceStateNotify
-	XI_DeviceMappingNotify = 11 // XI2 DeviceMappingNotify
+	XI_DeviceChanged    = 1  // XI2 DeviceChanged
+	XI_KeyPress         = 2  // XI2 KeyPress
+	XI_KeyRelease       = 3  // XI2 KeyRelease
+	XI_ButtonPress      = 4  // XI2 ButtonPress
+	XI_ButtonRelease    = 5  // XI2 ButtonRelease
+	XI_Motion           = 6  // XI2 Motion
+	XI_Enter            = 7  // XI2 Enter
+	XI_Leave            = 8  // XI2 Leave
+	XI_FocusIn          = 9  // XI2 FocusIn
+	XI_FocusOut         = 10 // XI2 FocusOut
+	XI_HierarchyChanged = 11 // XI2 HierarchyChanged
+	XI_PropertyEvent    = 12 // XI2 PropertyEvent
 )
 
 // Window Attribute Masks

@@ -404,6 +404,129 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		s.frontend.DeviceBell(p.DeviceID, p.FeedbackID, p.FeedbackClass, int8(p.Percent))
 		return nil
 
+	case *wire.XIGrabDeviceRequest:
+		if _, ok := s.deviceGrabs[byte(p.DeviceID)]; ok {
+			return &wire.XIGrabDeviceReply{Sequence: seq, Status: wire.AlreadyGrabbed}
+		}
+
+		maskU32 := make([]uint32, (len(p.Mask)+3)/4)
+		for i := 0; i < len(p.Mask); i++ {
+			maskU32[i/4] |= uint32(p.Mask[i]) << ((i % 4) * 8)
+		}
+
+		grab := &deviceGrab{
+			window:       client.xID(uint32(p.GrabWindow)),
+			ownerEvents:  p.OwnerEvents,
+			xi2EventMask: maskU32,
+			time:         p.Time,
+		}
+		s.deviceGrabs[byte(p.DeviceID)] = grab
+		return &wire.XIGrabDeviceReply{Sequence: seq, Status: wire.GrabSuccess}
+
+	case *wire.XIUngrabDeviceRequest:
+		if grab, ok := s.deviceGrabs[byte(p.DeviceID)]; ok {
+			if grab.window.client == client.id {
+				delete(s.deviceGrabs, byte(p.DeviceID))
+			}
+		}
+		return nil
+
+	case *wire.XIPassiveGrabDeviceRequest:
+		grabWindow := client.xID(uint32(p.GrabWindow))
+
+		maskU32 := make([]uint32, (len(p.Mask)+3)/4)
+		for i := 0; i < len(p.Mask); i++ {
+			maskU32[i/4] |= uint32(p.Mask[i]) << ((i % 4) * 8)
+		}
+
+		modifiers := make([]uint32, p.NumModifiers)
+		if len(p.Modifiers) >= int(p.NumModifiers)*4 {
+			for i := 0; i < int(p.NumModifiers); i++ {
+				modifiers[i] = client.byteOrder.Uint32(p.Modifiers[i*4 : (i+1)*4])
+			}
+		}
+
+		if p.NumModifiers == 0 {
+			grab := &passiveDeviceGrab{
+				clientID:     client.id,
+				deviceID:     byte(p.DeviceID),
+				detail:       p.Detail,
+				xi2Modifiers: []uint32{}, // AnyModifier
+				owner:        p.OwnerEvents,
+				xi2EventMask: maskU32,
+				xi2GrabType:  int(p.GrabType),
+			}
+			s.passiveDeviceGrabs[grabWindow] = append(s.passiveDeviceGrabs[grabWindow], grab)
+		} else {
+			for _, mod := range modifiers {
+				grab := &passiveDeviceGrab{
+					clientID:     client.id,
+					deviceID:     byte(p.DeviceID),
+					detail:       p.Detail,
+					xi2Modifiers: []uint32{mod},
+					owner:        p.OwnerEvents,
+					xi2EventMask: maskU32,
+					xi2GrabType:  int(p.GrabType),
+				}
+				s.passiveDeviceGrabs[grabWindow] = append(s.passiveDeviceGrabs[grabWindow], grab)
+			}
+		}
+
+		replyMods := make([]wire.XIGrabModifierInfo, p.NumModifiers)
+		for i := 0; i < int(p.NumModifiers); i++ {
+			replyMods[i] = wire.XIGrabModifierInfo{
+				Status:    wire.GrabSuccess,
+				Modifiers: modifiers[i],
+			}
+		}
+
+		return &wire.XIPassiveGrabDeviceReply{
+			Sequence:     seq,
+			NumModifiers: p.NumModifiers,
+			Modifiers:    replyMods,
+		}
+
+	case *wire.XIPassiveUngrabDeviceRequest:
+		grabWindow := client.xID(uint32(p.GrabWindow))
+		if grabs, ok := s.passiveDeviceGrabs[grabWindow]; ok {
+			newGrabs := make([]*passiveDeviceGrab, 0, len(grabs))
+
+			requestModifiers := make([]uint32, p.NumModifiers)
+			if len(p.Modifiers) >= int(p.NumModifiers)*4 {
+				for i := 0; i < int(p.NumModifiers); i++ {
+					requestModifiers[i] = client.byteOrder.Uint32(p.Modifiers[i*4 : (i+1)*4])
+				}
+			}
+
+			for _, grab := range grabs {
+				remove := false
+				if grab.xi2GrabType != 0 && grab.deviceID == byte(p.DeviceID) && grab.detail == p.Detail && grab.xi2GrabType == int(p.GrabType) {
+					if p.NumModifiers == 0 {
+						remove = true
+					} else {
+						// Check if grab's modifier (single) is in request's list
+						if len(grab.xi2Modifiers) > 0 {
+							for _, reqMod := range requestModifiers {
+								if grab.xi2Modifiers[0] == reqMod {
+									remove = true
+									break
+								}
+							}
+						}
+					}
+				}
+				if !remove {
+					newGrabs = append(newGrabs, grab)
+				}
+			}
+			s.passiveDeviceGrabs[grabWindow] = newGrabs
+		}
+		return nil
+
+	case *wire.XIAllowEventsRequest:
+		s.frontend.AllowEvents(client.id, p.EventMode, p.Time)
+		return nil
+
 	case *wire.XIChangeHierarchyRequest:
 		s.frontend.XIChangeHierarchy(p.Changes)
 		return nil
@@ -422,14 +545,38 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		rootX := int32(s.pointerX)
 		rootY := int32(s.pointerY)
 
+		child := uint32(0)
 		if xid.local == s.rootWindowID() {
 			winX = rootX
 			winY = rootY
+			for _, w := range s.windows {
+				if w.parent == s.rootWindowID() && w.mapped {
+					if s.pointerX >= w.x && s.pointerX < w.x+int16(w.width) &&
+						s.pointerY >= w.y && s.pointerY < w.y+int16(w.height) {
+						child = w.xid.local
+						break
+					}
+				}
+			}
 		} else {
 			if w, ok := s.windows[xid]; ok {
 				// Assumes shallow hierarchy (window is child of root) as per current implementation assumption
 				winX = rootX - int32(w.x)
 				winY = rootY - int32(w.y)
+
+				ptrRelX := s.pointerX - w.x
+				ptrRelY := s.pointerY - w.y
+				for i := len(w.children) - 1; i >= 0; i-- {
+					childID := w.children[i]
+					childXID := xID{client: xid.client, local: childID}
+					if childWin, ok := s.windows[childXID]; ok && childWin.mapped {
+						if ptrRelX >= childWin.x && ptrRelX < childWin.x+int16(childWin.width) &&
+							ptrRelY >= childWin.y && ptrRelY < childWin.y+int16(childWin.height) {
+							child = childID
+							break
+						}
+					}
+				}
 			} else {
 				return wire.NewError(wire.WindowErrorCode, seq, uint32(p.Window), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XIQueryPointer})
 			}
@@ -464,7 +611,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return &wire.XIQueryPointerReply{
 			Sequence:   seq,
 			Root:       wire.Window(s.rootWindowID()),
-			Child:      0, // TODO: Child window
+			Child:      wire.Window(child),
 			RootX:      rootX << 16,
 			RootY:      rootY << 16,
 			WinX:       winX << 16,

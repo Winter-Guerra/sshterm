@@ -233,6 +233,14 @@ func parseXInputReply(minorOpcode uint8, order binary.ByteOrder, b []byte) (Serv
 		return ParseGetDeviceControlReply(order, b)
 	case XChangeDeviceControl:
 		return ParseChangeDeviceControlReply(order, b)
+	case XIQueryVersion:
+		return ParseXIQueryVersionReply(order, b)
+	case XIQueryPointer:
+		return ParseXIQueryPointerReply(order, b)
+	case XIGrabDevice:
+		return ParseXIGrabDeviceReply(order, b)
+	case XIPassiveGrabDevice:
+		return ParseXIPassiveGrabDeviceReply(order, b)
 	}
 	return nil, NewError(RequestErrorCode, 0, 0, Opcodes{Major: XInputOpcode, Minor: minorOpcode})
 }

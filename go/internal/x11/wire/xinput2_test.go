@@ -153,10 +153,12 @@ func TestXIPassiveGrabDeviceRequest_EncodeDecode(t *testing.T) {
 		Cursor:           4,
 		Detail:           5,
 		NumModifiers:     1,
+		MaskLen:          1,
 		GrabType:         1,
 		GrabMode:         2,
 		PairedDeviceMode: 3,
 		OwnerEvents:      true,
+		Mask:             []byte{5, 6, 7, 8},
 		Modifiers:        []byte{1, 2, 3, 4},
 	}
 
