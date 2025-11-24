@@ -1111,7 +1111,7 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	})
 }
 
-func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC) {
+func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, clientID uint32) {
 	ctx.Set("imageSmoothingEnabled", false)
 
 	color := w.getForegroundColor(colormap, gc)
@@ -1145,12 +1145,12 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC) {
 	case wire.FillStyleSolid:
 		ctx.Set("fillStyle", color)
 	case wire.FillStyleTiled:
-		if tilePixmap, ok := w.pixmaps[xID{local: gc.Tile}]; ok {
+		if tilePixmap, ok := w.pixmaps[xID{client: clientID, local: gc.Tile}]; ok {
 			pattern := ctx.Call("createPattern", tilePixmap.canvas, "repeat")
 			ctx.Set("fillStyle", pattern)
 		}
 	case wire.FillStyleStippled:
-		if stipplePixmap, ok := w.pixmaps[xID{local: gc.Stipple}]; ok {
+		if stipplePixmap, ok := w.pixmaps[xID{client: clientID, local: gc.Stipple}]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
 			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
 			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height"))
@@ -1165,7 +1165,7 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC) {
 			ctx.Set("fillStyle", pattern)
 		}
 	case wire.FillStyleOpaqueStippled:
-		if stipplePixmap, ok := w.pixmaps[xID{local: gc.Stipple}]; ok {
+		if stipplePixmap, ok := w.pixmaps[xID{client: clientID, local: gc.Stipple}]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
 			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
 			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height"))
@@ -1187,7 +1187,7 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC) {
 	}
 
 	if gc.Font != 0 {
-		if font, ok := w.fonts[xID{local: gc.Font}]; ok {
+		if font, ok := w.fonts[xID{client: clientID, local: gc.Font}]; ok {
 			ctx.Set("font", font.cssFont)
 		}
 	}
@@ -1235,7 +1235,7 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 	if !useSoftwareEmulation {
 		debugf("applyGC: using native path")
 		destCtx.Call("save")
-		w.applyGCState(destCtx, colormap, gc)
+		w.applyGCState(destCtx, colormap, gc, gcID.client)
 		destCtx.Set("globalCompositeOperation", nativeOp)
 		draw(destCtx)
 		destCtx.Call("restore")
@@ -1267,7 +1267,7 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 
 	debugf("applyGC: drawing to temporary canvas")
 	tempCtx.Call("save")
-	w.applyGCState(tempCtx, colormap, gc)
+	w.applyGCState(tempCtx, colormap, gc, gcID.client)
 	draw(tempCtx)
 	tempCtx.Call("restore")
 	debugf("applyGC: finished drawing to temporary canvas")
@@ -1945,7 +1945,7 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 	decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
 
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc)
+	w.applyGCState(ctx, colormap, gc, gcID.client)
 	metrics := ctx.Call("measureText", decodedText)
 	ctx.Call("restore")
 
@@ -1999,7 +1999,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
 
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc)
+	w.applyGCState(ctx, colormap, gc, gcID.client)
 	metrics := ctx.Call("measureText", decodedText)
 	ctx.Call("restore")
 
@@ -2045,7 +2045,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 	var opBounds image.Rectangle
 	currentX := x
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc)
+	w.applyGCState(ctx, colormap, gc, gcID.client)
 
 	for _, item := range items {
 		switch it := item.(type) {
@@ -2065,7 +2065,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 				opBounds = opBounds.Union(itemBounds)
 			}
 		case wire.PolyTextFont:
-			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+			if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
 				ctx.Set("font", font.cssFont)
 			}
 		}
@@ -2087,7 +2087,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 				targetCtx.Call("fillText", decodedText, currentX, y)
 				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
 			case wire.PolyTextFont:
-				if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+				if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
 					targetCtx.Set("font", font.cssFont)
 					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
 				}
@@ -2527,7 +2527,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 	var opBounds image.Rectangle
 	currentX := x
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc)
+	w.applyGCState(ctx, colormap, gc, gcID.client)
 
 	for _, item := range items {
 		switch it := item.(type) {
@@ -2551,7 +2551,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 				opBounds = opBounds.Union(itemBounds)
 			}
 		case wire.PolyTextFont:
-			if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+			if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
 				ctx.Set("font", font.cssFont)
 			}
 		}
@@ -2577,7 +2577,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 				targetCtx.Call("fillText", decodedText, currentX, y)
 				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
 			case wire.PolyTextFont:
-				if font, ok := w.fonts[xID{drawable.client, uint32(it.Font)}]; ok {
+				if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
 					targetCtx.Set("font", font.cssFont)
 					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
 				}
