@@ -13,7 +13,7 @@ import (
 func MapX11FontToCSS(x11FontName string) (size, family, weight, slant, cssFont string) {
 	// Default values
 	size = "12px"
-	family = "monospace"
+	family = "DejaVu Sans Mono" // Use a more robust default font
 	weight = "normal"
 	slant = "normal"
 
@@ -21,7 +21,7 @@ func MapX11FontToCSS(x11FontName string) (size, family, weight, slant, cssFont s
 	switch strings.ToLower(x11FontName) {
 	case "fixed", "cursor":
 		size = "12px"
-		family = "monospace"
+		family = "DejaVu Sans Mono" // Use a more robust font for "fixed"
 		weight = "normal"
 		slant = "normal"
 	case "5x7", "5x8", "6x9", "6x10", "6x12", "6x13", "7x13", "7x14", "8x13", "8x16", "9x15", "9x18", "10x20", "12x24":
