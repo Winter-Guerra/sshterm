@@ -415,6 +415,66 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 			MinorVersion: 2,
 		}
 
+	case *wire.XIQueryPointerRequest:
+		xid := client.xID(uint32(p.Window))
+		var winX, winY int32
+
+		rootX := int32(s.pointerX)
+		rootY := int32(s.pointerY)
+
+		if xid.local == s.rootWindowID() {
+			winX = rootX
+			winY = rootY
+		} else {
+			if w, ok := s.windows[xid]; ok {
+				// Assumes shallow hierarchy (window is child of root) as per current implementation assumption
+				winX = rootX - int32(w.x)
+				winY = rootY - int32(w.y)
+			} else {
+				return wire.NewError(wire.WindowErrorCode, seq, uint32(p.Window), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XIQueryPointer})
+			}
+		}
+
+		mods := wire.ModifierInfo{
+			Base:      uint32(s.pointerState),
+			Latched:   0,
+			Locked:    0,
+			Effective: uint32(s.pointerState),
+		}
+
+		buttonMask := uint32(0)
+		if s.pointerState&wire.Button1Mask != 0 {
+			buttonMask |= (1 << 0)
+		}
+		if s.pointerState&wire.Button2Mask != 0 {
+			buttonMask |= (1 << 1)
+		}
+		if s.pointerState&wire.Button3Mask != 0 {
+			buttonMask |= (1 << 2)
+		}
+		if s.pointerState&wire.Button4Mask != 0 {
+			buttonMask |= (1 << 3)
+		}
+		if s.pointerState&wire.Button5Mask != 0 {
+			buttonMask |= (1 << 4)
+		}
+
+		buttons := []uint32{buttonMask}
+
+		return &wire.XIQueryPointerReply{
+			Sequence:   seq,
+			Root:       wire.Window(s.rootWindowID()),
+			Child:      0, // TODO: Child window
+			RootX:      rootX << 16,
+			RootY:      rootY << 16,
+			WinX:       winX << 16,
+			WinY:       winY << 16,
+			SameScreen: true,
+			Mods:       mods,
+			Group:      wire.GroupInfo{},
+			Buttons:    buttons,
+		}
+
 	case *wire.XISelectEventsRequest:
 		windowID := uint32(p.Window)
 		for _, mask := range p.Masks {

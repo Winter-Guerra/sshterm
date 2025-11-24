@@ -156,6 +156,8 @@ func ParseXInputRequest(order binary.ByteOrder, data byte, body []byte, seq uint
 		return ParseChangeDeviceControlRequest(order, body, seq)
 	case XIQueryVersion:
 		return ParseXIQueryVersionRequest(order, body, seq)
+	case XIQueryPointer:
+		return ParseXIQueryPointerRequest(order, body, seq)
 	case XIWarpPointer:
 		return ParseXIWarpPointerRequest(order, body, seq)
 	case XIChangeCursor:
@@ -3787,6 +3789,22 @@ func (r *XIQueryVersionReply) EncodeMessage(order binary.ByteOrder) []byte {
 	return reply
 }
 
+// ModifierInfo structure
+type ModifierInfo struct {
+	Base      uint32
+	Latched   uint32
+	Locked    uint32
+	Effective uint32
+}
+
+// GroupInfo structure
+type GroupInfo struct {
+	Base      byte
+	Latched   byte
+	Locked    byte
+	Effective byte
+}
+
 // XIDeviceEvent represents an XI 2.x DeviceEvent.
 type XIDeviceEvent struct {
 	Sequence  uint16
@@ -3803,29 +3821,29 @@ type XIDeviceEvent struct {
 	EventY    int32 // FP1616
 	Buttons   []uint32
 	Valuators []float64
-	Mods      uint32 // base, latched, locked, effective packed? No, it's ModifierInfo struct
+	SourceID  uint16
+	Mods      ModifierInfo
+	Group     GroupInfo
 }
 
 func (e *XIDeviceEvent) EncodeMessage(order binary.ByteOrder) []byte {
-	// Calculate length
-	// Fixed part: 48 bytes (including 32-byte standard header area which is used for XI2 fields)
+	// Fixed part: 76 bytes
 	// Header (GenericEvent): 12 bytes. But DeviceEvent struct overlaps.
 	// Wire format:
 	// type(1)=35, extension(1), sequence(2), length(4), evtype(2), deviceid(2), time(4), detail(4), root(4), event(4), child(4),
-	// root_x(4), root_y(4), event_x(4), event_y(4), buttons_len(2), valuators_len(2), mods(4), group(2)
-	// = 48 bytes.
-	// Then lists.
+	// root_x(4), root_y(4), event_x(4), event_y(4), buttons_len(2), valuators_len(2), sourceid(2), pad0(2)
+	// mods(16), group(4)
+	// = 76 bytes.
 
-	// Buttons mask
 	buttonsLen := 0
 	if len(e.Buttons) > 0 {
 		buttonsLen = len(e.Buttons) * 4
 	}
-	// Valuators mask + values? No, valuators_len is bitmask len.
-	// For simplicity, we assume no valuators and basic buttons for now as xeyes mostly needs motion.
+	// Valuators mask + values? No, valuators_len is bitmask len (in 4-byte units).
+	// We assume no valuators for now.
 	valuatorsLen := 0
 
-	totalLen := 48 + buttonsLen + valuatorsLen
+	totalLen := 76 + buttonsLen + valuatorsLen
 	lengthField := (totalLen - 32) / 4
 
 	buf := make([]byte, totalLen)
@@ -3846,12 +3864,119 @@ func (e *XIDeviceEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	order.PutUint32(buf[44:48], uint32(e.EventY))
 	order.PutUint16(buf[48:50], uint16(buttonsLen/4))
 	order.PutUint16(buf[50:52], 0) // Valuators len
-	order.PutUint32(buf[52:56], e.Mods)
-	order.PutUint16(buf[56:58], 0) // Group
+	order.PutUint16(buf[52:54], e.SourceID)
+	// pad0 (54-56) is 0
+
+	// Mods (16 bytes)
+	order.PutUint32(buf[56:60], e.Mods.Base)
+	order.PutUint32(buf[60:64], e.Mods.Latched)
+	order.PutUint32(buf[64:68], e.Mods.Locked)
+	order.PutUint32(buf[68:72], e.Mods.Effective)
+
+	// Group (4 bytes)
+	buf[72] = e.Group.Base
+	buf[73] = e.Group.Latched
+	buf[74] = e.Group.Locked
+	buf[75] = e.Group.Effective
 
 	if buttonsLen > 0 {
-		offset := 58
+		offset := 76
 		for _, b := range e.Buttons {
+			order.PutUint32(buf[offset:offset+4], b)
+			offset += 4
+		}
+	}
+
+	return buf
+}
+
+// XIQueryPointer request
+type XIQueryPointerRequest struct {
+	Window   Window
+	DeviceID uint16
+}
+
+func (r *XIQueryPointerRequest) OpCode() ReqCode {
+	return XInputOpcode
+}
+
+func (r *XIQueryPointerRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	length := uint16(3)
+
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(XIQueryPointer)
+	binary.Write(buf, order, length)
+
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.DeviceID)
+	buf.Write([]byte{0, 0}) // padding
+	return buf.Bytes()
+}
+
+func ParseXIQueryPointerRequest(order binary.ByteOrder, body []byte, seq uint16) (*XIQueryPointerRequest, error) {
+	if len(body) != 8 {
+		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XIQueryPointer})
+	}
+	return &XIQueryPointerRequest{
+		Window:   Window(order.Uint32(body[0:4])),
+		DeviceID: order.Uint16(body[4:6]),
+	}, nil
+}
+
+// XIQueryPointer reply
+type XIQueryPointerReply struct {
+	Sequence   uint16
+	Root       Window
+	Child      Window
+	RootX      int32 // FP1616
+	RootY      int32 // FP1616
+	WinX       int32 // FP1616
+	WinY       int32 // FP1616
+	SameScreen bool
+	Mods       ModifierInfo
+	Group      GroupInfo
+	Buttons    []uint32
+}
+
+func (r *XIQueryPointerReply) EncodeMessage(order binary.ByteOrder) []byte {
+	buttonsLen := len(r.Buttons) * 4
+	totalLen := 56 + buttonsLen
+	lengthField := (totalLen - 32) / 4
+
+	buf := make([]byte, totalLen)
+	buf[0] = 1 // Reply
+	order.PutUint16(buf[2:4], r.Sequence)
+	order.PutUint32(buf[4:8], uint32(lengthField))
+
+	order.PutUint32(buf[8:12], uint32(r.Root))
+	order.PutUint32(buf[12:16], uint32(r.Child))
+	order.PutUint32(buf[16:20], uint32(r.RootX))
+	order.PutUint32(buf[20:24], uint32(r.RootY))
+	order.PutUint32(buf[24:28], uint32(r.WinX))
+	order.PutUint32(buf[28:32], uint32(r.WinY))
+
+	if r.SameScreen {
+		buf[32] = 1
+	}
+	// pad0 (33)
+	order.PutUint16(buf[34:36], uint16(len(r.Buttons)))
+
+	// Mods (16 bytes)
+	order.PutUint32(buf[36:40], r.Mods.Base)
+	order.PutUint32(buf[40:44], r.Mods.Latched)
+	order.PutUint32(buf[44:48], r.Mods.Locked)
+	order.PutUint32(buf[48:52], r.Mods.Effective)
+
+	// Group (4 bytes)
+	buf[52] = r.Group.Base
+	buf[53] = r.Group.Latched
+	buf[54] = r.Group.Locked
+	buf[55] = r.Group.Effective
+
+	if len(r.Buttons) > 0 {
+		offset := 56
+		for _, b := range r.Buttons {
 			order.PutUint32(buf[offset:offset+4], b)
 			offset += 4
 		}

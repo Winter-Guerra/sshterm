@@ -231,6 +231,7 @@ type x11Server struct {
 	grabbingClientID      uint32
 	fontPath              []string
 	keymap                map[byte]uint32
+	pointerState          uint16
 }
 
 type passiveGrab struct {
@@ -331,6 +332,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	}
 
 	state := uint16(detail >> 16)
+	s.pointerState = state
 	button := byte(detail & 0xFFFF)
 	deviceID := virtualPointer.Header.DeviceID
 
@@ -521,20 +523,37 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 }
 
 func (s *x11Server) sendXInput2MouseEvent(client *x11Client, evType uint16, deviceID byte, button byte, eventWindowID uint32, x, y int32, state uint16) {
-	// Simplified modifiers
-	mods := uint32(state) // Base modifiers
+	// Modifiers
+	mods := wire.ModifierInfo{
+		Base:      uint32(state),
+		Latched:   0,
+		Locked:    0,
+		Effective: uint32(state),
+	}
 
 	// Buttons mask
-	var buttons []uint32
-	if button > 0 {
-		// Set bit for button. Button 1 is bit 0? No, usually 1-based in protocol but 0-based in mask?
-		// XI2: "Button 1 is the first button".
-		// Button mask is "1 bit per button".
-		// If button 1 is pressed, bit ?
-		// Let's assume standard X11 button numbering.
-		// We'll construct a minimal button mask.
-		// xeyes might not care about button mask for Motion events.
+	// Convert X11 state mask to XI2 button mask
+	buttonMask := uint32(0)
+	if state&wire.Button1Mask != 0 {
+		buttonMask |= (1 << 0)
 	}
+	if state&wire.Button2Mask != 0 {
+		buttonMask |= (1 << 1)
+	}
+	if state&wire.Button3Mask != 0 {
+		buttonMask |= (1 << 2)
+	}
+	if state&wire.Button4Mask != 0 {
+		buttonMask |= (1 << 3)
+	}
+	if state&wire.Button5Mask != 0 {
+		buttonMask |= (1 << 4)
+	}
+
+	// For ButtonPress/Release, we might need to ensure the button is set/unset correctly.
+	// Assuming `state` reflects the state *after* the event (as per JS semantics).
+
+	buttons := []uint32{buttonMask}
 
 	// FP1616 coordinates
 	rootX := x << 16
@@ -558,7 +577,9 @@ func (s *x11Server) sendXInput2MouseEvent(client *x11Client, evType uint16, devi
 		EventY:    eventY,
 		Buttons:   buttons,
 		Valuators: nil,
+		SourceID:  uint16(deviceID), // For now, SourceID is same as DeviceID (Master)
 		Mods:      mods,
+		Group:     wire.GroupInfo{},
 	}
 
 	// Wrap in GenericEvent
@@ -687,6 +708,10 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	if metaKey {
 		state |= 64
 	}
+
+	// Preserve button state
+	state |= (s.pointerState & 0xFF00)
+	s.pointerState = state
 
 	keycode, ok := jsCodeToX11Keycode[code]
 	if !ok {

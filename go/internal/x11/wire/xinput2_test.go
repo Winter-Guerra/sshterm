@@ -762,3 +762,142 @@ func TestDeviceBellRequest(t *testing.T) {
 
 	assert.Equal(t, request, decoded)
 }
+
+func TestXIQueryPointerRequest_EncodeDecode(t *testing.T) {
+	order := binary.LittleEndian
+	req := &XIQueryPointerRequest{
+		Window:   Window(1),
+		DeviceID: 2,
+	}
+
+	encoded := req.EncodeMessage(order)
+
+	parsed, err := ParseRequest(order, encoded, 1, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, req, parsed)
+}
+
+func TestXIDeviceEvent_Encode(t *testing.T) {
+	order := binary.LittleEndian
+	event := &XIDeviceEvent{
+		Sequence:  10,
+		EventType: 6, // Motion
+		DeviceID:  2,
+		Time:      12345,
+		Detail:    0,
+		Root:      1,
+		Event:     2,
+		Child:     3,
+		RootX:     10 << 16,
+		RootY:     20 << 16,
+		EventX:    10 << 16,
+		EventY:    20 << 16,
+		SourceID:  5,
+		Buttons:   []uint32{0xCAFEBABE},
+		Mods: ModifierInfo{
+			Base:      1,
+			Latched:   2,
+			Locked:    3,
+			Effective: 4,
+		},
+		Group: GroupInfo{
+			Base:      5,
+			Latched:   6,
+			Locked:    7,
+			Effective: 8,
+		},
+	}
+
+	encoded := event.EncodeMessage(order)
+
+	// Fixed length 76 + buttons (4) = 80 bytes.
+	assert.Equal(t, 80, len(encoded))
+
+	// Check GenericEvent header
+	assert.Equal(t, byte(35), encoded[0])
+	assert.Equal(t, byte(XInputOpcode), encoded[1])
+	assert.Equal(t, uint16(10), order.Uint16(encoded[2:4]))
+	// Length field: (80 - 32) / 4 = 12
+	assert.Equal(t, uint32(12), order.Uint32(encoded[4:8]))
+
+	// Check buttons_len at 48
+	assert.Equal(t, uint16(1), order.Uint16(encoded[48:50])) // 1 unit of 4 bytes
+
+	// Check sourceid at 52
+	assert.Equal(t, uint16(5), order.Uint16(encoded[52:54]))
+
+	// Check Mods (offset 56)
+	assert.Equal(t, uint32(1), order.Uint32(encoded[56:60]))
+	assert.Equal(t, uint32(2), order.Uint32(encoded[60:64]))
+	assert.Equal(t, uint32(3), order.Uint32(encoded[64:68]))
+	assert.Equal(t, uint32(4), order.Uint32(encoded[68:72]))
+
+	// Check Group (offset 72)
+	assert.Equal(t, byte(5), encoded[72])
+	assert.Equal(t, byte(6), encoded[73])
+	assert.Equal(t, byte(7), encoded[74])
+	assert.Equal(t, byte(8), encoded[75])
+
+	// Check Buttons (offset 76)
+	assert.Equal(t, uint32(0xCAFEBABE), order.Uint32(encoded[76:80]))
+}
+
+func TestXIQueryPointerReply_Encode(t *testing.T) {
+	order := binary.LittleEndian
+	reply := &XIQueryPointerReply{
+		Sequence:   10,
+		Root:       1,
+		Child:      2,
+		RootX:      10 << 16,
+		RootY:      20 << 16,
+		WinX:       30 << 16,
+		WinY:       40 << 16,
+		SameScreen: true,
+		Mods: ModifierInfo{
+			Base:      1,
+			Latched:   2,
+			Locked:    3,
+			Effective: 4,
+		},
+		Group: GroupInfo{
+			Base:      5,
+			Latched:   6,
+			Locked:    7,
+			Effective: 8,
+		},
+		Buttons: []uint32{0xDEADBEEF},
+	}
+
+	encoded := reply.EncodeMessage(order)
+
+	// Fixed length 56 + buttons (4) = 60 bytes.
+	assert.Equal(t, 60, len(encoded))
+
+	// Header checks
+	assert.Equal(t, byte(1), encoded[0])
+	assert.Equal(t, uint16(10), order.Uint16(encoded[2:4]))
+	// Length: (60 - 32) / 4 = 7
+	assert.Equal(t, uint32(7), order.Uint32(encoded[4:8]))
+
+	// Check same_screen at 32
+	assert.Equal(t, byte(1), encoded[32])
+
+	// Check buttons_len at 34
+	assert.Equal(t, uint16(1), order.Uint16(encoded[34:36]))
+
+	// Check Mods (offset 36)
+	assert.Equal(t, uint32(1), order.Uint32(encoded[36:40]))
+	assert.Equal(t, uint32(2), order.Uint32(encoded[40:44]))
+	assert.Equal(t, uint32(3), order.Uint32(encoded[44:48]))
+	assert.Equal(t, uint32(4), order.Uint32(encoded[48:52]))
+
+	// Check Group (offset 52)
+	assert.Equal(t, byte(5), encoded[52])
+	assert.Equal(t, byte(6), encoded[53])
+	assert.Equal(t, byte(7), encoded[54])
+	assert.Equal(t, byte(8), encoded[55])
+
+	// Check Buttons (offset 56)
+	assert.Equal(t, uint32(0xDEADBEEF), order.Uint32(encoded[56:60]))
+}
