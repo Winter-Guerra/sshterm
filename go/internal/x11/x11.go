@@ -49,8 +49,6 @@ type X11FrontendAPI interface {
 	CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values wire.WindowAttributes)
 	ChangeWindowAttributes(xid xID, valueMask uint32, values wire.WindowAttributes)
 	GetWindowAttributes(xid xID) wire.WindowAttributes
-	ChangeProperty(xid xID, property, typeAtom, format uint32, data []byte)
-	DeleteProperty(xid xID, property uint32)
 	CreateGC(xid xID, valueMask uint32, values wire.GC)
 	ChangeGC(xid xID, valueMask uint32, gc wire.GC)
 	DestroyWindow(xid xID)
@@ -78,10 +76,6 @@ type X11FrontendAPI interface {
 	WriteClipboard(string) error
 	UpdatePointerPosition(x, y int16)
 	Bell(percent int8)
-	GetAtom(clientID uint32, name string) uint32
-	GetAtomName(atom uint32) string
-	ListProperties(window xID) []uint32
-	GetProperty(window xID, property uint32, longOffset, longLength uint32) (data []byte, typ, format, bytesAfter uint32)
 	SetInputFocus(focus xID, revertTo byte)
 	ImageText8(drawable xID, gcID xID, x, y int32, text []byte)
 	ImageText16(drawable xID, gcID xID, x, y int32, text []uint16)
@@ -98,7 +92,7 @@ type X11FrontendAPI interface {
 	FreeCursor(cursorID xID)
 	SendEvent(eventData messageEncoder)
 	GetFocusWindow(clientID uint32) xID
-	ConvertSelection(selection, target, property uint32, requestor xID)
+	SetWindowTitle(xid xID, title string)
 	GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte
 	UngrabPointer(time uint32)
 	GrabKeyboard(grabWindow xID, ownerEvents bool, time uint32, pointerMode, keyboardMode byte) byte
@@ -128,7 +122,6 @@ type X11FrontendAPI interface {
 	SetAccessControl(mode byte)
 	SetCloseDownMode(mode byte)
 	KillClient(resource uint32)
-	RotateProperties(window xID, delta int16, atoms []wire.Atom) error
 	ForceScreenSaver(mode byte)
 	SetModifierMapping(keyCodesPerModifier byte, keyCodes []wire.KeyCode) (byte, error)
 	GetModifierMapping() ([]wire.KeyCode, error)
@@ -186,6 +179,17 @@ type colormap struct {
 	pixels map[uint32]wire.XColorItem
 }
 
+type property struct {
+	data     []byte
+	typeAtom uint32
+	format   byte
+}
+
+type selectionOwner struct {
+	window xID
+	time   uint32
+}
+
 type DeviceButtonPressEventData struct {
 	Event  uint32
 	RootX  uint16
@@ -202,7 +206,11 @@ type x11Server struct {
 	gcs                   map[xID]wire.GC
 	pixmaps               map[xID]bool
 	cursors               map[xID]bool
-	selections            map[xID]uint32
+	selections            map[uint32]*selectionOwner
+	atoms                 map[string]uint32
+	atomNames             map[uint32]string
+	nextAtomID            uint32
+	properties            map[xID]map[uint32]*property
 	colormaps             map[xID]*colormap
 	defaultColormap       uint32
 	installedColormap     xID
@@ -1325,6 +1333,195 @@ func calculateShift(mask uint32) uint32 {
 	return shift
 }
 
+func (s *x11Server) initAtoms() {
+	s.atoms = map[string]uint32{
+		"PRIMARY":             1,
+		"SECONDARY":           2,
+		"ARC":                 3,
+		"ATOM":                4,
+		"BITMAP":              5,
+		"CARDINAL":            6,
+		"COLORMAP":            7,
+		"CURSOR":              8,
+		"CUT_BUFFER0":         9,
+		"CUT_BUFFER1":         10,
+		"CUT_BUFFER2":         11,
+		"CUT_BUFFER3":         12,
+		"CUT_BUFFER4":         13,
+		"CUT_BUFFER5":         14,
+		"CUT_BUFFER6":         15,
+		"CUT_BUFFER7":         16,
+		"DRAWABLE":            17,
+		"FONT":                18,
+		"INTEGER":             19,
+		"PIXMAP":              20,
+		"POINT":               21,
+		"RECTANGLE":           22,
+		"RESOURCE_MANAGER":    23,
+		"RGB_COLOR_MAP":       24,
+		"RGB_BEST_MAP":        25,
+		"RGB_BLUE_MAP":        26,
+		"RGB_DEFAULT_MAP":     27,
+		"RGB_GRAY_MAP":        28,
+		"RGB_GREEN_MAP":       29,
+		"RGB_RED_MAP":         30,
+		"STRING":              31,
+		"VISUALID":            32,
+		"WINDOW":              33,
+		"WM_COMMAND":          34,
+		"WM_HINTS":            35,
+		"WM_CLIENT_MACHINE":   36,
+		"WM_ICON_NAME":        37,
+		"WM_ICON_SIZE":        38,
+		"WM_NAME":             39,
+		"WM_NORMAL_HINTS":     40,
+		"WM_SIZE_HINTS":       41,
+		"WM_ZOOM_HINTS":       42,
+		"MIN_SPACE":           43,
+		"NORM_SPACE":          44,
+		"MAX_SPACE":           45,
+		"END_SPACE":           46,
+		"SUPERSCRIPT_X":       47,
+		"SUPERSCRIPT_Y":       48,
+		"SUBSCRIPT_X":         49,
+		"SUBSCRIPT_Y":         50,
+		"UNDERLINE_POSITION":  51,
+		"UNDERLINE_THICKNESS": 52,
+		"STRIKEOUT_ASCENT":    53,
+		"STRIKEOUT_DESCENT":   54,
+		"ITALIC_ANGLE":        55,
+		"X_HEIGHT":            56,
+		"QUAD_WIDTH":          57,
+		"WEIGHT":              58,
+		"POINT_SIZE":          59,
+		"RESOLUTION":          60,
+		"COPYRIGHT":           61,
+		"NOTICE":              62,
+		"FONT_NAME":           63,
+		"FAMILY_NAME":         64,
+		"FULL_NAME":           65,
+		"CAP_HEIGHT":          66,
+		"WM_CLASS":            67,
+		"WM_TRANSIENT_FOR":    68,
+	}
+	s.atomNames = make(map[uint32]string)
+	for name, id := range s.atoms {
+		s.atomNames[id] = name
+	}
+	s.nextAtomID = 69
+}
+
+func (s *x11Server) GetAtom(name string) uint32 {
+	if id, ok := s.atoms[name]; ok {
+		return id
+	}
+	id := s.nextAtomID
+	s.nextAtomID++
+	s.atoms[name] = id
+	s.atomNames[id] = name
+	return id
+}
+
+func (s *x11Server) GetAtomName(atom uint32) string {
+	return s.atomNames[atom]
+}
+
+func (s *x11Server) ChangeProperty(xid xID, propertyID, typeAtom uint32, format byte, data []byte) {
+	props, ok := s.properties[xid]
+	if !ok {
+		props = make(map[uint32]*property)
+		s.properties[xid] = props
+	}
+	props[propertyID] = &property{
+		data:     data,
+		typeAtom: typeAtom,
+		format:   format,
+	}
+
+	s.sendPropertyNotify(xid, propertyID, 0) // PropertyNewValue
+
+	// Check for WM_NAME etc.
+	name := s.GetAtomName(propertyID)
+	if name == "WM_NAME" || name == "_NET_WM_NAME" || name == "WM_ICON_NAME" {
+		s.frontend.SetWindowTitle(xid, string(data))
+	}
+}
+
+func (s *x11Server) DeleteProperty(xid xID, propertyID uint32) {
+	if props, ok := s.properties[xid]; ok {
+		delete(props, propertyID)
+		s.sendPropertyNotify(xid, propertyID, 1) // PropertyDelete
+	}
+}
+
+func (s *x11Server) sendPropertyNotify(windowID xID, atom uint32, state byte) {
+	if client, ok := s.clients[windowID.client]; ok {
+		if w, ok := s.windows[windowID]; ok {
+			if w.attributes.EventMask&wire.PropertyChangeMask != 0 {
+				event := &wire.PropertyNotifyEvent{
+					Sequence: client.sequence - 1,
+					Window:   windowID.local,
+					Atom:     atom,
+					Time:     s.serverTime(),
+					State:    state,
+				}
+				s.sendEvent(client, event)
+			}
+		}
+	}
+}
+
+func (s *x11Server) GetProperty(xid xID, propertyID uint32) *property {
+	if props, ok := s.properties[xid]; ok {
+		return props[propertyID]
+	}
+	return nil
+}
+
+func (s *x11Server) ListProperties(xid xID) []uint32 {
+	var list []uint32
+	if props, ok := s.properties[xid]; ok {
+		for id := range props {
+			list = append(list, id)
+		}
+	}
+	return list
+}
+
+func (s *x11Server) RotateProperties(xid xID, delta int16, atoms []wire.Atom) error {
+	props, ok := s.properties[xid]
+	if !ok {
+		return nil
+	}
+
+	// Check existence
+	for _, atom := range atoms {
+		if _, ok := props[uint32(atom)]; !ok {
+			return errors.New("property not found")
+		}
+	}
+
+	n := len(atoms)
+	if n == 0 {
+		return nil
+	}
+
+	newValues := make(map[uint32]*property)
+	for i, atom := range atoms {
+		prop := props[uint32(atom)]
+		newIdx := (i + int(delta)) % n
+		if newIdx < 0 {
+			newIdx += n
+		}
+		newValues[uint32(atoms[newIdx])] = prop
+	}
+
+	for atom, prop := range newValues {
+		props[atom] = prop
+	}
+	return nil
+}
+
 func (s *x11Server) rootWindowID() uint32 {
 	return 0
 }
@@ -1762,7 +1959,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.InternAtomRequest:
-		atomID := s.frontend.GetAtom(client.id, p.Name)
+		atomID := s.GetAtom(p.Name)
 
 		return &wire.InternAtomReply{
 			Sequence: seq,
@@ -1770,7 +1967,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.GetAtomNameRequest:
-		name := s.frontend.GetAtomName(uint32(p.Atom))
+		name := s.GetAtomName(uint32(p.Atom))
 		return &wire.GetAtomNameReply{
 			Sequence:   seq,
 			NameLength: uint16(len(name)),
@@ -1782,54 +1979,83 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		if err := s.checkWindow(xid, seq, wire.ChangeProperty, 0); err != nil {
 			return err
 		}
-		s.frontend.ChangeProperty(xid, uint32(p.Property), uint32(p.Type), uint32(p.Format), p.Data)
+		s.ChangeProperty(xid, uint32(p.Property), uint32(p.Type), byte(p.Format), p.Data)
 
 	case *wire.DeletePropertyRequest:
 		xid := client.xID(uint32(p.Window))
 		if err := s.checkWindow(xid, seq, wire.DeleteProperty, 0); err != nil {
 			return err
 		}
-		s.frontend.DeleteProperty(xid, uint32(p.Property))
+		s.DeleteProperty(xid, uint32(p.Property))
 
 	case *wire.GetPropertyRequest:
 		xid := client.xID(uint32(p.Window))
 		if err := s.checkWindow(xid, seq, wire.GetProperty, 0); err != nil {
 			return err
 		}
-		data, typ, format, bytesAfter := s.frontend.GetProperty(xid, uint32(p.Property), p.Offset, p.Length)
+		prop := s.GetProperty(xid, uint32(p.Property))
 
-		if data == nil {
+		if prop == nil {
 			return &wire.GetPropertyReply{
 				Sequence: seq,
 				Format:   0,
 			}
 		}
 
+		// Calculate slice
+		byteOffset := p.Offset * 4
+		byteLength := p.Length * 4
+		totalLen := uint32(len(prop.data))
+
+		if byteOffset >= totalLen {
+			return &wire.GetPropertyReply{
+				Sequence:              seq,
+				Format:                prop.format,
+				PropertyType:          prop.typeAtom,
+				BytesAfter:            0,
+				ValueLenInFormatUnits: 0,
+				Value:                 nil,
+			}
+		}
+
+		end := byteOffset + byteLength
+		if end > totalLen {
+			end = totalLen
+		}
+		dataToSend := prop.data[byteOffset:end]
+		bytesAfter := totalLen - end
+
 		var valueLenInFormatUnits uint32
-		if format == 8 {
-			valueLenInFormatUnits = uint32(len(data))
-		} else if format == 16 {
-			valueLenInFormatUnits = uint32(len(data) / 2)
-		} else if format == 32 {
-			valueLenInFormatUnits = uint32(len(data) / 4)
+		if prop.format == 8 {
+			valueLenInFormatUnits = uint32(len(dataToSend))
+		} else if prop.format == 16 {
+			valueLenInFormatUnits = uint32(len(dataToSend) / 2)
+		} else if prop.format == 32 {
+			valueLenInFormatUnits = uint32(len(dataToSend) / 4)
 		}
 
-		if p.Delete {
-			s.frontend.DeleteProperty(xid, uint32(p.Property))
+		if p.Delete && bytesAfter == 0 {
+			s.DeleteProperty(xid, uint32(p.Property))
 		}
 
-		if p.Type != 0 && typ != uint32(p.Type) {
-			// TODO: return empty property with the correct type
-			// and format 0
+		if p.Type != 0 && prop.typeAtom != uint32(p.Type) {
+			return &wire.GetPropertyReply{
+				Sequence:              seq,
+				Format:                prop.format,
+				PropertyType:          prop.typeAtom,
+				BytesAfter:            totalLen, // Full length
+				ValueLenInFormatUnits: 0,
+				Value:                 nil,
+			}
 		}
 
 		return &wire.GetPropertyReply{
 			Sequence:              seq,
-			Format:                byte(format),
-			PropertyType:          typ,
+			Format:                prop.format,
+			PropertyType:          prop.typeAtom,
 			BytesAfter:            bytesAfter,
 			ValueLenInFormatUnits: valueLenInFormatUnits,
-			Value:                 data,
+			Value:                 dataToSend,
 		}
 
 	case *wire.ListPropertiesRequest:
@@ -1837,7 +2063,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		if err := s.checkWindow(xid, seq, wire.ListProperties, 0); err != nil {
 			return err
 		}
-		atoms := s.frontend.ListProperties(xid)
+		atoms := s.ListProperties(xid)
 		return &wire.ListPropertiesReply{
 			Sequence:      seq,
 			NumProperties: uint16(len(atoms)),
@@ -1845,17 +2071,111 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.SetSelectionOwnerRequest:
-		s.selections[client.xID(uint32(p.Selection))] = uint32(p.Owner)
+		selectionAtom := uint32(p.Selection)
+		ownerWindow := uint32(p.Owner)
+		time := uint32(p.Time)
+
+		if time == 0 { // CurrentTime
+			time = s.serverTime()
+		}
+
+		// "If the timestamp is not CurrentTime and is less than the timestamp of the last successful SetSelectionOwner request for the selection, the request is ignored."
+		currentOwner, ok := s.selections[selectionAtom]
+		if ok && time < currentOwner.time && p.Time != 0 {
+			return nil
+		}
+
+		if ownerWindow == 0 { // None
+			delete(s.selections, selectionAtom)
+		} else {
+			if err := s.checkWindow(client.xID(ownerWindow), seq, wire.SetSelectionOwner, 0); err != nil {
+				return err
+			}
+			s.selections[selectionAtom] = &selectionOwner{
+				window: client.xID(ownerWindow),
+				time:   time,
+			}
+		}
+
+		if ok && currentOwner.window.local != 0 && (currentOwner.window != client.xID(ownerWindow)) {
+			// Send SelectionClear to old owner
+			if oldClient, ok := s.clients[currentOwner.window.client]; ok {
+				event := &wire.SelectionClearEvent{
+					Sequence:  oldClient.sequence - 1, // Approximate
+					Time:      time,
+					Owner:     currentOwner.window.local,
+					Selection: selectionAtom,
+				}
+				s.sendEvent(oldClient, event)
+			}
+		}
 
 	case *wire.GetSelectionOwnerRequest:
-		owner := s.selections[client.xID(uint32(p.Selection))]
+		selectionAtom := uint32(p.Selection)
+		var owner uint32
+		if o, ok := s.selections[selectionAtom]; ok {
+			owner = o.window.local
+		}
 		return &wire.GetSelectionOwnerReply{
 			Sequence: seq,
 			Owner:    owner,
 		}
 
 	case *wire.ConvertSelectionRequest:
-		s.frontend.ConvertSelection(uint32(p.Selection), uint32(p.Target), uint32(p.Property), client.xID(uint32(p.Requestor)))
+		selectionAtom := uint32(p.Selection)
+		targetAtom := uint32(p.Target)
+		propertyAtom := uint32(p.Property)
+		requestor := client.xID(uint32(p.Requestor))
+		time := uint32(p.Time)
+		if time == 0 {
+			time = s.serverTime()
+		}
+
+		if err := s.checkWindow(requestor, seq, wire.ConvertSelection, 0); err != nil {
+			return err
+		}
+
+		owner, ok := s.selections[selectionAtom]
+
+		// Special handling for CLIPBOARD if no owner
+		clipboardAtom := s.GetAtom("CLIPBOARD")
+		if !ok && selectionAtom == clipboardAtom {
+			go func() {
+				content, err := s.frontend.ReadClipboard()
+				if err == nil {
+					// Write to property
+					// Assuming target is STRING or UTF8_STRING or TEXT
+					// Ideally check targetAtom. For now, assume string.
+					s.ChangeProperty(requestor, propertyAtom, s.GetAtom("STRING"), 8, []byte(content))
+
+					s.SendSelectionNotify(requestor, selectionAtom, targetAtom, propertyAtom, nil)
+				} else {
+					// Failed
+					s.SendSelectionNotify(requestor, selectionAtom, targetAtom, 0, nil)
+				}
+			}()
+			return nil
+		}
+
+		if ok {
+			// Send SelectionRequest to owner
+			if ownerClient, ok := s.clients[owner.window.client]; ok {
+				event := &wire.SelectionRequestEvent{
+					Sequence:  ownerClient.sequence - 1,
+					Time:      time,
+					Owner:     owner.window.local,
+					Requestor: requestor.local,
+					Selection: selectionAtom,
+					Target:    targetAtom,
+					Property:  propertyAtom,
+				}
+				s.sendEvent(ownerClient, event)
+			}
+			return nil
+		}
+
+		// No owner, send SelectionNotify with property None
+		s.SendSelectionNotify(requestor, selectionAtom, targetAtom, 0, nil)
 
 	case *wire.SendEventRequest:
 		// The X11 client sends an event to another client.
@@ -3129,7 +3449,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		s.frontend.KillClient(p.Resource)
 
 	case *wire.RotatePropertiesRequest:
-		err := s.frontend.RotateProperties(client.xID(uint32(p.Window)), p.Delta, p.Atoms)
+		err := s.RotateProperties(client.xID(uint32(p.Window)), p.Delta, p.Atoms)
 		if err != nil {
 			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.RotateProperties, wire.MatchErrorCode)
 		}
@@ -3291,7 +3611,8 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					gcs:        make(map[xID]wire.GC),
 					pixmaps:    make(map[xID]bool),
 					cursors:    make(map[xID]bool),
-					selections: make(map[xID]uint32),
+					selections: make(map[uint32]*selectionOwner),
+					properties: make(map[xID]map[uint32]*property),
 					colormaps: map[xID]*colormap{
 						xID{local: 0x1}: {
 							pixels: map[uint32]wire.XColorItem{
@@ -3313,6 +3634,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					fonts:              make(map[xID]bool),
 					startTime:          time.Now(),
 				}
+				x11ServerInstance.initAtoms()
 				for k, v := range KeyCodeToKeysym {
 					x11ServerInstance.keymap[k] = v
 				}

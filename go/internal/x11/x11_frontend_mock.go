@@ -125,6 +125,11 @@ type convertSelectionCall struct {
 	requestor                   xID
 }
 
+type setWindowTitleCall struct {
+	id    xID
+	title string
+}
+
 // MockX11Frontend is a mock implementation of the X11FrontendAPI for testing.
 type MockX11Frontend struct {
 	CreateWindowCalls               []*window
@@ -134,12 +139,10 @@ type MockX11Frontend struct {
 	DestroyAllWindowsForClientCalls []uint32
 	MapWindowCalls                  []xID
 	UnmapWindowCalls                []xID
-	ConvertSelectionCalls           []*convertSelectionCall
 	ConfigureWindowCalls            []*configureWindowCall
 	CirculateWindowCalls            []*circulateWindowCall
 	CreatedGCs                      map[xID]wire.GC
 	ChangedGCs                      map[xID]wire.GC
-	ChangedProperties               []*propertyChange
 	PutImageCalls                   []*putImageCall
 	PolyLineCalls                   []*polyLineCall
 	PolyFillRectangleCalls          []*polyFillRectCall
@@ -155,10 +158,6 @@ type MockX11Frontend struct {
 	GetImageCalls                   []*getImageCall
 	GetImageReturn                  []byte
 	GetImageError                   error
-	GetAtomNameCalls                []uint32
-	GetAtomNameReturn               string
-	ListPropertiesCalls             []*listPropertiesCall
-	ListPropertiesReturn            []uint32
 	ClipboardContent                string
 	WrittenClipboard                string
 	ReadClipboardCalls              []struct{}
@@ -169,12 +168,7 @@ type MockX11Frontend struct {
 	PolyText8Calls                  []*polyText8Call
 	PolyText16Calls                 []*polyText16Call
 	BellCalls                       []int8
-	ChangePropertyCalls             []*propertyChange
-	GetPropertyCalls                []*getPropertyCall
-	GetPropertyReturn               []byte
-	GetPropertyTypeReturn           uint32
-	GetPropertyFormatReturn         uint32
-	GetPropertyBytesAfterReturn     uint32
+	SetWindowTitleCalls             []*setWindowTitleCall
 	CanvasOperations                []CanvasOperation
 	SetInputFocusCalls              []setInputFocusCall
 	SetPointerMappingCalls          [][]byte
@@ -427,8 +421,8 @@ func (m *MockX11Frontend) SendEvent(eventData messageEncoder) {}
 
 func (m *MockX11Frontend) GetFocusWindow(uint32) xID { return xID{} }
 
-func (m *MockX11Frontend) ConvertSelection(selection, target, property uint32, requestor xID) {
-	m.ConvertSelectionCalls = append(m.ConvertSelectionCalls, &convertSelectionCall{selection, target, property, requestor})
+func (m *MockX11Frontend) SetWindowTitle(xid xID, title string) {
+	m.SetWindowTitleCalls = append(m.SetWindowTitleCalls, &setWindowTitleCall{xid, title})
 }
 
 func (m *MockX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
@@ -451,15 +445,6 @@ func (m *MockX11Frontend) Bell(percent int8) {
 	m.BellCalls = append(m.BellCalls, percent)
 }
 
-func (m *MockX11Frontend) ListProperties(window xID) []uint32 {
-	m.ListPropertiesCalls = append(m.ListPropertiesCalls, &listPropertiesCall{window})
-	return m.ListPropertiesReturn
-}
-
-func (m *MockX11Frontend) GetProperty(window xID, property uint32, longOffset, longLength uint32) ([]byte, uint32, uint32, uint32) {
-	m.GetPropertyCalls = append(m.GetPropertyCalls, &getPropertyCall{window, property, longOffset, longLength})
-	return m.GetPropertyReturn, m.GetPropertyTypeReturn, m.GetPropertyFormatReturn, m.GetPropertyBytesAfterReturn
-}
 
 func (m *MockX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo, fontProps []wire.FontProp) {
 	// Dummy implementation for mock
@@ -492,14 +477,6 @@ func (m *MockX11Frontend) WriteClipboard(s string) error {
 
 func (m *MockX11Frontend) UpdatePointerPosition(x, y int16) {} // No-op for mock
 
-func (m *MockX11Frontend) GetAtom(clientID uint32, name string) uint32 {
-	return 0 // No-op for mock
-}
-
-func (m *MockX11Frontend) GetAtomName(atom uint32) string {
-	m.GetAtomNameCalls = append(m.GetAtomNameCalls, atom)
-	return m.GetAtomNameReturn
-}
 
 func (m *MockX11Frontend) CreateGC(id xID, valueMask uint32, values wire.GC) {
 	if m.CreatedGCs == nil {
@@ -515,12 +492,6 @@ func (m *MockX11Frontend) ChangeGC(id xID, valueMask uint32, gc wire.GC) {
 	m.ChangedGCs[id] = gc
 }
 
-func (m *MockX11Frontend) ChangeProperty(id xID, property, typ, format uint32, data []byte) {
-	m.ChangedProperties = append(m.ChangedProperties, &propertyChange{id, property, typ, byte(format), data})
-}
-
-func (m *MockX11Frontend) DeleteProperty(xid xID, property uint32) {
-}
 
 func newX11Frontend(logger Logger, s *x11Server) X11FrontendAPI {
 	return &MockX11Frontend{}
@@ -605,9 +576,6 @@ func (m *MockX11Frontend) SetCloseDownMode(mode byte) {
 func (m *MockX11Frontend) KillClient(resource uint32) {
 }
 
-func (m *MockX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) error {
-	return nil
-}
 
 func (m *MockX11Frontend) ForceScreenSaver(mode byte) {
 }
