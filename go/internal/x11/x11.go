@@ -347,6 +347,9 @@ func (s *x11Server) GetWindowAttributes(xid xID) (wire.WindowAttributes, bool) {
 }
 
 func (s *x11Server) checkWindow(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if xid.local == s.rootWindowID() {
+		return nil
+	}
 	if _, ok := s.windows[xid]; !ok {
 		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.WindowErrorCode)
 	}
@@ -1785,22 +1788,30 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			return err
 		}
 		window := s.windows[windowXID]
+		if window == nil {
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.ReparentWindow, wire.MatchErrorCode)
+		}
+
 		oldParent, ok := s.windows[client.xID(window.parent)]
-		if !ok {
+		if !ok && window.parent != s.rootWindowID() {
 			return wire.NewGenericError(seq, window.parent, 0, wire.ReparentWindow, wire.WindowErrorCode)
 		}
 		newParent := s.windows[parentXID]
 
 		// Remove from old parent's children
-		for i, childID := range oldParent.children {
-			if childID == window.xid.local {
-				oldParent.children = append(oldParent.children[:i], oldParent.children[i+1:]...)
-				break
+		if ok {
+			for i, childID := range oldParent.children {
+				if childID == window.xid.local {
+					oldParent.children = append(oldParent.children[:i], oldParent.children[i+1:]...)
+					break
+				}
 			}
 		}
 
 		// Add to new parent's children
-		newParent.children = append(newParent.children, window.xid.local)
+		if newParent != nil {
+			newParent.children = append(newParent.children, window.xid.local)
+		}
 
 		// Update window's state
 		window.parent = uint32(p.Parent)
@@ -1866,6 +1877,9 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		if err := s.checkWindow(xid, seq, wire.ConfigureWindow, 0); err != nil {
 			return err
 		}
+		if xid.local == s.rootWindowID() {
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.ConfigureWindow, wire.MatchErrorCode)
+		}
 		s.frontend.ConfigureWindow(xid, p.ValueMask, p.Values)
 
 	case *wire.CirculateWindowRequest:
@@ -1874,31 +1888,34 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			return err
 		}
 		window := s.windows[xid]
+		if window == nil {
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.CirculateWindow, wire.MatchErrorCode)
+		}
 		parent, ok := s.windows[client.xID(window.parent)]
-		if !ok {
+		if ok {
+			// Find index of window in parent's children
+			idx := -1
+			for i, childID := range parent.children {
+				if childID == xid.local {
+					idx = i
+					break
+				}
+			}
+
+			if idx != -1 {
+				// Remove window from children slice
+				children := append(parent.children[:idx], parent.children[idx+1:]...)
+
+				if p.Direction == 0 { // RaiseLowest
+					// Add to end of slice
+					parent.children = append(children, xid.local)
+				} else { // LowerHighest
+					// Add to beginning of slice
+					parent.children = append([]uint32{xid.local}, children...)
+				}
+			}
+		} else if window.parent != s.rootWindowID() {
 			return wire.NewGenericError(seq, window.parent, 0, wire.CirculateWindow, wire.WindowErrorCode)
-		}
-
-		// Find index of window in parent's children
-		idx := -1
-		for i, childID := range parent.children {
-			if childID == xid.local {
-				idx = i
-				break
-			}
-		}
-
-		if idx != -1 {
-			// Remove window from children slice
-			children := append(parent.children[:idx], parent.children[idx+1:]...)
-
-			if p.Direction == 0 { // RaiseLowest
-				// Add to end of slice
-				parent.children = append(children, xid.local)
-			} else { // LowerHighest
-				// Add to beginning of slice
-				parent.children = append([]uint32{xid.local}, children...)
-			}
 		}
 
 		s.frontend.CirculateWindow(xid, p.Direction)
@@ -1950,6 +1967,21 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			return err
 		}
 		window := s.windows[xid]
+		if window == nil {
+			var children []uint32
+			for _, w := range s.windows {
+				if w.parent == s.rootWindowID() {
+					children = append(children, w.xid.local)
+				}
+			}
+			return &wire.QueryTreeReply{
+				Sequence:    seq,
+				Root:        s.rootWindowID(),
+				Parent:      s.rootWindowID(),
+				NumChildren: uint16(len(children)),
+				Children:    children,
+			}
+		}
 		return &wire.QueryTreeReply{
 			Sequence:    seq,
 			Root:        s.rootWindowID(),
@@ -2437,8 +2469,19 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		src := s.windows[srcWindow]
 		dst := s.windows[dstWindow]
 
-		dstX := src.x + p.SrcX - dst.x
-		dstY := src.y + p.SrcY - dst.y
+		var srcAbsX, srcAbsY int16
+		if src != nil {
+			srcAbsX = src.x
+			srcAbsY = src.y
+		}
+		var dstAbsX, dstAbsY int16
+		if dst != nil {
+			dstAbsX = dst.x
+			dstAbsY = dst.y
+		}
+
+		dstX := srcAbsX + p.SrcX - dstAbsX
+		dstY := srcAbsY + p.SrcY - dstAbsY
 
 		return &wire.TranslateCoordsReply{
 			Sequence:   seq,
