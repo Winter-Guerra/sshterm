@@ -2066,7 +2066,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			valueLenInFormatUnits = uint32(len(dataToSend) / 4)
 		}
 
-		if p.Delete && bytesAfter == 0 {
+		if p.Delete && bytesAfter == 0 && (p.Type == 0 || prop.typeAtom == uint32(p.Type)) {
 			s.DeleteProperty(xid, uint32(p.Property))
 		}
 
