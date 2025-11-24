@@ -126,7 +126,7 @@ func TestXInput2_SelectEvents(t *testing.T) {
 	server.windows[windowID] = &window{xid: windowID}
 
 	// XISelectEvents
-	mask := []byte{0x00, 0x00, 0x00, 0x00} // Empty mask for now
+	mask := []uint32{0} // Empty mask for now
 	req := &wire.XISelectEventsRequest{
 		Window:   wire.Window(windowID.local),
 		NumMasks: 1,

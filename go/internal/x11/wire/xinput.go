@@ -549,7 +549,7 @@ type XISelectEventsRequest struct {
 type XIEventMask struct {
 	DeviceID uint16
 	MaskLen  uint16
-	Mask     []byte
+	Mask     []uint32
 }
 
 func (r *XISelectEventsRequest) OpCode() ReqCode {
@@ -563,7 +563,9 @@ func (r *XISelectEventsRequest) EncodeMessage(order binary.ByteOrder) []byte {
 	for _, mask := range r.Masks {
 		binary.Write(masksBytes, order, mask.DeviceID)
 		binary.Write(masksBytes, order, mask.MaskLen)
-		masksBytes.Write(mask.Mask)
+		for _, m := range mask.Mask {
+			binary.Write(masksBytes, order, m)
+		}
 	}
 	length := uint16(3 + (masksBytes.Len())/4)
 
@@ -596,7 +598,10 @@ func ParseXISelectEventsRequest(order binary.ByteOrder, body []byte, seq uint16)
 		if len(body) < offset+4+maskBytes {
 			return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: XInputOpcode, Minor: XISelectEvents})
 		}
-		mask := body[offset+4 : offset+4+maskBytes]
+		mask := make([]uint32, maskLen)
+		for j := 0; j < int(maskLen); j++ {
+			mask[j] = order.Uint32(body[offset+4+j*4 : offset+8+j*4])
+		}
 		masks = append(masks, XIEventMask{
 			DeviceID: deviceID,
 			MaskLen:  maskLen,

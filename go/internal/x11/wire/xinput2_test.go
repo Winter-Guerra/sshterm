@@ -276,7 +276,7 @@ func TestXISelectEventsRequest_EncodeDecode(t *testing.T) {
 			{
 				DeviceID: 2,
 				MaskLen:  1,
-				Mask:     []byte{1, 2, 3, 4},
+				Mask:     []uint32{0x04030201},
 			},
 		},
 	}
