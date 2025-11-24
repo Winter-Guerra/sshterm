@@ -15,12 +15,6 @@ import (
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 )
 
-type property struct {
-	data     []byte
-	typeAtom uint32
-	format   uint32
-}
-
 type windowInfo struct {
 	div             js.Value
 	canvas          js.Value
@@ -34,7 +28,6 @@ type windowInfo struct {
 	keyUpEvent      js.Func
 	xInputEvents    map[string]js.Func
 	zIndex          int
-	properties      map[uint32]*property
 	backgroundPixel uint32
 	colormap        xID
 	isTopLevel      bool
@@ -79,8 +72,6 @@ type wasmX11Frontend struct {
 	focusedWindowID    xID                    // Track the currently focused window
 	server             *x11Server             // To call back into the server for pointer updates
 	canvasOperations   []CanvasOperation      // Store canvas operations for testing
-	atoms              map[string]uint32      // Map atom names to IDs
-	nextAtomID         uint32                 // Next available atom ID
 	cursorStyles       map[uint32]*cursorInfo // Map X11 cursor IDs to CSS cursor styles
 	modifierMap        []wire.KeyCode
 	deviceModifierMaps map[byte][]byte
@@ -116,80 +107,6 @@ func (w *wasmX11Frontend) showMessage(message string) {
 	js.Global().Get("setTimeout").Invoke(remove, 3000)
 }
 
-func (w *wasmX11Frontend) initPredefinedAtoms() {
-	w.atoms = map[string]uint32{
-		"PRIMARY":             1,
-		"SECONDARY":           2,
-		"ARC":                 3,
-		"ATOM":                4,
-		"BITMAP":              5,
-		"CARDINAL":            6,
-		"COLORMAP":            7,
-		"CURSOR":              8,
-		"CUT_BUFFER0":         9,
-		"CUT_BUFFER1":         10,
-		"CUT_BUFFER2":         11,
-		"CUT_BUFFER3":         12,
-		"CUT_BUFFER4":         13,
-		"CUT_BUFFER5":         14,
-		"CUT_BUFFER6":         15,
-		"CUT_BUFFER7":         16,
-		"DRAWABLE":            17,
-		"FONT":                18,
-		"INTEGER":             19,
-		"PIXMAP":              20,
-		"POINT":               21,
-		"RECTANGLE":           22,
-		"RESOURCE_MANAGER":    23,
-		"RGB_COLOR_MAP":       24,
-		"RGB_BEST_MAP":        25,
-		"RGB_BLUE_MAP":        26,
-		"RGB_DEFAULT_MAP":     27,
-		"RGB_GRAY_MAP":        28,
-		"RGB_GREEN_MAP":       29,
-		"RGB_RED_MAP":         30,
-		"STRING":              31,
-		"VISUALID":            32,
-		"WINDOW":              33,
-		"WM_COMMAND":          34,
-		"WM_HINTS":            35,
-		"WM_CLIENT_MACHINE":   36,
-		"WM_ICON_NAME":        37,
-		"WM_ICON_SIZE":        38,
-		"WM_NAME":             39,
-		"WM_NORMAL_HINTS":     40,
-		"WM_SIZE_HINTS":       41,
-		"WM_ZOOM_HINTS":       42,
-		"MIN_SPACE":           43,
-		"NORM_SPACE":          44,
-		"MAX_SPACE":           45,
-		"END_SPACE":           46,
-		"SUPERSCRIPT_X":       47,
-		"SUPERSCRIPT_Y":       48,
-		"SUBSCRIPT_X":         49,
-		"SUBSCRIPT_Y":         50,
-		"UNDERLINE_POSITION":  51,
-		"UNDERLINE_THICKNESS": 52,
-		"STRIKEOUT_ASCENT":    53,
-		"STRIKEOUT_DESCENT":   54,
-		"ITALIC_ANGLE":        55,
-		"X_HEIGHT":            56,
-		"QUAD_WIDTH":          57,
-		"WEIGHT":              58,
-		"POINT_SIZE":          59,
-		"RESOLUTION":          60,
-		"COPYRIGHT":           61,
-		"NOTICE":              62,
-		"FONT_NAME":           63,
-		"FAMILY_NAME":         64,
-		"FULL_NAME":           65,
-		"CAP_HEIGHT":          66,
-		"WM_CLASS":            67,
-		"WM_TRANSIENT_FOR":    68,
-	}
-	w.nextAtomID = 69
-}
-
 func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 	document := js.Global().Get("document")
 	body := document.Get("body")
@@ -202,8 +119,6 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 		fonts:              make(map[xID]*fontInfo),
 		cursors:            make(map[xID]*cursorInfo),
 		server:             s,
-		atoms:              make(map[string]uint32),
-		nextAtomID:         1,
 		cursorStyles:       make(map[uint32]*cursorInfo),
 		deviceModifierMaps: make(map[byte][]byte),
 		deviceButtonMaps:   make(map[byte][]byte),
@@ -211,7 +126,6 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 	}
 	frontend.initDefaultCursors()
 	frontend.initCanvasOperations()
-	frontend.initPredefinedAtoms()
 
 	// Set initial root window size and add resize listener
 	win := js.Global().Get("window")
@@ -604,7 +518,6 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 		keyUpEvent:      keyUpEvent,   // Store for removal
 		xInputEvents:    make(map[string]js.Func),
 		zIndex:          100,
-		properties:      make(map[uint32]*property),
 		isTopLevel:      isTopLevel,
 		titleBar:        titleBar,
 		windowTitle:     windowTitleSpan,
@@ -757,24 +670,23 @@ func (w *wasmX11Frontend) destroyWindow(wid xID, logit bool) {
 }
 
 func (w *wasmX11Frontend) CloseWindow(xid xID) {
-	winInfo, ok := w.windows[xid]
+	_, ok := w.windows[xid]
 	if !ok {
 		return
 	}
 
-	wmProtocolsAtom := w.GetAtom(xid.client, "WM_PROTOCOLS")
-	wmDeleteWindowAtom := w.GetAtom(xid.client, "WM_DELETE_WINDOW")
+	wmProtocolsAtom := w.server.GetAtom("WM_PROTOCOLS")
+	wmDeleteWindowAtom := w.server.GetAtom("WM_DELETE_WINDOW")
 
 	supportsDelete := false
-	if protocolsProp, ok := winInfo.properties[wmProtocolsAtom]; ok {
+	protocolsProp := w.server.GetProperty(xid, wmProtocolsAtom)
+	if protocolsProp != nil && protocolsProp.format == 32 {
 		// The property contains a list of atoms (CARD32).
-		if protocolsProp.format == 32 {
-			for i := 0; i < len(protocolsProp.data); i += 4 {
-				atom := w.server.byteOrder.Uint32(protocolsProp.data[i : i+4])
-				if atom == wmDeleteWindowAtom {
-					supportsDelete = true
-					break
-				}
+		for i := 0; i < len(protocolsProp.data); i += 4 {
+			atom := w.server.byteOrder.Uint32(protocolsProp.data[i : i+4])
+			if atom == wmDeleteWindowAtom {
+				supportsDelete = true
+				break
 			}
 		}
 	}
@@ -1001,39 +913,19 @@ func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc wire.GC) {
 	})
 }
 
-func (w *wasmX11Frontend) ChangeProperty(xid xID, p, typ, format uint32, data []byte) {
-	debugf("X11: changeProperty id=%s property=%d type=%d format=%d data=%s", xid, p, typ, format, string(data))
+func (w *wasmX11Frontend) SetWindowTitle(xid xID, title string) {
 	if winInfo, ok := w.windows[xid]; ok {
-		winInfo.properties[p] = &property{data: data, typeAtom: typ, format: format}
-
-		wmNameAtom := w.GetAtom(xid.client, "WM_NAME")
-		netWmNameAtom := w.GetAtom(xid.client, "_NET_WM_NAME")
-
-		if p == wmNameAtom || p == netWmNameAtom {
-			title := string(data)
-			// Set HTML title attribute for tooltip
-			winInfo.div.Set("title", title)
-			// Set the text in the title bar, if it exists
-			if !winInfo.windowTitle.IsUndefined() {
-				winInfo.windowTitle.Set("textContent", title)
-			}
-			debugf("X11: Window %s title set to: %s", xid, title)
+		// Set HTML title attribute for tooltip
+		winInfo.div.Set("title", title)
+		// Set the text in the title bar, if it exists
+		if !winInfo.windowTitle.IsUndefined() {
+			winInfo.windowTitle.Set("textContent", title)
 		}
+		debugf("X11: Window %s title set to: %s", xid, title)
 	}
 	w.recordOperation(CanvasOperation{
-		Type: "changeProperty",
-		Args: []any{xid.local, p, typ, format, string(data)},
-	})
-}
-
-func (w *wasmX11Frontend) DeleteProperty(xid xID, property uint32) {
-	debugf("X11: deleteProperty id=%s property=%d", xid, property)
-	if winInfo, ok := w.windows[xid]; ok {
-		delete(winInfo.properties, property)
-	}
-	w.recordOperation(CanvasOperation{
-		Type: "deleteProperty",
-		Args: []any{xid.local, property},
+		Type: "setWindowTitle",
+		Args: []any{xid.local, title},
 	})
 }
 
@@ -2393,69 +2285,6 @@ func (w *wasmX11Frontend) KillClient(resource uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) error {
-	debugf("X11: RotateProperties window=%s delta=%d atoms=%v", window, delta, atoms)
-	winInfo, ok := w.windows[window]
-	if !ok {
-		return nil // Window not found, caller handles this check usually, or we return error? x11.go checks validity of request but not existence of window for this call? No, x11.go just calls it.
-		// If window not found, we should probably return error, but x11.go doesn't check window existence before calling.
-		// But typical X11 pattern is window lookup first.
-		// RotatePropertiesRequest handler in x11.go: s.frontend.RotateProperties(client.xID(uint32(p.Window)), ...)
-		// It doesn't check window existence.
-		// So we should return error if window not found? Protocol says "Window" error.
-		// But we are returning generic error in x11.go if this returns error.
-		// Ideally x11.go should check window existence.
-		// But let's just return Match error if property missing.
-	}
-
-	// Check if atoms exist on window
-	var presentAtoms []uint32
-	for _, atom := range atoms {
-		if _, ok := winInfo.properties[uint32(atom)]; ok {
-			presentAtoms = append(presentAtoms, uint32(atom))
-		} else {
-			return fmt.Errorf("property not found")
-		}
-	}
-
-	n := len(presentAtoms)
-	if n == 0 {
-		return nil
-	}
-
-	// Calculate rotation steps
-	// "If delta is positive, the moves are w(i) -> w((i+delta) mod n)"
-	// "The property named by the atom at position I in the list is renamed to the atom at position (I + delta) mod N"
-	// So Property associated with presentAtoms[i] moves to presentAtoms[(i+delta)%n].
-
-	newValues := make(map[uint32]*property)
-	for i, atom := range presentAtoms {
-		// Current property at atom
-		prop := winInfo.properties[atom]
-
-		// New index
-		newIdx := (i + int(delta)) % n
-		if newIdx < 0 {
-			newIdx += n
-		}
-
-		// New atom name for this property value
-		newAtom := presentAtoms[newIdx]
-		newValues[newAtom] = prop
-	}
-
-	// Apply changes
-	for atom, prop := range newValues {
-		winInfo.properties[atom] = prop
-	}
-
-	w.recordOperation(CanvasOperation{
-		Type: "rotateProperties",
-		Args: []any{window.local, delta, atoms},
-	})
-	return nil
-}
-
 func (w *wasmX11Frontend) ForceScreenSaver(mode byte) {
 	debugf("X11: ForceScreenSaver (not implemented)")
 	w.recordOperation(CanvasOperation{
@@ -3013,91 +2842,6 @@ func (w *wasmX11Frontend) GetFocusWindow(clientID uint32) xID {
 	return xID{}
 }
 
-func (w *wasmX11Frontend) ConvertSelection(selection, target, property uint32, requestor xID) {
-	debugf("X11: ConvertSelection selection=%d target=%d property=%d requestor=%s", selection, target, property, requestor)
-	// This is a simplified implementation. A real implementation would send a SelectionRequest
-	// event to the owner of the selection and wait for a SelectionNotify event.
-	if selection == w.GetAtom(requestor.client, "CLIPBOARD") {
-		// For now, we only support clipboard operations.
-		// We will read the clipboard and send a SelectionNotify event.
-		go func() {
-			clipboardContent, err := w.ReadClipboard()
-			if err != nil {
-				return
-			}
-			// Find the client associated with the requestor window
-			if _, ok := w.windows[requestor]; !ok {
-				debugf("X11: ConvertSelection: Requestor window %s not found", requestor)
-				return
-			}
-			w.server.SendSelectionNotify(requestor, selection, target, property, []byte(clipboardContent))
-		}()
-	}
-}
-
-func (w *wasmX11Frontend) GetProperty(window xID, property uint32, longOffset, longLength uint32) ([]byte, uint32, uint32, uint32) {
-	var fullData []byte
-	var typ, format uint32
-
-	winInfo, winOk := w.windows[window]
-
-	// First, check for properties stored on the window
-	if winOk {
-		if prop, ok := winInfo.properties[property]; ok {
-			fullData = prop.data
-			typ = prop.typeAtom
-			format = prop.format
-		}
-	}
-
-	// Fallback for special properties if not found on the window
-	if fullData == nil {
-		switch property {
-		case w.GetAtom(0, "WM_NAME"), w.GetAtom(0, "_NET_WM_NAME"), w.GetAtom(0, "WM_ICON_NAME"):
-			var title string
-			if winOk && !winInfo.windowTitle.IsUndefined() {
-				title = winInfo.windowTitle.Get("textContent").String()
-			}
-			fullData = []byte(title)
-			typ = w.GetAtom(0, "STRING")
-			format = 8
-		case w.GetAtom(0, "CLIPBOARD"):
-			clipboardContent, err := w.ReadClipboard()
-			if err == nil {
-				fullData = []byte(clipboardContent)
-				typ = w.GetAtom(0, "STRING")
-				format = 8
-			}
-		}
-	}
-
-	if fullData == nil {
-		return nil, 0, 0, 0
-	}
-
-	byteOffset := longOffset * 4
-	byteLength := longLength * 4
-
-	if byteOffset >= uint32(len(fullData)) {
-		return []byte{}, typ, format, uint32(len(fullData))
-	}
-
-	end := byteOffset + byteLength
-	if end > uint32(len(fullData)) {
-		end = uint32(len(fullData))
-	}
-	dataToReturn := fullData[byteOffset:end]
-	bytesAfter := uint32(len(fullData)) - end
-
-	// Adjust dataToReturn length to be a multiple of item size
-	itemSize := format / 8
-	if itemSize > 0 && len(dataToReturn)%int(itemSize) != 0 {
-		dataToReturn = dataToReturn[:len(dataToReturn)-(len(dataToReturn)%int(itemSize))]
-	}
-
-	return dataToReturn, typ, format, bytesAfter
-}
-
 func (w *wasmX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
 	debugf("X11: GrabPointer (not implemented)")
 	return 0 // Success
@@ -3149,30 +2893,6 @@ func (w *wasmX11Frontend) SetCursor(windowID xID, cursorID uint32) {
 		Type: "setCursor",
 		Args: []any{windowID.local, cursorID},
 	})
-}
-
-func (w *wasmX11Frontend) ListProperties(window xID) []uint32 {
-	// For now, return an empty slice.
-	return []uint32{}
-}
-
-func (w *wasmX11Frontend) GetAtom(clientID uint32, name string) uint32 {
-	if id, ok := w.atoms[name]; ok {
-		return id
-	}
-	id := w.nextAtomID
-	w.nextAtomID++
-	w.atoms[name] = id
-	return id
-}
-
-func (w *wasmX11Frontend) GetAtomName(atom uint32) string {
-	for name, id := range w.atoms {
-		if id == atom {
-			return name
-		}
-	}
-	return ""
 }
 
 func (w *wasmX11Frontend) ReadClipboard() (string, error) {

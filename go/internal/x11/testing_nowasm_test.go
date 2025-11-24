@@ -27,7 +27,8 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 		gcs:                make(map[xID]wire.GC),
 		pixmaps:            make(map[xID]bool),
 		cursors:            make(map[xID]bool),
-		selections:         make(map[xID]uint32),
+		selections:         make(map[uint32]*selectionOwner),
+		properties:         make(map[xID]map[uint32]*property),
 		colormaps:          make(map[xID]*colormap),
 		clients:            make(map[uint32]*x11Client),
 		nextClientID:       1,
@@ -39,6 +40,7 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 		defaultColormap:    1,
 		startTime:          time.Now(),
 	}
+	server.initAtoms()
 	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
 	for k, v := range KeyCodeToKeysym {
 		server.keymap[k] = v

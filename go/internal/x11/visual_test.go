@@ -146,7 +146,8 @@ func TestDrawRectangle(t *testing.T) {
 		gcs:             make(map[xID]wire.GC),
 		pixmaps:         make(map[xID]bool),
 		cursors:         make(map[xID]bool),
-		selections:      make(map[xID]uint32),
+		selections:      make(map[uint32]*selectionOwner),
+		properties:      make(map[xID]map[uint32]*property),
 		colormaps:       make(map[xID]*colormap),
 		clients:         make(map[uint32]*x11Client),
 		byteOrder:       binary.LittleEndian,
@@ -156,6 +157,7 @@ func TestDrawRectangle(t *testing.T) {
 		whitePixel:      setup.Screens[0].WhitePixel,
 		defaultColormap: setup.Screens[0].DefaultColormap,
 	}
+	s.initAtoms()
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
@@ -309,7 +311,8 @@ func TestDrawText(t *testing.T) {
 		gcs:             make(map[xID]wire.GC),
 		pixmaps:         make(map[xID]bool),
 		cursors:         make(map[xID]bool),
-		selections:      make(map[xID]uint32),
+		selections:      make(map[uint32]*selectionOwner),
+		properties:      make(map[xID]map[uint32]*property),
 		colormaps:       make(map[xID]*colormap),
 		clients:         make(map[uint32]*x11Client),
 		byteOrder:       binary.LittleEndian,
@@ -319,6 +322,7 @@ func TestDrawText(t *testing.T) {
 		whitePixel:      setup.Screens[0].WhitePixel,
 		defaultColormap: setup.Screens[0].DefaultColormap,
 	}
+	s.initAtoms()
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
@@ -351,7 +355,8 @@ func TestOverlappingWindows(t *testing.T) {
 		gcs:             make(map[xID]wire.GC),
 		pixmaps:         make(map[xID]bool),
 		cursors:         make(map[xID]bool),
-		selections:      make(map[xID]uint32),
+		selections:      make(map[uint32]*selectionOwner),
+		properties:      make(map[xID]map[uint32]*property),
 		colormaps:       make(map[xID]*colormap),
 		clients:         make(map[uint32]*x11Client),
 		byteOrder:       binary.LittleEndian,
@@ -361,6 +366,7 @@ func TestOverlappingWindows(t *testing.T) {
 		whitePixel:      setup.Screens[0].WhitePixel,
 		defaultColormap: setup.Screens[0].DefaultColormap,
 	}
+	s.initAtoms()
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
