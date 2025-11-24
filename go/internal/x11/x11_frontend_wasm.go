@@ -549,6 +549,13 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	})
 }
 
+func (w *wasmX11Frontend) updateVisibleArea(xid xID, x, y, width, height int) {
+	if winInfo, ok := w.windows[xid]; ok {
+		// Draw the dirty rectangle from offscreen canvas to onscreen canvas
+		winInfo.ctx.Call("drawImage", winInfo.offscreenCanvas, x, y, width, height, x, y, width, height)
+	}
+}
+
 func (w *wasmX11Frontend) DestroyWindow(wid xID) {
 	w.destroyWindow(wid, true)
 }
@@ -1113,6 +1120,8 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 		ctx.Call("putImageData", imageData, dstX, dstY)
 	}
 
+	w.updateVisibleArea(drawable, int(dstX), int(dstY), int(width), int(height))
+
 	w.recordOperation(CanvasOperation{
 		Type: "putImage",
 		Args: []any{drawable.local, gc, dstX, dstY, width, height, leftPad, format, len(imgData)},
@@ -1219,11 +1228,29 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 	}
 }
 
-func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw func(js.Value), opBounds image.Rectangle) {
-	debugf("applyGC: start gcID=%s", gcID)
+func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), opBounds image.Rectangle) {
+	debugf("applyGC: start drawable=%s gcID=%s", drawable, gcID)
 	gc, ok := w.gcs[gcID]
 	if !ok {
 		debugf("applyGC: gcID %s not found", gcID)
+		return
+	}
+
+	var destCtx js.Value
+	var colormap xID
+	winInfo, ok := w.windows[drawable]
+	if ok {
+		destCtx = winInfo.offscreenCtx
+		colormap = winInfo.colormap
+	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
+		destCtx = pixmapInfo.context
+		colormap = xID{0, w.server.defaultColormap}
+	} else {
+		debugf("applyGC: drawable %s not found", drawable)
+		return
+	}
+
+	if destCtx.IsUndefined() || destCtx.IsNull() {
 		return
 	}
 
@@ -1251,6 +1278,11 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 		draw(destCtx)
 		destCtx.Call("restore")
 		debugf("applyGC: native path done")
+
+		// Update visible area if it's a window
+		if _, ok := w.windows[drawable]; ok {
+			w.updateVisibleArea(drawable, opBounds.Min.X, opBounds.Min.Y, opBounds.Dx(), opBounds.Dy())
+		}
 		return
 	}
 
@@ -1343,6 +1375,11 @@ func (w *wasmX11Frontend) applyGC(destCtx js.Value, colormap xID, gcID xID, draw
 	debugf("applyGC: putting new image data at (%d, %d)", x, y)
 	destCtx.Call("putImageData", newImageData, x, y)
 	debugf("applyGC: software emulation path done")
+
+	// Update visible area if it's a window
+	if _, ok := w.windows[drawable]; ok {
+		w.updateVisibleArea(drawable, x, y, width, height)
+	}
 }
 
 func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
@@ -1351,21 +1388,6 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 		return
 	}
 	debugf("X11: polyLine drawable=%s gc=%v points=%v", drawable, gc, points)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	if len(points) >= 2 {
@@ -1376,9 +1398,9 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 		opBounds = opBounds.Inset(-int(gc.LineWidth))
 	}
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc) // Colormap ignored for logging color
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		targetCtx.Call("beginPath")
 		if len(points) >= 2 {
 			targetCtx.Call("moveTo", points[0], points[1])
@@ -1402,21 +1424,6 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 		return
 	}
 	debugf("X11: polyFillRectangle drawable=%s gc=%v rects=%v GCFunction=%d", drawable, gc, rects, gc.Function)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(rects); i += 4 {
@@ -1428,9 +1435,9 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 		}
 	}
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc)
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(rects); i += 4 {
 			targetCtx.Call("fillRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
 		}
@@ -1449,21 +1456,6 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 		return
 	}
 	debugf("X11: fillPoly drawable=%s gc=%v points=%v", drawable, gc, points)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	if len(points) >= 2 {
@@ -1473,13 +1465,13 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 		}
 	}
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc)
 	fillRule := "nonzero"
 	if gc.FillRule == 0 {
 		fillRule = "evenodd"
 	}
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		targetCtx.Call("beginPath")
 		if len(points) >= 2 {
 			targetCtx.Call("moveTo", points[0], points[1])
@@ -1504,21 +1496,6 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 		return
 	}
 	debugf("X11: polySegment drawable=%s gc=%v segments=%v", drawable, gc, segments)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(segments); i += 4 {
@@ -1531,9 +1508,9 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 	}
 	opBounds = opBounds.Inset(-int(gc.LineWidth))
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc)
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(segments); i += 4 {
 			targetCtx.Call("beginPath")
 			targetCtx.Call("moveTo", segments[i], segments[i+1])
@@ -1555,21 +1532,6 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 		return
 	}
 	debugf("X11: polyPoint drawable=%s gc=%v points=%v", drawable, gc, points)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(points); i += 2 {
@@ -1581,9 +1543,9 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 		}
 	}
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc)
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(points); i += 2 {
 			targetCtx.Call("fillRect", points[i], points[i+1], 1, 1)
 		}
@@ -1602,21 +1564,6 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 		return
 	}
 	debugf("X11: polyRectangle drawable=%s gc=%v rects=%v", drawable, gc, rects)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(rects); i += 4 {
@@ -1629,9 +1576,9 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 	}
 	opBounds = opBounds.Inset(-int(gc.LineWidth))
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc)
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(rects); i += 4 {
 			targetCtx.Call("strokeRect", rects[i], rects[i+1], rects[i+2], rects[i+3])
 		}
@@ -1650,21 +1597,6 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 		return
 	}
 	debugf("X11: polyArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(arcs); i += 6 {
@@ -1677,9 +1609,9 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 	}
 	opBounds = opBounds.Inset(-int(gc.LineWidth))
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc)
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(arcs); i += 6 {
 			targetCtx.Call("beginPath")
 			// X11 angles are in 1/64th degrees, clockwise. Canvas angles are in radians, clockwise.
@@ -1709,21 +1641,6 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 		return
 	}
 	debugf("X11: polyFillArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
-	var ctx js.Value
-	var colormap xID
-	if winInfo, ok := w.windows[drawable]; ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
-		ctx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(arcs); i += 6 {
@@ -1735,13 +1652,13 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 		}
 	}
 
-	color := w.getForegroundColor(colormap, gc)
+	color := w.getForegroundColor(xID{}, gc)
 	fillRule := "nonzero"
 	if gc.FillRule == 0 {
 		fillRule = "evenodd"
 	}
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(arcs); i += 6 {
 			targetCtx.Call("beginPath")
 			startAngle := float64(arcs[i+4]) / 64 * (math.Pi / 180)
@@ -1786,6 +1703,7 @@ func (w *wasmX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 			debugf("X11: ClearArea filling with fillStyle: %s", bgColor)
 			winInfo.offscreenCtx.Set("fillStyle", bgColor)
 			winInfo.offscreenCtx.Call("fillRect", x, y, width, height)
+			w.updateVisibleArea(drawable, int(x), int(y), int(width), int(height))
 		}
 	}
 	w.recordOperation(CanvasOperation{
@@ -1821,6 +1739,7 @@ func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX,
 
 	if !srcCanvas.IsNull() && !dstWinInfo.canvas.IsNull() {
 		dstWinInfo.offscreenCtx.Call("drawImage", srcCanvas, srcX, srcY, width, height, dstX, dstY, width, height)
+		w.updateVisibleArea(dstDrawable, int(dstX), int(dstY), int(width), int(height))
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyArea",
@@ -1907,7 +1826,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 
 		// 5. Apply the GC to the destination context and draw the image.
 		opBounds := image.Rect(int(dstX), int(dstY), int(dstX)+int(width), int(dstY)+int(height))
-		w.applyGC(dstCtx, currentColormap, gcID, func(targetCtx js.Value) {
+		w.applyGC(dstDrawable, gcID, func(targetCtx js.Value) {
 			targetCtx.Call("drawImage", tempCanvas, dstX, dstY)
 		}, opBounds)
 	}
@@ -1916,6 +1835,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 		Args: []any{srcDrawable.local, dstDrawable.local, gc, srcX, srcY, dstX, dstY, width, height, bitPlane},
 	})
 }
+
 func (w *wasmX11Frontend) GetImage(drawable xID, x, y, width, height int32, format uint32) ([]byte, error) {
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
@@ -1984,7 +1904,7 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 	bgColor := w.getBackgroundColor(colormap, gc)
 	debugf("ImageText8: bounds=%v color=%s bg=%s", opBounds, color, bgColor)
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		// Fill background rectangle
 		targetCtx.Call("save")
 		targetCtx.Set("fillStyle", bgColor)
@@ -2061,7 +1981,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	bgColor := w.getBackgroundColor(colormap, gc)
 	debugf("ImageText16: bounds=%v color=%s bg=%s", opBounds, color, bgColor)
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		// Fill background rectangle
 		targetCtx.Call("save")
 		targetCtx.Set("fillStyle", bgColor)
@@ -2132,7 +2052,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 	color := w.getForegroundColor(colormap, gc)
 	var recordedItems []any
 
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		currentX := x
 		recordedItems = nil // Reset for re-recording
 		for _, item := range items {
@@ -2154,6 +2074,95 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyText8",
+		Args:      []any{drawable.local, gc, x, y, recordedItems},
+		FillStyle: color,
+	})
+}
+
+func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []wire.PolyTextItem) {
+	gc, ok := w.gcs[gcID]
+	if !ok {
+		return
+	}
+	debugf("X11: polyText16 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
+
+	var ctx js.Value
+	var colormap xID
+	winInfo, ok := w.windows[drawable]
+	if ok {
+		ctx = winInfo.offscreenCtx
+		colormap = winInfo.colormap
+	} else {
+		return
+	}
+
+	if ctx.IsUndefined() {
+		return
+	}
+
+	var opBounds image.Rectangle
+	currentX := x
+	ctx.Call("save")
+	w.applyGCState(ctx, colormap, gc, gcID.client)
+
+	for _, item := range items {
+		switch it := item.(type) {
+		case wire.PolyText16String:
+			currentX += int32(it.Delta)
+			textBytes := make([]byte, len(it.Str)*2)
+			for i, r := range it.Str {
+				binary.LittleEndian.PutUint16(textBytes[i*2:], r)
+			}
+			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
+			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+			metrics := ctx.Call("measureText", decodedText)
+
+			width := int(math.Ceil(metrics.Get("width").Float()))
+			ascent := int(math.Ceil(metrics.Get("actualBoundingBoxAscent").Float()))
+			descent := int(math.Ceil(metrics.Get("actualBoundingBoxDescent").Float()))
+			itemBounds := image.Rect(int(currentX), int(y)-ascent, int(currentX)+width, int(y)+descent)
+			if opBounds.Empty() {
+				opBounds = itemBounds
+			} else {
+				opBounds = opBounds.Union(itemBounds)
+			}
+		case wire.PolyTextFont:
+			if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
+				ctx.Set("font", font.cssFont)
+			}
+		}
+	}
+	ctx.Call("restore")
+
+	color := w.getForegroundColor(colormap, gc)
+	var recordedItems []any
+
+	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
+		currentX := x
+		recordedItems = nil // Reset for re-recording
+		for _, item := range items {
+			switch it := item.(type) {
+			case wire.PolyText16String:
+				currentX += int32(it.Delta)
+				textBytes := make([]byte, len(it.Str)*2)
+				for i, r := range it.Str {
+					binary.LittleEndian.PutUint16(textBytes[i*2:], r)
+				}
+				decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
+				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
+				targetCtx.Call("fillText", decodedText, currentX, y)
+				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
+			case wire.PolyTextFont:
+				if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
+					targetCtx.Set("font", font.cssFont)
+					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
+				}
+			}
+		}
+	}, opBounds)
+
+	w.recordOperation(CanvasOperation{
+		Type:      "polyText16",
 		Args:      []any{drawable.local, gc, x, y, recordedItems},
 		FillStyle: color,
 	})
@@ -2560,95 +2569,6 @@ func (f *wasmX11Frontend) QueryDeviceState(deviceID byte) []wire.InputClassInfo 
 	return infos
 }
 
-func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items []wire.PolyTextItem) {
-	gc, ok := w.gcs[gcID]
-	if !ok {
-		return
-	}
-	debugf("X11: polyText16 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
-
-	var ctx js.Value
-	var colormap xID
-	winInfo, ok := w.windows[drawable]
-	if ok {
-		ctx = winInfo.offscreenCtx
-		colormap = winInfo.colormap
-	} else {
-		return
-	}
-
-	if ctx.IsUndefined() {
-		return
-	}
-
-	var opBounds image.Rectangle
-	currentX := x
-	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc, gcID.client)
-
-	for _, item := range items {
-		switch it := item.(type) {
-		case wire.PolyText16String:
-			currentX += int32(it.Delta)
-			textBytes := make([]byte, len(it.Str)*2)
-			for i, r := range it.Str {
-				binary.LittleEndian.PutUint16(textBytes[i*2:], r)
-			}
-			decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
-			decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-			metrics := ctx.Call("measureText", decodedText)
-
-			width := int(math.Ceil(metrics.Get("width").Float()))
-			ascent := int(math.Ceil(metrics.Get("actualBoundingBoxAscent").Float()))
-			descent := int(math.Ceil(metrics.Get("actualBoundingBoxDescent").Float()))
-			itemBounds := image.Rect(int(currentX), int(y)-ascent, int(currentX)+width, int(y)+descent)
-			if opBounds.Empty() {
-				opBounds = itemBounds
-			} else {
-				opBounds = opBounds.Union(itemBounds)
-			}
-		case wire.PolyTextFont:
-			if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
-				ctx.Set("font", font.cssFont)
-			}
-		}
-	}
-	ctx.Call("restore")
-
-	color := w.getForegroundColor(colormap, gc)
-	var recordedItems []any
-
-	w.applyGC(ctx, colormap, gcID, func(targetCtx js.Value) {
-		currentX := x
-		recordedItems = nil // Reset for re-recording
-		for _, item := range items {
-			switch it := item.(type) {
-			case wire.PolyText16String:
-				currentX += int32(it.Delta)
-				textBytes := make([]byte, len(it.Str)*2)
-				for i, r := range it.Str {
-					binary.LittleEndian.PutUint16(textBytes[i*2:], r)
-				}
-				decodedText := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
-				decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
-				targetCtx.Call("fillText", decodedText, currentX, y)
-				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
-			case wire.PolyTextFont:
-				if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
-					targetCtx.Set("font", font.cssFont)
-					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
-				}
-			}
-		}
-	}, opBounds)
-
-	w.recordOperation(CanvasOperation{
-		Type:      "polyText16",
-		Args:      []any{drawable.local, gc, x, y, recordedItems},
-		FillStyle: color,
-	})
-}
-
 func (w *wasmX11Frontend) CreatePixmap(xid, drawable xID, width, height, depth uint32) {
 	debugf("X11: createPixmap id=%s drawable=%s width=%d height=%d depth=%d", xid, drawable, width, height, depth)
 	canvas := w.document.Call("createElement", "canvas")
@@ -2683,6 +2603,7 @@ func (w *wasmX11Frontend) CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, 
 	}
 	if !srcPixmap.canvas.IsNull() && !dstWin.canvas.IsNull() {
 		dstWin.offscreenCtx.Call("drawImage", srcPixmap.canvas, srcX, srcY, width, height, dstX, dstY, width, height)
+		w.updateVisibleArea(dstID, int(dstX), int(dstY), int(width), int(height))
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyPixmap",
@@ -3035,8 +2956,8 @@ func (w *wasmX11Frontend) mouseEventHandler(xid xID, eventType string) js.Func {
 		offsetY := int32(event.Get("offsetY").Int())
 
 		// The state should be the mask *before* the event.
-		// The `buttons` property is the state *after* the `mousedown` event,
-		// and *before* the `mouseup` event. So for mouseup, it's correct.
+		// The  property is the state *after* the  event,
+		// and *before* the  event. So for mouseup, it's correct.
 		// For mousedown, we need to remove the current button from the mask.
 		state := 0
 		if event.Get("shiftKey").Bool() {
@@ -3049,7 +2970,7 @@ func (w *wasmX11Frontend) mouseEventHandler(xid xID, eventType string) js.Func {
 			state |= 8 // Mod1Mask
 		}
 
-		// Map JS `buttons` bitmask to X11 button state masks
+		// Map JS  bitmask to X11 button state masks
 		jsButtons := event.Get("buttons").Int()
 		buttonsMask := 0
 		if (jsButtons & 1) != 0 {
@@ -3140,7 +3061,7 @@ func keyMask(event js.Value) uint16 {
 	if event.Get("altKey").Bool() {
 		state |= 8 // Mod1Mask
 	}
-	// Map JS `buttons` bitmask to X11 button state masks
+	// Map JS  bitmask to X11 button state masks
 	jsButtons := event.Get("buttons").Int()
 	if (jsButtons & 1) != 0 {
 		state |= 0x0100
