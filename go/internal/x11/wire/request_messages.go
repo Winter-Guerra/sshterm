@@ -1254,8 +1254,21 @@ func ParseChangePropertyRequest(order binary.ByteOrder, requestBody []byte, seq 
 	req.Property = Atom(order.Uint32(requestBody[4:8]))
 	req.Type = Atom(order.Uint32(requestBody[8:12]))
 	req.Format = requestBody[12]
-	dataLen := order.Uint32(requestBody[16:20])
-	if len(requestBody) < 20+int(dataLen) {
+	nElements := order.Uint32(requestBody[16:20])
+
+	var dataLen int
+	switch req.Format {
+	case 8:
+		dataLen = int(nElements)
+	case 16:
+		dataLen = int(nElements) * 2
+	case 32:
+		dataLen = int(nElements) * 4
+	default:
+		return nil, NewError(ValueErrorCode, seq, uint32(req.Format), Opcodes{Major: ChangeProperty, Minor: 0})
+	}
+
+	if len(requestBody) < 20+dataLen {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: ChangeProperty, Minor: 0})
 	}
 	req.Data = requestBody[20 : 20+dataLen]
