@@ -193,6 +193,7 @@ type MockX11Frontend struct {
 	QueryDeviceStateCalls           [][]any
 	ComposeWindowCalls              []xID
 	AllowEventsCalls                [][]any
+	ChangePointerControlCalls       [][]any
 }
 
 func (m *MockX11Frontend) ComposeWindow(xid xID) {
@@ -460,7 +461,7 @@ func (m *MockX11Frontend) GetProperty(window xID, property uint32, longOffset, l
 	return m.GetPropertyReturn, m.GetPropertyTypeReturn, m.GetPropertyFormatReturn, m.GetPropertyBytesAfterReturn
 }
 
-func (m *MockX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo) {
+func (m *MockX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo, fontProps []wire.FontProp) {
 	// Dummy implementation for mock
 	return
 }
@@ -570,6 +571,10 @@ func (m *MockX11Frontend) GetPointerControl() (accelNumerator, accelDenominator,
 	return 1, 1, 1, nil
 }
 
+func (m *MockX11Frontend) ChangePointerControl(accelNum, accelDenom, threshold int16, doAccel, doThresh bool) {
+	m.ChangePointerControlCalls = append(m.ChangePointerControlCalls, []any{accelNum, accelDenom, threshold, doAccel, doThresh})
+}
+
 func (m *MockX11Frontend) ChangeKeyboardControl(valueMask uint32, values wire.KeyboardControl) {
 }
 
@@ -600,7 +605,8 @@ func (m *MockX11Frontend) SetCloseDownMode(mode byte) {
 func (m *MockX11Frontend) KillClient(resource uint32) {
 }
 
-func (m *MockX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) {
+func (m *MockX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) error {
+	return nil
 }
 
 func (m *MockX11Frontend) ForceScreenSaver(mode byte) {

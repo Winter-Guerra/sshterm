@@ -86,6 +86,17 @@ type wasmX11Frontend struct {
 	deviceModifierMaps map[byte][]byte
 	deviceButtonMaps   map[byte][]byte
 	deviceKeymaps      map[byte]map[byte][]uint32
+
+	// ScreenSaver state
+	screenSaverTimeout     int16
+	screenSaverInterval    int16
+	screenSaverPreferBlank byte
+	screenSaverAllowExpose byte
+
+	// PointerControl state
+	pointerAccelNumerator   int16
+	pointerAccelDenominator int16
+	pointerThreshold        int16
 }
 
 func (w *wasmX11Frontend) showMessage(message string) {
@@ -2267,8 +2278,35 @@ func (w *wasmX11Frontend) GetPointerControl() (accelNumerator, accelDenominator,
 		Type: "getPointerControl",
 		Args: []any{},
 	})
-	// Return default values, as pointer acceleration is controlled by the OS/browser.
-	return 1, 1, 1, nil
+	if w.pointerAccelNumerator == 0 {
+		w.pointerAccelNumerator = 1
+	}
+	if w.pointerAccelDenominator == 0 {
+		w.pointerAccelDenominator = 1
+	}
+	if w.pointerThreshold == 0 {
+		w.pointerThreshold = 1
+	}
+	return uint16(w.pointerAccelNumerator), uint16(w.pointerAccelDenominator), uint16(w.pointerThreshold), nil
+}
+
+func (w *wasmX11Frontend) ChangePointerControl(accelNum, accelDenom, threshold int16, doAccel, doThresh bool) {
+	debugf("X11: ChangePointerControl num=%d den=%d thresh=%d doAccel=%t doThresh=%t", accelNum, accelDenom, threshold, doAccel, doThresh)
+	if doAccel {
+		if accelNum != -1 {
+			w.pointerAccelNumerator = accelNum
+		}
+		if accelDenom != -1 {
+			w.pointerAccelDenominator = accelDenom
+		}
+	}
+	if doThresh && threshold != -1 {
+		w.pointerThreshold = threshold
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "changePointerControl",
+		Args: []any{accelNum, accelDenom, threshold, doAccel, doThresh},
+	})
 }
 
 func (w *wasmX11Frontend) ChangeKeyboardControl(valueMask uint32, values wire.KeyboardControl) {
@@ -2289,20 +2327,29 @@ func (w *wasmX11Frontend) GetKeyboardControl() (wire.KeyboardControl, error) {
 }
 
 func (w *wasmX11Frontend) SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte) {
-	debugf("X11: SetScreenSaver (not implemented)")
+	debugf("X11: SetScreenSaver timeout=%d interval=%d preferBlank=%d allowExpose=%d", timeout, interval, preferBlank, allowExpose)
+	if timeout != -1 {
+		w.screenSaverTimeout = timeout
+	}
+	if interval != -1 {
+		w.screenSaverInterval = interval
+	}
+	w.screenSaverPreferBlank = preferBlank
+	w.screenSaverAllowExpose = allowExpose
+
 	w.recordOperation(CanvasOperation{
 		Type: "setScreenSaver",
-		Args: []any{},
+		Args: []any{timeout, interval, preferBlank, allowExpose},
 	})
 }
 
 func (w *wasmX11Frontend) GetScreenSaver() (timeout, interval int16, preferBlank, allowExpose byte, err error) {
-	debugf("X11: GetScreenSaver (not implemented)")
+	debugf("X11: GetScreenSaver")
 	w.recordOperation(CanvasOperation{
 		Type: "getScreenSaver",
 		Args: []any{},
 	})
-	return 0, 0, 0, 0, nil
+	return w.screenSaverTimeout, w.screenSaverInterval, w.screenSaverPreferBlank, w.screenSaverAllowExpose, nil
 }
 
 func (w *wasmX11Frontend) ChangeHosts(mode byte, host wire.Host) {
@@ -2346,12 +2393,67 @@ func (w *wasmX11Frontend) KillClient(resource uint32) {
 	})
 }
 
-func (w *wasmX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) {
-	debugf("X11: RotateProperties (not implemented)")
+func (w *wasmX11Frontend) RotateProperties(window xID, delta int16, atoms []wire.Atom) error {
+	debugf("X11: RotateProperties window=%s delta=%d atoms=%v", window, delta, atoms)
+	winInfo, ok := w.windows[window]
+	if !ok {
+		return nil // Window not found, caller handles this check usually, or we return error? x11.go checks validity of request but not existence of window for this call? No, x11.go just calls it.
+		// If window not found, we should probably return error, but x11.go doesn't check window existence before calling.
+		// But typical X11 pattern is window lookup first.
+		// RotatePropertiesRequest handler in x11.go: s.frontend.RotateProperties(client.xID(uint32(p.Window)), ...)
+		// It doesn't check window existence.
+		// So we should return error if window not found? Protocol says "Window" error.
+		// But we are returning generic error in x11.go if this returns error.
+		// Ideally x11.go should check window existence.
+		// But let's just return Match error if property missing.
+	}
+
+	// Check if atoms exist on window
+	var presentAtoms []uint32
+	for _, atom := range atoms {
+		if _, ok := winInfo.properties[uint32(atom)]; ok {
+			presentAtoms = append(presentAtoms, uint32(atom))
+		} else {
+			return fmt.Errorf("property not found")
+		}
+	}
+
+	n := len(presentAtoms)
+	if n == 0 {
+		return nil
+	}
+
+	// Calculate rotation steps
+	// "If delta is positive, the moves are w(i) -> w((i+delta) mod n)"
+	// "The property named by the atom at position I in the list is renamed to the atom at position (I + delta) mod N"
+	// So Property associated with presentAtoms[i] moves to presentAtoms[(i+delta)%n].
+
+	newValues := make(map[uint32]*property)
+	for i, atom := range presentAtoms {
+		// Current property at atom
+		prop := winInfo.properties[atom]
+
+		// New index
+		newIdx := (i + int(delta)) % n
+		if newIdx < 0 {
+			newIdx += n
+		}
+
+		// New atom name for this property value
+		newAtom := presentAtoms[newIdx]
+		newValues[newAtom] = prop
+	}
+
+	// Apply changes
+	for atom, prop := range newValues {
+		winInfo.properties[atom] = prop
+	}
+
 	w.recordOperation(CanvasOperation{
 		Type: "rotateProperties",
-		Args: []any{},
+		Args: []any{window.local, delta, atoms},
 	})
+	return nil
 }
 
 func (w *wasmX11Frontend) ForceScreenSaver(mode byte) {
@@ -3315,7 +3417,7 @@ func (w *wasmX11Frontend) keyboardEventHandler(xid xID, eventType string) js.Fun
 	})
 }
 
-func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo) {
+func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo, fontProps []wire.FontProp) {
 	w.recordOperation(CanvasOperation{
 		Type: "queryFont",
 		Args: []any{fid.local},

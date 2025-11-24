@@ -106,7 +106,7 @@ type X11FrontendAPI interface {
 	GetCanvasOperations() []CanvasOperation
 	GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8)
 	OpenFont(fid xID, name string)
-	QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo)
+	QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo, fontProps []wire.FontProp)
 	QueryTextExtents(font xID, text []uint16) (drawDirection uint8, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight int16)
 	CloseFont(fid xID)
 	ListFonts(maxNames uint16, pattern string) []string
@@ -117,6 +117,7 @@ type X11FrontendAPI interface {
 	SetPointerMapping(pMap []byte) (byte, error)
 	GetPointerMapping() ([]byte, error)
 	GetPointerControl() (accelNumerator, accelDenominator, threshold uint16, err error)
+	ChangePointerControl(accelNum, accelDenom, threshold int16, doAccel, doThresh bool)
 	ChangeKeyboardControl(valueMask uint32, values wire.KeyboardControl)
 	GetKeyboardControl() (wire.KeyboardControl, error)
 	SetScreenSaver(timeout, interval int16, preferBlank, allowExpose byte)
@@ -126,7 +127,7 @@ type X11FrontendAPI interface {
 	SetAccessControl(mode byte)
 	SetCloseDownMode(mode byte)
 	KillClient(resource uint32)
-	RotateProperties(window xID, delta int16, atoms []wire.Atom)
+	RotateProperties(window xID, delta int16, atoms []wire.Atom) error
 	ForceScreenSaver(mode byte)
 	SetModifierMapping(keyCodesPerModifier byte, keyCodes []wire.KeyCode) (byte, error)
 	GetModifierMapping() ([]wire.KeyCode, error)
@@ -1792,7 +1793,11 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 	case *wire.ChangeActivePointerGrabRequest:
 		if s.pointerGrabWindow.client == client.id && s.pointerGrabWindow.local != 0 {
 			if p.Cursor != 0 {
-				s.frontend.SetWindowCursor(s.pointerGrabWindow, client.xID(uint32(p.Cursor)))
+				cursorXID := client.xID(uint32(p.Cursor))
+				if _, ok := s.cursors[cursorXID]; !ok {
+					return wire.NewGenericError(seq, uint32(p.Cursor), 0, wire.ChangeActivePointerGrab, wire.CursorErrorCode)
+				}
+				s.frontend.SetWindowCursor(s.pointerGrabWindow, cursorXID)
 			}
 			s.pointerGrabEventMask = p.EventMask
 			if p.Time == 0 || uint32(p.Time) >= s.pointerGrabTime {
@@ -1941,7 +1946,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		s.frontend.CloseFont(client.xID(uint32(p.Fid)))
 
 	case *wire.QueryFontRequest:
-		minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, charInfos := s.frontend.QueryFont(client.xID(uint32(p.Fid)))
+		minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, charInfos, fontProps := s.frontend.QueryFont(client.xID(uint32(p.Fid)))
 
 		return &wire.QueryFontReply{
 			Sequence:       seq,
@@ -1950,7 +1955,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			MinCharOrByte2: minCharOrByte2,
 			MaxCharOrByte2: maxCharOrByte2,
 			DefaultChar:    defaultChar,
-			NumFontProps:   0, // Not implemented yet
+			NumFontProps:   uint16(len(fontProps)),
 			DrawDirection:  drawDirection,
 			MinByte1:       minByte1,
 			MaxByte1:       maxByte1,
@@ -1959,6 +1964,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 			FontDescent:    fontDescent,
 			NumCharInfos:   uint32(len(charInfos)),
 			CharInfos:      charInfos,
+			FontProps:      fontProps,
 		}
 
 	case *wire.QueryTextExtentsRequest:
@@ -1984,10 +1990,43 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.ListFontsWithInfoRequest:
-		return &wire.ListFontsWithInfoReply{
+		fontNames := s.frontend.ListFonts(p.MaxNames, p.Pattern)
+		tempFID := xID{client: 0, local: 0xFFFFFFFF}
+
+		for _, name := range fontNames {
+			s.frontend.OpenFont(tempFID, name)
+			minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, _, fontProps := s.frontend.QueryFont(tempFID)
+			s.frontend.CloseFont(tempFID)
+
+			reply := &wire.ListFontsWithInfoReply{
+				Sequence:      seq,
+				NameLength:    byte(len(name)),
+				MinBounds:     minBounds,
+				MaxBounds:     maxBounds,
+				MinChar:       minCharOrByte2,
+				MaxChar:       maxCharOrByte2,
+				DefaultChar:   defaultChar,
+				NFontProps:    uint16(len(fontProps)),
+				DrawDirection: drawDirection,
+				MinByte1:      minByte1,
+				MaxByte1:      maxByte1,
+				AllCharsExist: allCharsExist,
+				FontAscent:    fontAscent,
+				FontDescent:   fontDescent,
+				NReplies:      1 + uint32(len(fontNames)-1), // This field is not actually used by clients usually, but let's be approximate
+				FontProps:     fontProps,
+				FontName:      name,
+			}
+			client.send(reply)
+		}
+
+		// Final reply
+		lastReply := &wire.ListFontsWithInfoReply{
 			Sequence: seq,
 			FontName: "",
 		}
+		client.send(lastReply)
+		return nil
 
 	case *wire.SetFontPathRequest:
 		s.fontPath = p.Paths
@@ -2390,14 +2429,10 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		}
 
 	case *wire.AllocColorCellsRequest:
-		return &wire.AllocColorCellsReply{
-			Sequence: seq,
-		}
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorCells, wire.MatchErrorCode)
 
 	case *wire.AllocColorPlanesRequest:
-		return &wire.AllocColorPlanesReply{
-			Sequence: seq,
-		}
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorPlanes, wire.MatchErrorCode)
 
 	case *wire.FreeColorsRequest:
 		xid := client.xID(uint32(p.Cmap))
@@ -2644,8 +2679,7 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		s.frontend.Bell(p.Percent)
 
 	case *wire.ChangePointerControlRequest:
-		debugf("X11: ChangePointerControlRequest not implemented")
-		// TODO: Implement
+		s.frontend.ChangePointerControl(p.AccelerationNumerator, p.AccelerationDenominator, p.Threshold, p.DoAcceleration, p.DoThreshold)
 
 	case *wire.GetPointerControlRequest:
 		accelNumerator, accelDenominator, threshold, _ := s.frontend.GetPointerControl()
@@ -2690,7 +2724,10 @@ func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint1
 		s.frontend.KillClient(p.Resource)
 
 	case *wire.RotatePropertiesRequest:
-		s.frontend.RotateProperties(client.xID(uint32(p.Window)), p.Delta, p.Atoms)
+		err := s.frontend.RotateProperties(client.xID(uint32(p.Window)), p.Delta, p.Atoms)
+		if err != nil {
+			return wire.NewGenericError(seq, uint32(p.Window), 0, wire.RotateProperties, wire.MatchErrorCode)
+		}
 
 	case *wire.ForceScreenSaverRequest:
 		s.frontend.ForceScreenSaver(p.Mode)
