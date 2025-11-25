@@ -2649,7 +2649,7 @@ func (r *ListInputDevicesReply) EncodeMessage(order binary.ByteOrder) []byte {
 	copy(finalDeviceData, devicesData)
 	reply := make([]byte, 32+len(finalDeviceData))
 	reply[0] = 1 // Reply
-	reply[1] = byte(len(r.Devices))
+	reply[8] = byte(len(r.Devices))
 	order.PutUint16(reply[2:4], r.Sequence)
 	order.PutUint32(reply[4:8], uint32((len(finalDeviceData)+3)/4)) // length
 	copy(reply[32:], finalDeviceData)
@@ -2660,7 +2660,7 @@ func ParseListInputDevicesReply(order binary.ByteOrder, b []byte) (*ListInputDev
 	if len(b) < 32 {
 		return nil, NewError(LengthErrorCode, 0, 0, Opcodes{Major: 0, Minor: 0})
 	}
-	nDevices := b[1]
+	nDevices := b[8]
 	devices := make([]*DeviceInfo, nDevices)
 	offset := 32
 	for i := 0; i < int(nDevices); i++ {
