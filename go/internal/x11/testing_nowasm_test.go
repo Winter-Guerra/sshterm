@@ -39,6 +39,7 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 		fonts:              make(map[xID]bool),
 		defaultColormap:    1,
 		startTime:          time.Now(),
+		pressedKeys:        make(map[byte]bool),
 	}
 	server.initAtoms()
 	server.initRequestHandlers()

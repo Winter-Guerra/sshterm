@@ -204,6 +204,12 @@ type pixmap struct {
 	depth  byte
 }
 
+type motionEvent struct {
+	time   uint32
+	x, y   int16
+	window xID
+}
+
 type x11Server struct {
 	logger                Logger
 	byteOrder             binary.ByteOrder
@@ -255,6 +261,8 @@ type x11Server struct {
 	pointerGrabCursor     xID
 	fonts                 map[xID]bool
 	requestHandlers       map[wire.ReqCode]requestHandler
+	motionEvents          []motionEvent
+	pressedKeys           map[byte]bool
 }
 
 type requestHandler func(client *x11Client, req wire.Request, seq uint16) messageEncoder
@@ -497,6 +505,52 @@ func (s *x11Server) getAbsoluteWindowCoords(xid xID) (int16, int16, bool) {
 	return absX, absY, true
 }
 
+// findWindowByID finds a window by its local ID across all clients.
+func (s *x11Server) findWindowByID(localID uint32) (xID, bool) {
+	// A more efficient implementation would be to have a separate map
+	// from localID to xID, but for now, iterating is acceptable.
+	for xid := range s.windows {
+		if xid.local == localID {
+			return xid, true
+		}
+	}
+	return xID{}, false
+}
+
+func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) uint32 {
+	parent, ok := s.windows[parentXID]
+	if !ok {
+		return 0 // None
+	}
+
+	// Iterate backwards, as higher windows in stacking order are later in the list
+	for i := len(parent.children) - 1; i >= 0; i-- {
+		childID := parent.children[i]
+		childXID, ok := s.findWindowByID(childID)
+		if !ok {
+			continue
+		}
+		child, ok := s.windows[childXID]
+		if !ok || !child.mapped {
+			continue
+		}
+
+		// Check if pointer is within the child's bounds (relative to parent)
+		if x >= child.x && x < (child.x+int16(child.width)) &&
+			y >= child.y && y < (child.y+int16(child.height)) {
+			// Pointer is over this child. Recursively check its children.
+			// The coordinates need to be relative to the child.
+			grandchildID := s.findChildWindowAt(childXID, x-child.x, y-child.y)
+			if grandchildID != 0 {
+				return grandchildID
+			}
+			return child.xid.local
+		}
+	}
+
+	return 0 // No child found at these coordinates
+}
+
 func (s *x11Server) GetWindowAttributes(xid xID) (wire.WindowAttributes, bool) {
 	w, ok := s.windows[xid]
 	if !ok {
@@ -577,6 +631,20 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	if _, ok := s.windows[originalXID]; !ok {
 		log.Printf("X11: Failed to write mouse event: window not found")
 		return
+	}
+
+	// Add to motion event buffer
+	if eventType == "mousemove" {
+		s.motionEvents = append(s.motionEvents, motionEvent{
+			time:   s.serverTime(),
+			x:      int16(x),
+			y:      int16(y),
+			window: originalXID,
+		})
+		// Keep buffer from growing too large
+		if len(s.motionEvents) > 1024 {
+			s.motionEvents = s.motionEvents[len(s.motionEvents)-1024:]
+		}
 	}
 
 	// Calculate delta
@@ -1132,6 +1200,13 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	keycode, ok := jsCodeToX11Keycode[code]
 	if !ok {
 		keycode = jsCodeToX11Keycode["Unidentified"]
+	}
+
+	// Update pressed keys state
+	if eventType == "keydown" {
+		s.pressedKeys[keycode] = true
+	} else if eventType == "keyup" {
+		delete(s.pressedKeys, keycode)
 	}
 
 	deviceID := virtualKeyboard.Header.DeviceID
@@ -1987,6 +2062,8 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					keymap:             make(map[byte]uint32),
 					fonts:              make(map[xID]bool),
 					startTime:          time.Now(),
+					motionEvents:       make([]motionEvent, 0, 1024),
+					pressedKeys:        make(map[byte]bool),
 				}
 				x11ServerInstance.initAtoms()
 				x11ServerInstance.initRequestHandlers()

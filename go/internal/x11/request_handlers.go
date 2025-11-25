@@ -667,10 +667,27 @@ func (s *x11Server) handleConvertSelection(client *x11Client, req wire.Request, 
 
 func (s *x11Server) handleSendEvent(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.SendEventRequest)
-	// The X11 client sends an event to another client.
-	// We need to forward this event to the appropriate frontend.
-	// For now, we'll just log it and pass it to the frontend.
-	s.frontend.SendEvent(&wire.X11RawEvent{Data: p.EventData})
+	destination := client.xID(uint32(p.Destination))
+
+	destWindow, ok := s.windows[destination]
+	if !ok {
+		// If destination is not a valid window, do nothing.
+		return nil
+	}
+
+	targetClient, ok := s.clients[destWindow.xid.client]
+	if !ok {
+		// If the client owning the window is gone, do nothing.
+		return nil
+	}
+
+	// The event mask check is complex. For now, we will forward the event
+	// if the destination window's owner has selected for any events.
+	// A more complete implementation would parse the event and check the specific event mask.
+	if p.Propagate || destWindow.attributes.EventMask > 0 {
+		s.sendEvent(targetClient, &wire.X11RawEvent{Data: p.EventData})
+	}
+
 	return nil
 }
 
@@ -934,12 +951,18 @@ func (s *x11Server) handleQueryPointer(client *x11Client, req wire.Request, seq 
 		winY -= absY
 	}
 
+	var childID uint32
+	// Only search for children if the requested drawable is a window
+	if _, isWindow := s.windows[xid]; isWindow {
+		childID = s.findChildWindowAt(xid, winX, winY)
+	}
+
 	debugf("X11: QueryPointer drawable=%d", xid)
 	return &wire.QueryPointerReply{
 		Sequence:   seq,
 		SameScreen: true,
 		Root:       s.rootWindowID(),
-		Child:      0, // Child window not implemented
+		Child:      childID,
 		RootX:      s.pointerX,
 		RootY:      s.pointerY,
 		WinX:       winX,
@@ -949,9 +972,32 @@ func (s *x11Server) handleQueryPointer(client *x11Client, req wire.Request, seq 
 }
 
 func (s *x11Server) handleGetMotionEvents(client *x11Client, req wire.Request, seq uint16) messageEncoder {
+	p := req.(*wire.GetMotionEventsRequest)
+	if err := s.checkWindow(client.xID(uint32(p.Window)), seq, wire.GetMotionEvents, 0); err != nil {
+		return err
+	}
+	startTime := p.Start
+	stopTime := p.Stop
+	if stopTime == 0 {
+		stopTime = wire.Timestamp(s.serverTime())
+	}
+
+	var events []wire.TimeCoord
+	for _, ev := range s.motionEvents {
+		if wire.Timestamp(ev.time) >= startTime && wire.Timestamp(ev.time) <= stopTime {
+			if ev.window == client.xID(uint32(p.Window)) {
+				events = append(events, wire.TimeCoord{
+					Time: ev.time,
+					X:    ev.x,
+					Y:    ev.y,
+				})
+			}
+		}
+	}
+
 	return &wire.GetMotionEventsReply{
 		Sequence: seq,
-		Events:   []wire.TimeCoord{},
+		Events:   events,
 	}
 }
 
@@ -967,28 +1013,30 @@ func (s *x11Server) handleTranslateCoords(client *x11Client, req wire.Request, s
 		return err
 	}
 
-	// Simplified implementation: assume windows are direct children of the root
-	src := s.windows[srcWindow]
-	dst := s.windows[dstWindow]
-
-	var srcAbsX, srcAbsY int16
-	if src != nil {
-		srcAbsX = src.x
-		srcAbsY = src.y
-	}
-	var dstAbsX, dstAbsY int16
-	if dst != nil {
-		dstAbsX = dst.x
-		dstAbsY = dst.y
+	srcAbsX, srcAbsY, ok := s.getAbsoluteWindowCoords(srcWindow)
+	if !ok {
+		// This should not happen if checkWindow passed
+		return wire.NewGenericError(seq, uint32(p.SrcWindow), 0, wire.TranslateCoords, wire.WindowErrorCode)
 	}
 
-	dstX := srcAbsX + p.SrcX - dstAbsX
-	dstY := srcAbsY + p.SrcY - dstAbsY
+	dstAbsX, dstAbsY, ok := s.getAbsoluteWindowCoords(dstWindow)
+	if !ok {
+		// This should not happen if checkWindow passed
+		return wire.NewGenericError(seq, uint32(p.DstWindow), 0, wire.TranslateCoords, wire.WindowErrorCode)
+	}
+
+	// Calculate the absolute coordinates of the point
+	absPointX := srcAbsX + p.SrcX
+	absPointY := srcAbsY + p.SrcY
+
+	// Translate to be relative to the destination window
+	dstX := absPointX - dstAbsX
+	dstY := absPointY - dstAbsY
 
 	return &wire.TranslateCoordsReply{
 		Sequence:   seq,
 		SameScreen: true,
-		Child:      0, // No child for now
+		Child:      0, // Child finding is complex, implement with QueryPointer
 		DstX:       dstX,
 		DstY:       dstY,
 	}
@@ -1033,9 +1081,17 @@ func (s *x11Server) handleGetInputFocus(client *x11Client, req wire.Request, seq
 }
 
 func (s *x11Server) handleQueryKeymap(client *x11Client, req wire.Request, seq uint16) messageEncoder {
+	var keymap [32]byte
+	for keycode := range s.pressedKeys {
+		byteIndex := keycode / 8
+		bitIndex := keycode % 8
+		if byteIndex < 32 {
+			keymap[byteIndex] |= (1 << bitIndex)
+		}
+	}
 	return &wire.QueryKeymapReply{
 		Sequence: seq,
-		Keys:     [32]byte{},
+		Keys:     keymap,
 	}
 }
 
