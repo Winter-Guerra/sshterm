@@ -1804,10 +1804,16 @@ func (s *x11Server) handleAllocNamedColor(client *x11Client, req wire.Request, s
 }
 
 func (s *x11Server) handleAllocColorCells(client *x11Client, req wire.Request, seq uint16) messageEncoder {
+	// This request is not supported because the server uses a TrueColor visual,
+	// which does not have a mutable colormap. The protocol specification
+	// states that a Match error should be returned in this case.
 	return wire.NewGenericError(seq, 0, 0, wire.AllocColorCells, wire.MatchErrorCode)
 }
 
 func (s *x11Server) handleAllocColorPlanes(client *x11Client, req wire.Request, seq uint16) messageEncoder {
+	// This request is not supported because the server uses a TrueColor visual,
+	// which does not have a mutable colormap. The protocol specification
+	// states that a Match error should be returned in this case.
 	return wire.NewGenericError(seq, 0, 0, wire.AllocColorPlanes, wire.MatchErrorCode)
 }
 
