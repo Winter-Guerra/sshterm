@@ -856,16 +856,10 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 }
 
 func (s *x11Server) sendXInput2RawEvent(client *x11Client, evType uint16, deviceID byte, detail byte, dx, dy float64) {
-	// Construct mask: set bits 0 (X) and 1 (Y) if they changed (non-zero delta) or just always set them?
-	// Standard usually reports both axes for motion.
-	// Mask is []uint32. We use 1 uint32 (enough for axes 0-31).
-
 	var mask uint32
 	var values []float64
 
-	// Always report X and Y for RawMotion to be safe, or check non-zero?
-	// xeyes expects relative motion.
-
+	// Raw motion events report relative movement, so always include both axes.
 	// Axis 0: X
 	mask |= 1 << 0
 	values = append(values, dx)
