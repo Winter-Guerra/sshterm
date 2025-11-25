@@ -25,7 +25,7 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 		frontend:           mockFrontend,
 		windows:            make(map[xID]*window),
 		gcs:                make(map[xID]wire.GC),
-		pixmaps:            make(map[xID]bool),
+		pixmaps:            make(map[xID]*pixmap),
 		cursors:            make(map[xID]bool),
 		selections:         make(map[uint32]*selectionOwner),
 		properties:         make(map[xID]map[uint32]*property),

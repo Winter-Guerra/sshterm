@@ -198,13 +198,19 @@ type DeviceButtonPressEventData struct {
 	EventY uint16
 }
 
+type pixmap struct {
+	width  uint16
+	height uint16
+	depth  byte
+}
+
 type x11Server struct {
 	logger                Logger
 	byteOrder             binary.ByteOrder
 	frontend              X11FrontendAPI
 	windows               map[xID]*window
 	gcs                   map[xID]wire.GC
-	pixmaps               map[xID]bool
+	pixmaps               map[xID]*pixmap
 	cursors               map[xID]bool
 	selections            map[uint32]*selectionOwner
 	atoms                 map[string]uint32
@@ -465,6 +471,30 @@ func (s *x11Server) serverTime() uint32 {
 func (s *x11Server) UpdatePointerPosition(x, y int16) {
 	s.pointerX = x
 	s.pointerY = y
+}
+
+func (s *x11Server) getAbsoluteWindowCoords(xid xID) (int16, int16, bool) {
+	w, ok := s.windows[xid]
+	if !ok {
+		return 0, 0, false
+	}
+	absX, absY := w.x, w.y
+	for w.parent != s.rootWindowID() {
+		// This assumes the parent is in the same client's ID space, which might not
+		// be true if the window was reparented by another client. This is a known
+		// limitation in the current architecture.
+		parentXID := xID{client: w.xid.client, local: w.parent}
+		parentW, ok := s.windows[parentXID]
+		if !ok {
+			// This indicates a broken parent link. Stop traversing.
+			s.logger.Errorf("Could not find parent window for %s", parentXID)
+			break
+		}
+		absX += parentW.x
+		absY += parentW.y
+		w = parentW
+	}
+	return absX, absY, true
 }
 
 func (s *x11Server) GetWindowAttributes(xid xID) (wire.WindowAttributes, bool) {
@@ -1939,7 +1969,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					logger:     logger,
 					windows:    make(map[xID]*window),
 					gcs:        make(map[xID]wire.GC),
-					pixmaps:    make(map[xID]bool),
+					pixmaps:    make(map[xID]*pixmap),
 					cursors:    make(map[xID]bool),
 					selections: make(map[uint32]*selectionOwner),
 					properties: make(map[xID]map[uint32]*property),

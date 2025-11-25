@@ -11,6 +11,12 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const (
+	// From go/internal/x11/x11.go
+	atomString = 31
+	atomWmName = 39
+)
+
 // X11Operation represents a single X11 drawing operation for testing purposes.
 type X11Operation struct {
 	Type  string
@@ -198,7 +204,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	// ChangeProperty (set window title)
 	s.t.Log("Sending ChangeProperty")
 	title := "SSHTERM X11 - House and Sun"
-	if err := s.changeProperty(x11Channel, 1, 35, 36, 0, 8, []byte(title)); err != nil {
+	if err := s.changeProperty(x11Channel, 1, atomWmName, atomString, 0, 8, []byte(title)); err != nil {
 		s.t.Logf("Failed to change property: %v", err)
 		return
 	}
@@ -715,9 +721,17 @@ func GetX11Operations() []X11Operation {
 }
 
 func (s *sshServer) changeProperty(channel ssh.Channel, wid, property, typeAtom uint32, mode, format byte, data []byte) error {
+	opType := "changeProperty"
+	var args []any
+	if property == atomWmName {
+		opType = "setWindowTitle"
+		args = []any{wid, string(data)}
+	} else {
+		args = []any{wid, property, typeAtom, uint32(format), string(data)}
+	}
 	newOp := X11Operation{
-		Type: "changeProperty",
-		Args: []any{wid, property, typeAtom, uint32(format), string(data)},
+		Type: opType,
+		Args: args,
 	}
 	x11Operations = append(x11Operations, newOp)
 	// Opcode: 18

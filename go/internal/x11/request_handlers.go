@@ -377,17 +377,20 @@ func (s *x11Server) handleGetGeometry(client *x11Client, req wire.Request, seq u
 			BorderWidth: 0, // Border width is not stored in window struct, assuming 0 for now
 		}
 	}
-	// Must be a pixmap
-	return &wire.GetGeometryReply{
-		Sequence:    seq,
-		Depth:       24, // Assumption
-		Root:        s.rootWindowID(),
-		X:           0,
-		Y:           0,
-		Width:       1, // Dummy
-		Height:      1, // Dummy
-		BorderWidth: 0,
+	if p, ok := s.pixmaps[xid]; ok {
+		return &wire.GetGeometryReply{
+			Sequence:    seq,
+			Depth:       p.depth,
+			Root:        s.rootWindowID(),
+			X:           0,
+			Y:           0,
+			Width:       p.width,
+			Height:      p.height,
+			BorderWidth: 0,
+		}
 	}
+	// Should not be reached if checkDrawable is correct.
+	return wire.NewGenericError(seq, xid.local, 0, wire.GetGeometry, wire.DrawableErrorCode)
 }
 
 func (s *x11Server) handleQueryTree(client *x11Client, req wire.Request, seq uint16) messageEncoder {
@@ -924,17 +927,24 @@ func (s *x11Server) handleQueryPointer(client *x11Client, req wire.Request, seq 
 	if err := s.checkDrawable(xid, seq, wire.QueryPointer, 0); err != nil {
 		return err
 	}
+	winX, winY := s.pointerX, s.pointerY
+	absX, absY, ok := s.getAbsoluteWindowCoords(xid)
+	if ok {
+		winX -= absX
+		winY -= absY
+	}
+
 	debugf("X11: QueryPointer drawable=%d", xid)
 	return &wire.QueryPointerReply{
 		Sequence:   seq,
 		SameScreen: true,
 		Root:       s.rootWindowID(),
-		Child:      uint32(p.Drawable),
+		Child:      0, // Child window not implemented
 		RootX:      s.pointerX,
 		RootY:      s.pointerY,
-		WinX:       s.pointerX, // Assuming pointer is always in the window for now
-		WinY:       s.pointerY, // Assuming pointer is always in the window for now
-		Mask:       0,          // No buttons pressed
+		WinX:       winX,
+		WinY:       winY,
+		Mask:       s.pointerState,
 	}
 }
 
@@ -1176,7 +1186,11 @@ func (s *x11Server) handleCreatePixmap(client *x11Client, req wire.Request, seq 
 		return err
 	}
 
-	s.pixmaps[xid] = true // Mark pixmap ID as used
+	s.pixmaps[xid] = &pixmap{
+		width:  p.Width,
+		height: p.Height,
+		depth:  p.Depth,
+	}
 	s.frontend.CreatePixmap(xid, client.xID(uint32(p.Drawable)), uint32(p.Width), uint32(p.Height), uint32(p.Depth))
 	return nil
 }
@@ -1515,9 +1529,16 @@ func (s *x11Server) handleGetImage(client *x11Client, req wire.Request, seq uint
 	if err != nil {
 		return wire.NewGenericError(seq, 0, 0, wire.GetImage, wire.MatchErrorCode)
 	}
+	var depth byte = 24 // Default
+	xid := client.xID(uint32(p.Drawable))
+	if w, ok := s.windows[xid]; ok {
+		depth = w.depth
+	} else if p, ok := s.pixmaps[xid]; ok {
+		depth = p.depth
+	}
 	return &wire.GetImageReply{
 		Sequence:  seq,
-		Depth:     24, // Assuming 24-bit depth for now
+		Depth:     depth,
 		VisualID:  s.visualID,
 		ImageData: imgData,
 	}
