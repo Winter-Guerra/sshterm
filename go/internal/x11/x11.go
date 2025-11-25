@@ -420,10 +420,50 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		return
 	}
 
+	// Calculate delta
+	dx := float64(x - int32(s.pointerX))
+	dy := float64(y - int32(s.pointerY))
+
 	state := uint16(detail >> 16)
 	s.pointerState = state
 	button := byte(detail & 0xFFFF)
 	deviceID := virtualPointer.Header.DeviceID
+
+	// 0. Handle Raw Events (XI 2.x)
+	// "Raw events are sent to all clients that have selected for the event type on the root window."
+	// We iterate all clients to check if they selected Raw events on the Root Window.
+	for _, client := range s.clients {
+		if client.xi2EventMasks != nil {
+			if devMasks, ok := client.xi2EventMasks[s.rootWindowID()]; ok {
+				var mask []uint32
+				if m, ok := devMasks[uint16(deviceID)]; ok {
+					mask = m
+				} else if m, ok := devMasks[wire.XIAllMasterDevices]; ok {
+					mask = m
+				}
+
+				if mask != nil {
+					var evType uint16
+					switch eventType {
+					case "mousedown":
+						evType = wire.XI_RawButtonPress
+					case "mouseup":
+						evType = wire.XI_RawButtonRelease
+					case "mousemove":
+						evType = wire.XI_RawMotion
+					}
+
+					if evType > 0 {
+						wordIdx := int(evType / 32)
+						bitIdx := int(evType % 32)
+						if wordIdx < len(mask) && (mask[wordIdx]&(1<<bitIdx)) != 0 {
+							s.sendXInput2RawEvent(client, evType, deviceID, button, dx, dy)
+						}
+					}
+				}
+			}
+		}
+	}
 
 	// 1. Handle Device Grabs (Active and Passive)
 	activeDeviceGrab, deviceGrabbed := s.deviceGrabs[deviceID]
@@ -653,6 +693,44 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 				}
 			}
 		}
+	}
+}
+
+func (s *x11Server) sendXInput2RawEvent(client *x11Client, evType uint16, deviceID byte, detail byte, dx, dy float64) {
+	// Construct mask: set bits 0 (X) and 1 (Y) if they changed (non-zero delta) or just always set them?
+	// Standard usually reports both axes for motion.
+	// Mask is []uint32. We use 1 uint32 (enough for axes 0-31).
+
+	var mask uint32
+	var values []float64
+
+	// Always report X and Y for RawMotion to be safe, or check non-zero?
+	// xeyes expects relative motion.
+
+	// Axis 0: X
+	mask |= 1 << 0
+	values = append(values, dx)
+
+	// Axis 1: Y
+	mask |= 1 << 1
+	values = append(values, dy)
+
+	valuatorsMask := []uint32{mask}
+
+	event := &wire.XIRawEvent{
+		Sequence:       client.sequence - 1,
+		EventType:      evType,
+		DeviceID:       uint16(deviceID),
+		Time:           s.serverTime(),
+		Detail:         uint32(detail),
+		SourceID:       uint16(deviceID),
+		ValuatorsMask:  valuatorsMask,
+		ValuatorValues: values,
+		RawValues:      values, // Assuming raw == relative for virtual device
+	}
+
+	if err := client.send(event); err != nil {
+		debugf("X11: Failed to write XInput2 raw event: %v", err)
 	}
 }
 

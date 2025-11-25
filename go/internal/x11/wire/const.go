@@ -222,6 +222,20 @@ const (
 	XI_FocusOut         = 10 // XI2 FocusOut
 	XI_HierarchyChanged = 11 // XI2 HierarchyChanged
 	XI_PropertyEvent    = 12 // XI2 PropertyEvent
+	XI_RawKeyPress      = 13 // XI2 RawKeyPress
+	XI_RawKeyRelease    = 14 // XI2 RawKeyRelease
+	XI_RawButtonPress   = 15 // XI2 RawButtonPress
+	XI_RawButtonRelease = 16 // XI2 RawButtonRelease
+	XI_RawMotion        = 17 // XI2 RawMotion
+	XI_TouchBegin       = 18 // XI2 TouchBegin
+	XI_TouchUpdate      = 19 // XI2 TouchUpdate
+	XI_TouchEnd         = 20 // XI2 TouchEnd
+	XI_TouchOwnership   = 21 // XI2 TouchOwnership
+	XI_RawTouchBegin    = 22 // XI2 RawTouchBegin
+	XI_RawTouchUpdate   = 23 // XI2 RawTouchUpdate
+	XI_RawTouchEnd      = 24 // XI2 RawTouchEnd
+	XI_BarrierHit       = 25 // XI2 BarrierHit
+	XI_BarrierLeave     = 26 // XI2 BarrierLeave
 )
 
 // Window Attribute Masks

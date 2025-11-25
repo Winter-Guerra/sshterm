@@ -3,6 +3,7 @@
 package x11
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
@@ -289,4 +290,128 @@ func TestXInputGrab_PassiveKey(t *testing.T) {
 	}
 	assert.True(t, foundXInput, "Should receive XInput event from passive grab")
 	assert.False(t, foundCore, "Should NOT receive Core event due to activated device grab")
+}
+
+func TestXIRawMotionDelivery(t *testing.T) {
+	s, client, _, buffer := setupTestServerWithClient(t)
+
+	// Create a window to send events to
+	winID := xID{client.id, 1}
+	s.windows[winID] = &window{
+		xid:    winID,
+		parent: 0, // Root
+		mapped: true,
+		attributes: wire.WindowAttributes{
+			EventMask: 0,
+		},
+	}
+
+	// Select XI_RawMotion (17) on Root Window (0)
+	// 17 is in the first uint32 word. 1<<17 = 0x20000
+	mask := []uint32{0x20000}
+	req := &wire.XISelectEventsRequest{
+		Window:   0, // Root
+		NumMasks: 1,
+		Masks: []wire.XIEventMask{
+			{
+				DeviceID: wire.XIAllMasterDevices,
+				MaskLen:  1,
+				Mask:     mask,
+			},
+		},
+	}
+	// Encode and handle request to ensure state is updated
+	s.handleRequest(client, req, 1)
+
+	// Check if mask was recorded
+	if masks, ok := client.xi2EventMasks[0]; !ok {
+		t.Fatal("XISelectEvents failed to record mask for root window")
+	} else if m, ok := masks[wire.XIAllMasterDevices]; !ok || len(m) == 0 || m[0]&0x20000 == 0 {
+		t.Fatal("XISelectEvents failed to record XI_RawMotion bit")
+	}
+
+	// Clear buffer before triggering event
+	buffer.Reset()
+
+	// Trigger Mouse Move on the window
+	s.SendMouseEvent(winID, "mousemove", 100, 100, 0)
+
+	// Read from client connection buffer
+	msg := buffer.Bytes()
+	if len(msg) == 0 {
+		t.Fatal("Timeout waiting for XI_RawMotion event (buffer empty)")
+	}
+
+	// Decode message
+	// We expect a GenericEvent (35)
+	if len(msg) < 32 {
+		t.Fatalf("Received message too short: %d", len(msg))
+	}
+	if msg[0] != 35 {
+		t.Errorf("Expected GenericEvent (35), got %d", msg[0])
+	}
+	// Check extension opcode (byte 1)
+	if msg[1] != byte(wire.XInputOpcode) {
+		t.Errorf("Expected XInputOpcode (%d), got %d", wire.XInputOpcode, msg[1])
+	}
+	// Check event type (bytes 8-10)
+	eventType := binary.LittleEndian.Uint16(msg[8:10])
+	if eventType != 17 { // XI_RawMotion
+		t.Errorf("Expected XI_RawMotion (17), got %d", eventType)
+	}
+
+	// Verify content of XIRawEvent
+	// Header: 32 bytes
+	// Mask len at 22 (uint16)
+	// Valuators mask follows header.
+	maskLen := binary.LittleEndian.Uint16(msg[22:24])
+	if maskLen != 1 {
+		t.Errorf("Expected maskLen 1, got %d", maskLen)
+	}
+
+	// Mask at byte 28 (4 bytes for maskLen 1)
+	eventMask := binary.LittleEndian.Uint32(msg[28:32])
+	// Expect bits 0 (X) and 1 (Y) set -> 3
+	if eventMask != 3 {
+		t.Errorf("Expected mask 3 (X|Y), got %d", eventMask)
+	}
+
+	// Values start at 28 + 4 = 32
+	// Two axes set, so 2 * 8 bytes for values, then 2 * 8 bytes for raw values.
+	// Value for X (axis 0)
+	valXInt := int32(binary.LittleEndian.Uint32(msg[32:36]))
+	// valXFrac := binary.LittleEndian.Uint32(msg[36:40])
+	// Value for Y (axis 1)
+	valYInt := int32(binary.LittleEndian.Uint32(msg[40:44]))
+	// valYFrac := binary.LittleEndian.Uint32(msg[44:48])
+
+	// Delta was 100 (from 0,0 to 100,100)
+	if valXInt != 100 {
+		t.Errorf("Expected valXInt 100, got %d", valXInt)
+	}
+	if valYInt != 100 {
+		t.Errorf("Expected valYInt 100, got %d", valYInt)
+	}
+}
+
+func TestXIRawMotionDelivery_NotSelected(t *testing.T) {
+	s, client, _, buffer := setupTestServerWithClient(t)
+
+	// Create a window
+	winID := xID{client.id, 1}
+	s.windows[winID] = &window{
+		xid:    winID,
+		parent: 0,
+		mapped: true,
+	}
+
+	// Do NOT select XI_RawMotion
+
+	// Trigger Mouse Move
+	s.SendMouseEvent(winID, "mousemove", 100, 100, 0)
+
+	// Should receive nothing
+	if buffer.Len() > 0 {
+		t.Errorf("Received unexpected message: %x", buffer.Bytes())
+	}
 }

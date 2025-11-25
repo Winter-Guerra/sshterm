@@ -9,6 +9,8 @@ import (
 
 // XInput minor opcodes from XIproto.h
 const (
+	XIAllDevices         = 0
+	XIAllMasterDevices   = 1
 	CorePointerDeviceID  = 2
 	CoreKeyboardDeviceID = 3
 
@@ -80,6 +82,7 @@ const (
 	XIGetProperty                  = 59
 	XIGetSelectedEvents            = 60
 	XIBarrierReleasePointer        = 61
+
 )
 
 func ParseXInputRequest(order binary.ByteOrder, data byte, body []byte, seq uint16) (Request, error) {
@@ -3867,6 +3870,87 @@ type XIDeviceEvent struct {
 	SourceID  uint16
 	Mods      ModifierInfo
 	Group     GroupInfo
+}
+
+// XIRawEvent represents an XI 2.x RawEvent.
+type XIRawEvent struct {
+	Sequence       uint16
+	EventType      uint16
+	DeviceID       uint16
+	Time           uint32
+	Detail         uint32
+	SourceID       uint16
+	ValuatorsMask  []uint32 // Bitmask of valuators
+	ValuatorValues []float64
+	RawValues      []float64
+}
+
+func DoubleToFP3232(v float64) (int32, uint32) {
+	integral := int32(v)
+	fractional := uint32((v - float64(integral)) * (1 << 32))
+	return integral, fractional
+}
+
+func (e *XIRawEvent) EncodeMessage(order binary.ByteOrder) []byte {
+	// Fixed part: 28 bytes (header 12 + body 16)
+	// GenericEvent Header (12) + time(4) + detail(4) + sourceid(2) + valuators_len(2) + flags(4)
+
+	valuatorsLen := len(e.ValuatorsMask)
+	maskBytes := valuatorsLen * 4
+
+	// Count set bits
+	numValuators := 0
+	for _, m := range e.ValuatorsMask {
+		for i := 0; i < 32; i++ {
+			if (m & (1 << i)) != 0 {
+				numValuators++
+			}
+		}
+	}
+
+	valuesBytes := numValuators * 8 // 2 * 4 bytes for FP3232
+
+	totalLen := 28 + maskBytes + valuesBytes*2 // Values and RawValues
+	lengthField := (totalLen - 32) / 4
+
+	buf := new(bytes.Buffer)
+	buf.Grow(totalLen)
+
+	// Header (GenericEvent)
+	buf.WriteByte(35) // GenericEvent
+	buf.WriteByte(byte(XInputOpcode))
+	binary.Write(buf, order, e.Sequence)
+	binary.Write(buf, order, uint32(lengthField))
+	binary.Write(buf, order, e.EventType)
+	binary.Write(buf, order, e.DeviceID)
+
+	// Body
+	binary.Write(buf, order, e.Time)
+	binary.Write(buf, order, e.Detail)
+	binary.Write(buf, order, e.SourceID)
+	binary.Write(buf, order, uint16(valuatorsLen))
+	binary.Write(buf, order, uint32(0)) // flags (0 for now)
+
+	// Mask
+	for _, m := range e.ValuatorsMask {
+		binary.Write(buf, order, m)
+	}
+
+	// ValuatorValues
+	for _, v := range e.ValuatorValues {
+		integral, fractional := DoubleToFP3232(v)
+		binary.Write(buf, order, integral)
+		binary.Write(buf, order, fractional)
+	}
+
+	// RawValues
+	for _, v := range e.RawValues {
+		integral, fractional := DoubleToFP3232(v)
+		binary.Write(buf, order, integral)
+		binary.Write(buf, order, fractional)
+	}
+
+	return buf.Bytes()
 }
 
 func (e *XIDeviceEvent) EncodeMessage(order binary.ByteOrder) []byte {
