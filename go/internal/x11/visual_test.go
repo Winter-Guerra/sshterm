@@ -543,6 +543,15 @@ func TestGCLogicalOperations(t *testing.T) {
 	}
 }
 
+func findVisualByClass(s *x11Server, class uint8) (uint32, bool) {
+	for _, v := range s.visuals {
+		if v.Class == class {
+			return v.VisualID, true
+		}
+	}
+	return 0, false
+}
+
 func TestVisualTypes(t *testing.T) {
 	t.Log("Running TestVisualTypes")
 
@@ -585,10 +594,22 @@ func TestVisualTypes(t *testing.T) {
 				config: wire.ServerConfig{
 					Screens: setup.Screens,
 				},
+				visuals: make(map[uint32]wire.VisualType),
 			}
+			for _, screen := range setup.Screens {
+				for _, depth := range screen.Depths {
+					for _, visual := range depth.Visuals {
+						s.visuals[visual.VisualID] = visual
+					}
+				}
+			}
+
 			var ok bool
 			s.rootVisual, ok = s.getVisualByID(tc.visualID)
 			if !ok {
+				for _, v := range s.visuals {
+					t.Logf("Available visual: %+v", v)
+				}
 				t.Fatalf("visual %d not found", tc.visualID)
 			}
 
