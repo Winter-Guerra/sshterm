@@ -482,14 +482,16 @@ func (s *x11Server) getAbsoluteWindowCoords(xid xID) (int16, int16, bool) {
 	}
 	absX, absY := w.x, w.y
 	for w.parent != s.rootWindowID() {
-		// This assumes the parent is in the same client's ID space, which might not
-		// be true if the window was reparented by another client. This is a known
-		// limitation in the current architecture.
-		parentXID := xID{client: w.xid.client, local: w.parent}
-		parentW, ok := s.windows[parentXID]
+		parentXID, ok := s.findWindowByID(w.parent)
 		if !ok {
 			// This indicates a broken parent link. Stop traversing.
-			s.logger.Errorf("Could not find parent window for %s", parentXID)
+			s.logger.Errorf("Could not find parent window for %d", w.parent)
+			break
+		}
+		parentW, ok := s.windows[parentXID]
+		if !ok {
+			// This should not happen if findWindowByID works correctly
+			s.logger.Errorf("Could not find parent window object for %s", parentXID)
 			break
 		}
 		absX += parentW.x

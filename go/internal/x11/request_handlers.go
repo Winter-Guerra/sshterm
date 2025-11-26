@@ -194,9 +194,9 @@ func (s *x11Server) handleReparentWindow(client *x11Client, req wire.Request, se
 	if err := s.checkWindow(parentXID, seq, wire.ReparentWindow, 0); err != nil {
 		return err
 	}
-	window := s.windows[windowXID]
-	if window == nil {
-		return wire.NewGenericError(seq, uint32(p.Window), 0, wire.ReparentWindow, wire.MatchErrorCode)
+	window, ok := s.windows[windowXID]
+	if !ok {
+		return wire.NewGenericError(seq, uint32(p.Window), 0, wire.ReparentWindow, wire.WindowErrorCode)
 	}
 
 	oldParent, ok := s.windows[client.xID(window.parent)]
@@ -312,9 +312,9 @@ func (s *x11Server) handleCirculateWindow(client *x11Client, req wire.Request, s
 	if err := s.checkWindow(xid, seq, wire.CirculateWindow, 0); err != nil {
 		return err
 	}
-	window := s.windows[xid]
-	if window == nil {
-		return wire.NewGenericError(seq, uint32(p.Window), 0, wire.CirculateWindow, wire.MatchErrorCode)
+	window, ok := s.windows[xid]
+	if !ok {
+		return wire.NewGenericError(seq, uint32(p.Window), 0, wire.CirculateWindow, wire.WindowErrorCode)
 	}
 	parent, ok := s.windows[client.xID(window.parent)]
 	if ok {
@@ -628,17 +628,30 @@ func (s *x11Server) handleConvertSelection(client *x11Client, req wire.Request, 
 	if !ok && selectionAtom == clipboardAtom {
 		go func() {
 			content, err := s.frontend.ReadClipboard()
-			if err == nil {
-				// Write to property
-				// Assuming target is STRING or UTF8_STRING or TEXT
-				// Ideally check targetAtom. For now, assume string.
-				s.ChangeProperty(requestor, propertyAtom, s.GetAtom("STRING"), 8, []byte(content))
-
-				s.SendSelectionNotify(requestor, selectionAtom, targetAtom, propertyAtom, nil)
-			} else {
-				// Failed
+			if err != nil {
 				s.SendSelectionNotify(requestor, selectionAtom, targetAtom, 0, nil)
+				return
 			}
+
+			targetName := s.GetAtomName(targetAtom)
+			var propertyType uint32
+			var data []byte
+			var format byte
+
+			switch targetName {
+			case "STRING", "TEXT", "UTF8_STRING":
+				propertyType = s.GetAtom(targetName)
+				data = []byte(content)
+				format = 8
+			default:
+				// If the target is not a known string type, we cannot convert.
+				// Send a SelectionNotify with property None.
+				s.SendSelectionNotify(requestor, selectionAtom, targetAtom, 0, nil)
+				return
+			}
+
+			s.ChangeProperty(requestor, propertyAtom, propertyType, format, data)
+			s.SendSelectionNotify(requestor, selectionAtom, targetAtom, propertyAtom, nil)
 		}()
 		return nil
 	}
@@ -763,16 +776,8 @@ func (s *x11Server) handleUngrabPointer(client *x11Client, req wire.Request, seq
 
 func (s *x11Server) handleGrabButton(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.GrabButtonRequest)
-	var grabWindow xID
-	var found bool
-	for wID := range s.windows {
-		if wID.local == uint32(p.GrabWindow) {
-			grabWindow = wID
-			found = true
-			break
-		}
-	}
-	if !found {
+	grabWindow, ok := s.findWindowByID(uint32(p.GrabWindow))
+	if !ok {
 		return wire.NewGenericError(seq, uint32(p.GrabWindow), 0, wire.GrabButton, wire.WindowErrorCode)
 	}
 
@@ -876,16 +881,8 @@ func (s *x11Server) handleUngrabKeyboard(client *x11Client, req wire.Request, se
 
 func (s *x11Server) handleGrabKey(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.GrabKeyRequest)
-	var grabWindow xID
-	var found bool
-	for wID := range s.windows {
-		if wID.local == uint32(p.GrabWindow) {
-			grabWindow = wID
-			found = true
-			break
-		}
-	}
-	if !found {
+	grabWindow, ok := s.findWindowByID(uint32(p.GrabWindow))
+	if !ok {
 		return wire.NewGenericError(seq, uint32(p.GrabWindow), 0, wire.GrabKey, wire.WindowErrorCode)
 	}
 	grab := &passiveGrab{
