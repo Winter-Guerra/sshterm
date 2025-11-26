@@ -79,3 +79,10 @@ type Opcodes struct {
 	Major ReqCode // Major opcode.
 	Minor uint8   // Minor opcode (for extensions).
 }
+
+// ServerConfig holds dynamic server properties.
+type ServerConfig struct {
+	ScreenWidth  uint16
+	ScreenHeight uint16
+	Vendor       string
+}

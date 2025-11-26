@@ -360,8 +360,8 @@ func (s *x11Server) handleGetGeometry(client *x11Client, req wire.Request, seq u
 			Root:        s.rootWindowID(),
 			X:           0,
 			Y:           0,
-			Width:       s.rootWindowWidth,
-			Height:      s.rootWindowHeight,
+			Width:       s.config.ScreenWidth,
+			Height:      s.config.ScreenHeight,
 			BorderWidth: 0,
 		}
 	}

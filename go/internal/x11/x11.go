@@ -214,6 +214,7 @@ type x11Server struct {
 	logger                Logger
 	byteOrder             binary.ByteOrder
 	frontend              X11FrontendAPI
+	config                wire.ServerConfig
 	windows               map[xID]*window
 	gcs                   map[xID]wire.GC
 	pixmaps               map[xID]*pixmap
@@ -228,8 +229,6 @@ type x11Server struct {
 	installedColormap     xID
 	visualID              uint32
 	rootVisual            wire.VisualType
-	rootWindowWidth       uint16
-	rootWindowHeight      uint16
 	blackPixel            uint32
 	whitePixel            uint32
 	pointerX, pointerY    int16
@@ -465,11 +464,6 @@ var virtualKeyboard = &wire.DeviceInfo{
 			MaxKeycode: 255,
 		},
 	},
-}
-
-func (s *x11Server) SetRootWindowSize(width, height uint16) {
-	s.rootWindowWidth = width
-	s.rootWindowHeight = height
 }
 
 func (s *x11Server) serverTime() uint32 {
@@ -1987,7 +1981,7 @@ func (s *x11Server) handshake(client *x11Client) {
 		}
 	}
 
-	setup := wire.NewDefaultSetup()
+	setup := wire.NewDefaultSetup(&s.config)
 
 	// Create the setup response message encoder
 	responseMsg := &wire.SetupResponse{
@@ -2010,6 +2004,7 @@ func (s *x11Server) handshake(client *x11Client) {
 		VendorString:             setup.VendorString,
 		PixmapFormats:            setup.PixmapFormats,
 		Screens:                  setup.Screens,
+		Data:                     setup,
 	}
 
 	if err := client.send(responseMsg); err != nil {

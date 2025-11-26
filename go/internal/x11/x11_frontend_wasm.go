@@ -131,12 +131,17 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 	win := js.Global().Get("window")
 	width := win.Get("innerWidth").Int()
 	height := win.Get("innerHeight").Int()
-	frontend.server.SetRootWindowSize(uint16(width), uint16(height))
+	s.config = wire.ServerConfig{
+		ScreenWidth:  uint16(width),
+		ScreenHeight: uint16(height),
+		Vendor:       "sshterm-wasm",
+	}
 
 	resizeHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		newWidth := win.Get("innerWidth").Int()
 		newHeight := win.Get("innerHeight").Int()
-		frontend.server.SetRootWindowSize(uint16(newWidth), uint16(newHeight))
+		s.config.ScreenWidth = uint16(newWidth)
+		s.config.ScreenHeight = uint16(newHeight)
 		return nil
 	})
 	win.Call("addEventListener", "resize", resizeHandler)

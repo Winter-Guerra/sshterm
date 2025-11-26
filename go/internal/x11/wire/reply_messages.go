@@ -1425,6 +1425,7 @@ type SetupResponse struct {
 	VendorString             string   // Vendor string
 	PixmapFormats            []Format // Pixmap formats
 	Screens                  []Screen // Screens
+	Data                     *Setup
 }
 
 // EncodeMessage encodes the SetupResponse into a byte slice.
@@ -1437,9 +1438,7 @@ func (r *SetupResponse) EncodeMessage(order binary.ByteOrder) []byte {
 		copy(response[8:], []byte(r.Reason))
 		return response
 	}
-	setup := NewDefaultSetup() // This should probably be passed in or generated once
-	setupData := setup.marshal(order)
-
+	setupData := r.Data.marshal(order)
 	response := make([]byte, 8+len(setupData))
 	response[0] = r.Success
 	// byte 1 is unused
@@ -1518,14 +1517,13 @@ type VisualType struct {
 }
 
 // NewDefaultSetup creates a default Setup structure.
-func NewDefaultSetup() *Setup {
-	vendorString := "sshterm"
+func NewDefaultSetup(config *ServerConfig) *Setup {
 	s := &Setup{
 		ReleaseNumber:            1,
 		ResourceIDBase:           0,
 		ResourceIDMask:           0x1FFFFF,
 		MotionBufferSize:         256,
-		VendorLength:             uint16(len(vendorString)),
+		VendorLength:             uint16(len(config.Vendor)),
 		MaxRequestLength:         0xFFFF,
 		NumScreens:               1,
 		NumPixmapFormats:         1,
@@ -1535,7 +1533,7 @@ func NewDefaultSetup() *Setup {
 		BitmapFormatScanlinePad:  8,
 		MinKeycode:               8,
 		MaxKeycode:               255,
-		VendorString:             vendorString,
+		VendorString:             config.Vendor,
 		PixmapFormats: []Format{
 			{
 				Depth:        24,
@@ -1550,25 +1548,49 @@ func NewDefaultSetup() *Setup {
 				WhitePixel:          0xffffff,
 				BlackPixel:          0x000000,
 				CurrentInputMasks:   0,
-				WidthInPixels:       1024,
-				HeightInPixels:      768,
-				WidthInMillimeters:  270,
-				HeightInMillimeters: 203,
+				WidthInPixels:       config.ScreenWidth,
+				HeightInPixels:      config.ScreenHeight,
+				WidthInMillimeters:  uint16(float64(config.ScreenWidth) * 25.4 / 96),
+				HeightInMillimeters: uint16(float64(config.ScreenHeight) * 25.4 / 96),
 				MinInstalledMaps:    1,
 				MaxInstalledMaps:    1,
 				RootVisual:          0x1,
 				BackingStores:       2, // Always
 				SaveUnders:          false,
 				RootDepth:           24,
-				NumDepths:           1,
+				NumDepths:           2,
 				Depths: []Depth{
 					{
-						Depth:      24,
+						Depth:      1,
 						NumVisuals: 1,
+						Visuals: []VisualType{
+							{
+								VisualID:        0x2,
+								Class:           0, // StaticGray
+								BitsPerRGBValue: 1,
+								ColormapEntries: 2,
+								RedMask:         0,
+								GreenMask:       0,
+								BlueMask:        0,
+							},
+						},
+					},
+					{
+						Depth:      24,
+						NumVisuals: 2,
 						Visuals: []VisualType{
 							{
 								VisualID:        0x1,
 								Class:           4, // TrueColor
+								BitsPerRGBValue: 8,
+								ColormapEntries: 256,
+								RedMask:         0xff0000,
+								GreenMask:       0x00ff00,
+								BlueMask:        0x0000ff,
+							},
+							{
+								VisualID:        0x3,
+								Class:           5, // DirectColor
 								BitsPerRGBValue: 8,
 								ColormapEntries: 256,
 								RedMask:         0xff0000,
