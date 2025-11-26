@@ -552,6 +552,33 @@ func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) uint32 {
 	return 0 // No child found at these coordinates
 }
 
+func (s *x11Server) findDirectChildWindowAt(parentXID xID, x, y int16) uint32 {
+	parent, ok := s.windows[parentXID]
+	if !ok || !parent.mapped {
+		return 0 // None
+	}
+
+	// Iterate backwards through the global window stack to find the topmost child.
+	for i := len(s.windowStack) - 1; i >= 0; i-- {
+		childXID := s.windowStack[i]
+		child, ok := s.windows[childXID]
+
+		// Ensure the window is valid, mapped, and actually a direct child of the target parent.
+		if !ok || !child.mapped || child.parent != parentXID.local {
+			continue
+		}
+
+		// Check if the pointer is within the child's bounds (relative to its parent).
+		if x >= child.x && x < (child.x+int16(child.width)) &&
+			y >= child.y && y < (child.y+int16(child.height)) {
+			// This is the top-most direct child. Return it.
+			return child.xid.local
+		}
+	}
+
+	return 0 // No child found at these coordinates
+}
+
 func (s *x11Server) findTopLevelWindowAt(x, y int16) uint32 {
 	// Iterate backwards through the window stack to check the top-most windows first.
 	for i := len(s.windowStack) - 1; i >= 0; i-- {

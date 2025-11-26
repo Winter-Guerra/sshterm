@@ -61,6 +61,75 @@ func TestUngrabDeviceKeyRequest(t *testing.T) {
 	assert.Len(t, server.passiveDeviceGrabs[windowID], 0, "Expected passive device grab to be removed")
 }
 
+func TestXIQueryPointer_DeepTraversal(t *testing.T) {
+	server, _, _, clientBuffer := setupTestServerWithClient(t)
+	client := server.clients[1]
+
+	// Window hierarchy: root -> parent (10,10) -> child (20,20) -> grandchild (30,30)
+	parentID := xID{client: 1, local: 100}
+	childID := xID{client: 1, local: 101}
+	grandchildID := xID{client: 1, local: 102}
+
+	server.windows[parentID] = &window{
+		xid:      parentID,
+		parent:   server.rootWindowID(),
+		x:        10,
+		y:        10,
+		width:    100,
+		height:   100,
+		mapped:   true,
+		children: []uint32{childID.local},
+	}
+	server.windows[childID] = &window{
+		xid:      childID,
+		parent:   parentID.local,
+		x:        10,
+		y:        10,
+		width:    50,
+		height:   50,
+		mapped:   true,
+		children: []uint32{grandchildID.local},
+	}
+	server.windows[grandchildID] = &window{
+		xid:    grandchildID,
+		parent: childID.local,
+		x:      10,
+		y:      10,
+		width:  20,
+		height: 20,
+		mapped: true,
+	}
+	server.windowStack = []xID{parentID, childID, grandchildID} // Stacking order
+
+	// Pointer at (35, 35) absolute, which is inside the grandchild
+	server.pointerX = 35
+	server.pointerY = 35
+
+	// Query relative to the parent window
+	req := &wire.XIQueryPointerRequest{
+		Window:   wire.Window(parentID.local),
+		DeviceID: 2, // Virtual Pointer
+	}
+	reply := server.handleXInputRequest(client, req, 2)
+	assert.NotNil(t, reply, "XIQueryPointer should return a reply")
+
+	encodedReply := reply.EncodeMessage(client.byteOrder)
+	clientBuffer.Write(encodedReply)
+
+	opcodes := wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XIQueryPointer}
+	wire.ExpectReply(2, opcodes)
+	replyMsg, err := wire.ParseReply(opcodes, clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse XIQueryPointerReply")
+	queryReply, ok := replyMsg.(*wire.XIQueryPointerReply)
+	if assert.True(t, ok, "Expected *wire.XIQueryPointerReply, got %T", replyMsg) {
+		assert.Equal(t, childID.local, uint32(queryReply.Child), "Expected direct child to be the child under the pointer")
+		// WinX/Y should be relative to parent window (10, 10)
+		// Pointer (35,35) - Parent (10,10) = (25, 25)
+		assert.Equal(t, int32(25<<16), queryReply.WinX, "WinX mismatch")
+		assert.Equal(t, int32(25<<16), queryReply.WinY, "WinY mismatch")
+	}
+}
+
 func TestDeviceBellRequest(t *testing.T) {
 	server, _, mockFrontend, _ := setupTestServerWithClient(t)
 	client := server.clients[1]

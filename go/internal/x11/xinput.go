@@ -554,41 +554,24 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		rootX := int32(s.pointerX)
 		rootY := int32(s.pointerY)
 
-		child := uint32(0)
+		var child uint32
 		if xid.local == s.rootWindowID() {
 			winX = rootX
 			winY = rootY
-			for _, w := range s.windows {
-				if w.parent == s.rootWindowID() && w.mapped {
-					if s.pointerX >= w.x && s.pointerX < w.x+int16(w.width) &&
-						s.pointerY >= w.y && s.pointerY < w.y+int16(w.height) {
-						child = w.xid.local
-						break
-					}
-				}
-			}
+			child = s.findTopLevelWindowAt(s.pointerX, s.pointerY)
 		} else {
-			if w, ok := s.windows[xid]; ok {
-				// Assumes shallow hierarchy (window is child of root) as per current implementation assumption
-				winX = rootX - int32(w.x)
-				winY = rootY - int32(w.y)
-
-				ptrRelX := s.pointerX - w.x
-				ptrRelY := s.pointerY - w.y
-				for i := len(w.children) - 1; i >= 0; i-- {
-					childID := w.children[i]
-					childXID := xID{client: xid.client, local: childID}
-					if childWin, ok := s.windows[childXID]; ok && childWin.mapped {
-						if ptrRelX >= childWin.x && ptrRelX < childWin.x+int16(childWin.width) &&
-							ptrRelY >= childWin.y && ptrRelY < childWin.y+int16(childWin.height) {
-							child = childID
-							break
-						}
-					}
-				}
-			} else {
+			absX, absY, ok := s.getAbsoluteWindowCoords(xid)
+			if !ok {
 				return wire.NewError(wire.WindowErrorCode, seq, uint32(p.Window), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XIQueryPointer})
 			}
+
+			// Pointer coordinates relative to the window's origin
+			winX = rootX - int32(absX)
+			winY = rootY - int32(absY)
+
+			// findDirectChildWindowAt expects coordinates relative to the parent window's origin,
+			// which is exactly what winX/winY are.
+			child = s.findDirectChildWindowAt(xid, int16(winX), int16(winY))
 		}
 
 		mods := wire.ModifierInfo{
