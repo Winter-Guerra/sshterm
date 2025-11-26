@@ -262,6 +262,7 @@ type x11Server struct {
 	requestHandlers       map[wire.ReqCode]requestHandler
 	motionEvents          []motionEvent
 	pressedKeys           map[byte]bool
+	dirtyDrawables        map[xID]bool
 }
 
 type requestHandler func(client *x11Client, req wire.Request, seq uint16) messageEncoder
@@ -515,7 +516,7 @@ func (s *x11Server) findWindowByID(localID uint32) (xID, bool) {
 
 func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) uint32 {
 	parent, ok := s.windows[parentXID]
-	if !ok {
+	if !ok || !parent.mapped {
 		return 0 // None
 	}
 
@@ -1924,7 +1925,15 @@ func (s *x11Server) serve(client *x11Client) {
 				s.logger.Errorf("Failed to write reply: %v", err)
 			}
 		}
+		s.flushDirtyWindows()
 	}
+}
+
+func (s *x11Server) flushDirtyWindows() {
+	for xid := range s.dirtyDrawables {
+		s.frontend.ComposeWindow(xid)
+	}
+	s.dirtyDrawables = make(map[xID]bool)
 }
 
 func (s *x11Server) handleRequest(client *x11Client, req wire.Request, seq uint16) (reply messageEncoder) {
@@ -2083,6 +2092,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					startTime:          time.Now(),
 					motionEvents:       make([]motionEvent, 0, 1024),
 					pressedKeys:        make(map[byte]bool),
+					dirtyDrawables:     make(map[xID]bool),
 				}
 				x11ServerInstance.initAtoms()
 				x11ServerInstance.initRequestHandlers()

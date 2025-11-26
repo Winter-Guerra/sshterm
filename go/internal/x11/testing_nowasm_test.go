@@ -4,6 +4,7 @@ package x11
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 	"time"
 
@@ -40,6 +41,8 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 		defaultColormap:    1,
 		startTime:          time.Now(),
 		pressedKeys:        make(map[byte]bool),
+		dirtyDrawables:     make(map[xID]bool),
+		byteOrder:          binary.LittleEndian,
 	}
 	server.initAtoms()
 	server.initRequestHandlers()

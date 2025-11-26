@@ -694,10 +694,29 @@ func (s *x11Server) handleSendEvent(client *x11Client, req wire.Request, seq uin
 		return nil
 	}
 
-	// The event mask check is complex. For now, we will forward the event
-	// if the destination window's owner has selected for any events.
-	// A more complete implementation would parse the event and check the specific event mask.
-	if p.Propagate || destWindow.attributes.EventMask > 0 {
+	event, err := wire.ParseEvent(p.EventData, s.byteOrder)
+	if err != nil {
+		s.logger.Errorf("X11: SendEvent: failed to parse event: %v", err)
+		return nil
+	}
+
+	var eventMask uint32
+	switch e := event.(type) {
+	case *wire.KeyEvent:
+		if e.Opcode == wire.KeyPress {
+			eventMask = wire.KeyPressMask
+		} else {
+			eventMask = wire.KeyReleaseMask
+		}
+	case *wire.ButtonPressEvent:
+		eventMask = wire.ButtonPressMask
+	case *wire.ButtonReleaseEvent:
+		eventMask = wire.ButtonReleaseMask
+	case *wire.MotionNotifyEvent:
+		eventMask = wire.PointerMotionMask
+	}
+
+	if p.Propagate || (destWindow.attributes.EventMask&eventMask) != 0 {
 		s.sendEvent(targetClient, &wire.X11RawEvent{Data: p.EventData})
 	}
 
@@ -1003,21 +1022,25 @@ func (s *x11Server) handleTranslateCoords(client *x11Client, req wire.Request, s
 	srcWindow := client.xID(uint32(p.SrcWindow))
 	dstWindow := client.xID(uint32(p.DstWindow))
 
-	if err := s.checkWindow(srcWindow, seq, wire.TranslateCoords, 0); err != nil {
-		return err
+	if p.SrcWindow != wire.Window(s.rootWindowID()) {
+		if err := s.checkWindow(srcWindow, seq, wire.TranslateCoords, 0); err != nil {
+			return err
+		}
 	}
-	if err := s.checkWindow(dstWindow, seq, wire.TranslateCoords, 0); err != nil {
-		return err
+	if p.DstWindow != wire.Window(s.rootWindowID()) {
+		if err := s.checkWindow(dstWindow, seq, wire.TranslateCoords, 0); err != nil {
+			return err
+		}
 	}
 
 	srcAbsX, srcAbsY, ok := s.getAbsoluteWindowCoords(srcWindow)
-	if !ok {
+	if !ok && p.SrcWindow != wire.Window(s.rootWindowID()) {
 		// This should not happen if checkWindow passed
 		return wire.NewGenericError(seq, uint32(p.SrcWindow), 0, wire.TranslateCoords, wire.WindowErrorCode)
 	}
 
 	dstAbsX, dstAbsY, ok := s.getAbsoluteWindowCoords(dstWindow)
-	if !ok {
+	if !ok && p.DstWindow != wire.Window(s.rootWindowID()) {
 		// This should not happen if checkWindow passed
 		return wire.NewGenericError(seq, uint32(p.DstWindow), 0, wire.TranslateCoords, wire.WindowErrorCode)
 	}
@@ -1030,10 +1053,15 @@ func (s *x11Server) handleTranslateCoords(client *x11Client, req wire.Request, s
 	dstX := absPointX - dstAbsX
 	dstY := absPointY - dstAbsY
 
+	var childID uint32
+	if w, isWindow := s.windows[dstWindow]; isWindow && w.mapped {
+		childID = s.findChildWindowAt(dstWindow, dstX, dstY)
+	}
+
 	return &wire.TranslateCoordsReply{
 		Sequence:   seq,
 		SameScreen: true,
-		Child:      0, // Child finding is complex, implement with QueryPointer
+		Child:      childID,
 		DstX:       dstX,
 		DstY:       dstY,
 	}
@@ -1405,171 +1433,185 @@ func (s *x11Server) handleFreeGC(client *x11Client, req wire.Request, seq uint16
 
 func (s *x11Server) handleClearArea(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.ClearAreaRequest)
-	if err := s.checkWindow(client.xID(uint32(p.Window)), seq, wire.ClearArea, 0); err != nil {
+	drawable := client.xID(uint32(p.Window))
+	if err := s.checkWindow(drawable, seq, wire.ClearArea, 0); err != nil {
 		return err
 	}
-	s.frontend.ClearArea(client.xID(uint32(p.Window)), int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
-	s.frontend.ComposeWindow(client.xID(uint32(p.Window)))
+	s.frontend.ClearArea(drawable, int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handleCopyArea(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.CopyAreaRequest)
 	gcID := client.xID(uint32(p.Gc))
+	srcDrawable := client.xID(uint32(p.SrcDrawable))
+	dstDrawable := client.xID(uint32(p.DstDrawable))
 	if err := s.checkGC(gcID, seq, wire.CopyArea, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.SrcDrawable)), seq, wire.CopyArea, 0); err != nil {
+	if err := s.checkDrawable(srcDrawable, seq, wire.CopyArea, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.DstDrawable)), seq, wire.CopyArea, 0); err != nil {
+	if err := s.checkDrawable(dstDrawable, seq, wire.CopyArea, 0); err != nil {
 		return err
 	}
-	s.frontend.CopyArea(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
-	s.frontend.ComposeWindow(client.xID(uint32(p.DstDrawable)))
+	s.frontend.CopyArea(srcDrawable, dstDrawable, gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
+	s.dirtyDrawables[dstDrawable] = true
 	return nil
 }
 
 func (s *x11Server) handleCopyPlane(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.CopyPlaneRequest)
 	gcID := client.xID(uint32(p.Gc))
+	srcDrawable := client.xID(uint32(p.SrcDrawable))
+	dstDrawable := client.xID(uint32(p.DstDrawable))
 	if err := s.checkGC(gcID, seq, wire.CopyPlane, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.SrcDrawable)), seq, wire.CopyPlane, 0); err != nil {
+	if err := s.checkDrawable(srcDrawable, seq, wire.CopyPlane, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.DstDrawable)), seq, wire.CopyPlane, 0); err != nil {
+	if err := s.checkDrawable(dstDrawable, seq, wire.CopyPlane, 0); err != nil {
 		return err
 	}
-	s.frontend.CopyPlane(client.xID(uint32(p.SrcDrawable)), client.xID(uint32(p.DstDrawable)), gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height), int32(p.PlaneMask))
-	s.frontend.ComposeWindow(client.xID(uint32(p.DstDrawable)))
+	s.frontend.CopyPlane(srcDrawable, dstDrawable, gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height), int32(p.PlaneMask))
+	s.dirtyDrawables[dstDrawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolyPoint(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyPointRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PolyPoint, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyPoint, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyPoint, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyPoint(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyPoint(drawable, gcID, p.Coordinates)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolyLine(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyLineRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PolyLine, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyLine, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyLine, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyLine(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyLine(drawable, gcID, p.Coordinates)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolySegment(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolySegmentRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PolySegment, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolySegment, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolySegment, 0); err != nil {
 		return err
 	}
-	s.frontend.PolySegment(client.xID(uint32(p.Drawable)), gcID, p.Segments)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolySegment(drawable, gcID, p.Segments)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolyRectangle(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyRectangleRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PolyRectangle, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyRectangle, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyRectangle, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyRectangle(drawable, gcID, p.Rectangles)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolyArc(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyArcRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PolyArc, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyArc, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyArc, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyArc(drawable, gcID, p.Arcs)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handleFillPoly(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.FillPolyRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.FillPoly, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.FillPoly, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.FillPoly, 0); err != nil {
 		return err
 	}
-	s.frontend.FillPoly(client.xID(uint32(p.Drawable)), gcID, p.Coordinates)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.FillPoly(drawable, gcID, p.Coordinates)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolyFillRectangle(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyFillRectangleRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PolyFillRectangle, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyFillRectangle, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyFillRectangle, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyFillRectangle(client.xID(uint32(p.Drawable)), gcID, p.Rectangles)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyFillRectangle(drawable, gcID, p.Rectangles)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolyFillArc(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyFillArcRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PolyFillArc, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyFillArc, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyFillArc, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyFillArc(client.xID(uint32(p.Drawable)), gcID, p.Arcs)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyFillArc(drawable, gcID, p.Arcs)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePutImage(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PutImageRequest)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.PutImage, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PutImage, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PutImage, 0); err != nil {
 		return err
 	}
-	s.frontend.PutImage(client.xID(uint32(p.Drawable)), gcID, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PutImage(drawable, gcID, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1599,57 +1641,61 @@ func (s *x11Server) handleGetImage(client *x11Client, req wire.Request, seq uint
 
 func (s *x11Server) handlePolyText8(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyText8Request)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.GC))
 	if err := s.checkGC(gcID, seq, wire.PolyText8, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyText8, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyText8, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyText8(drawable, gcID, int32(p.X), int32(p.Y), p.Items)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handlePolyText16(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.PolyText16Request)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.GC))
 	if err := s.checkGC(gcID, seq, wire.PolyText16, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.PolyText16, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.PolyText16, 0); err != nil {
 		return err
 	}
-	s.frontend.PolyText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Items)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.PolyText16(drawable, gcID, int32(p.X), int32(p.Y), p.Items)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handleImageText8(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.ImageText8Request)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.ImageText8, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.ImageText8, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.ImageText8, 0); err != nil {
 		return err
 	}
-	s.frontend.ImageText8(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.ImageText8(drawable, gcID, int32(p.X), int32(p.Y), p.Text)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
 func (s *x11Server) handleImageText16(client *x11Client, req wire.Request, seq uint16) messageEncoder {
 	p := req.(*wire.ImageText16Request)
+	drawable := client.xID(uint32(p.Drawable))
 	gcID := client.xID(uint32(p.Gc))
 	if err := s.checkGC(gcID, seq, wire.ImageText16, 0); err != nil {
 		return err
 	}
-	if err := s.checkDrawable(client.xID(uint32(p.Drawable)), seq, wire.ImageText16, 0); err != nil {
+	if err := s.checkDrawable(drawable, seq, wire.ImageText16, 0); err != nil {
 		return err
 	}
-	s.frontend.ImageText16(client.xID(uint32(p.Drawable)), gcID, int32(p.X), int32(p.Y), p.Text)
-	s.frontend.ComposeWindow(client.xID(uint32(p.Drawable)))
+	s.frontend.ImageText16(drawable, gcID, int32(p.X), int32(p.Y), p.Text)
+	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1860,6 +1906,7 @@ func (s *x11Server) handleAllocColorCells(client *x11Client, req wire.Request, s
 	// This request is not supported because the server uses a TrueColor visual,
 	// which does not have a mutable colormap. The protocol specification
 	// states that a Match error should be returned in this case.
+	// Supporting other visual types is a larger task that is outside the scope of this request.
 	return wire.NewGenericError(seq, 0, 0, wire.AllocColorCells, wire.MatchErrorCode)
 }
 
@@ -1867,6 +1914,7 @@ func (s *x11Server) handleAllocColorPlanes(client *x11Client, req wire.Request, 
 	// This request is not supported because the server uses a TrueColor visual,
 	// which does not have a mutable colormap. The protocol specification
 	// states that a Match error should be returned in this case.
+	// Supporting other visual types is a larger task that is outside the scope of this request.
 	return wire.NewGenericError(seq, 0, 0, wire.AllocColorPlanes, wire.MatchErrorCode)
 }
 
@@ -2073,10 +2121,23 @@ func (s *x11Server) handleQueryBestSize(client *x11Client, req wire.Request, seq
 	}
 	debugf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", p.Class, p.Drawable, p.Width, p.Height)
 
+	var width, height uint16
+	switch p.Class {
+	case 0: // Cursor
+		width = 16
+		height = 16
+	case 1: // Tile
+		width = 100
+		height = 100
+	case 2: // Stipple
+		width = 200
+		height = 200
+	}
+
 	return &wire.QueryBestSizeReply{
 		Sequence: seq,
-		Width:    p.Width,
-		Height:   p.Height,
+		Width:    width,
+		Height:   height,
 	}
 }
 

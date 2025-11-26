@@ -186,11 +186,13 @@ type MockX11Frontend struct {
 	GetDeviceButtonMappingCalls     [][]any
 	QueryDeviceStateCalls           [][]any
 	ComposeWindowCalls              []xID
+	ComposeWindowCount              int
 	AllowEventsCalls                [][]any
 	ChangePointerControlCalls       [][]any
 }
 
 func (m *MockX11Frontend) ComposeWindow(xid xID) {
+	m.ComposeWindowCount++
 	m.ComposeWindowCalls = append(m.ComposeWindowCalls, xid)
 }
 
