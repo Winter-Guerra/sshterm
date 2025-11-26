@@ -156,10 +156,17 @@ func TestDrawRectangle(t *testing.T) {
 		clients:         make(map[uint32]*x11Client),
 		byteOrder:       binary.LittleEndian,
 		passiveGrabs:    make(map[xID][]*passiveGrab),
-		rootVisual:      setup.Screens[0].Depths[0].Visuals[0],
 		blackPixel:      setup.Screens[0].BlackPixel,
 		whitePixel:      setup.Screens[0].WhitePixel,
 		defaultColormap: setup.Screens[0].DefaultColormap,
+	}
+	for _, d := range setup.Screens[0].Depths {
+		for _, v := range d.Visuals {
+			if v.Class == 4 { // TrueColor
+				s.rootVisual = v
+				break
+			}
+		}
 	}
 	s.initAtoms()
 	fe := newX11Frontend(&testLogger{t: t}, s)
@@ -329,10 +336,17 @@ func TestDrawText(t *testing.T) {
 		clients:         make(map[uint32]*x11Client),
 		byteOrder:       binary.LittleEndian,
 		passiveGrabs:    make(map[xID][]*passiveGrab),
-		rootVisual:      setup.Screens[0].Depths[0].Visuals[0],
 		blackPixel:      setup.Screens[0].BlackPixel,
 		whitePixel:      setup.Screens[0].WhitePixel,
 		defaultColormap: setup.Screens[0].DefaultColormap,
+	}
+	for _, d := range setup.Screens[0].Depths {
+		for _, v := range d.Visuals {
+			if v.Class == 4 { // TrueColor
+				s.rootVisual = v
+				break
+			}
+		}
 	}
 	s.initAtoms()
 	fe := newX11Frontend(&testLogger{t: t}, s)
@@ -522,6 +536,90 @@ func TestGCLogicalOperations(t *testing.T) {
 			// 3. Verify the result
 			poll(t, func() error {
 				img := getCanvasData(t, s, winID, 0, 0, winWidth, winHeight)
+				return checkRectangle(img, image.Rect(0, 0, 1, 1), tc.wantR, tc.wantG, tc.wantB)
+			})
+			t.Logf("Finished test case: %s", tc.name)
+		})
+	}
+}
+
+func TestVisualTypes(t *testing.T) {
+	t.Log("Running TestVisualTypes")
+
+	tests := []struct {
+		name                string
+		visualID            uint32
+		class               uint8
+		pixel               uint32
+		wantR, wantG, wantB uint8
+	}{
+		{"StaticGray", 4, 0, 0x80, 0x80, 0x80, 0x80},
+		{"GrayScale", 5, 1, 0x80, 0x80, 0x80, 0x80},
+		{"StaticColor", 6, 2, 0xff0000, 255, 0, 0},
+		{"PseudoColor", 7, 3, 0x00ff00, 0, 255, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("Starting test case: %s", tc.name)
+			t.Cleanup(func() { cleanupDOMElements(t) })
+
+			setup := wire.NewDefaultSetup(&wire.ServerConfig{
+				ScreenWidth:  1024,
+				ScreenHeight: 768,
+				Vendor:       "test",
+			})
+			s := &x11Server{
+				logger:          &testLogger{t: t},
+				windows:         make(map[xID]*window),
+				gcs:             make(map[xID]wire.GC),
+				pixmaps:         make(map[xID]*pixmap),
+				cursors:         make(map[xID]bool),
+				colormaps:       make(map[xID]*colormap),
+				clients:         make(map[uint32]*x11Client),
+				byteOrder:       binary.LittleEndian,
+				blackPixel:      setup.Screens[0].BlackPixel,
+				whitePixel:      setup.Screens[0].WhitePixel,
+				defaultColormap: setup.Screens[0].DefaultColormap,
+				visualID:        tc.visualID,
+				config: wire.ServerConfig{
+					Screens: setup.Screens,
+				},
+			}
+			var ok bool
+			s.rootVisual, ok = s.getVisualByID(tc.visualID)
+			if !ok {
+				t.Fatalf("visual %d not found", tc.visualID)
+			}
+
+			s.colormaps[xID{local: s.defaultColormap}] = &colormap{
+				pixels: map[uint32]wire.XColorItem{
+					0xff0000: {Red: 0xff00, Green: 0, Blue: 0},
+					0x00ff00: {Red: 0, Green: 0xff00, Blue: 0},
+				},
+			}
+			fe := newX11Frontend(&testLogger{t: t}, s)
+			s.frontend = fe
+
+			winID := xID{client: 1, local: 1}
+			s.windows[winID] = &window{
+				xid:      winID,
+				parent:   s.rootWindowID(),
+				width:    1,
+				height:   1,
+				mapped:   true,
+				colormap: xID{local: s.defaultColormap},
+			}
+			fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 1, 1, 24, wire.CWColormap, wire.WindowAttributes{Colormap: wire.Colormap(s.defaultColormap)})
+			fe.MapWindow(winID)
+
+			gcID := xID{client: 1, local: 2}
+			fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: tc.pixel, Function: wire.FunctionCopy})
+			fe.PolyFillRectangle(winID, gcID, []uint32{0, 0, 1, 1})
+			fe.ComposeWindow(winID)
+
+			poll(t, func() error {
+				img := getCanvasData(t, s, winID, 0, 0, 1, 1)
 				return checkRectangle(img, image.Rect(0, 0, 1, 1), tc.wantR, tc.wantG, tc.wantB)
 			})
 			t.Logf("Finished test case: %s", tc.name)

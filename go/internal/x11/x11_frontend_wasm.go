@@ -135,7 +135,10 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 		ScreenWidth:  uint16(width),
 		ScreenHeight: uint16(height),
 		Vendor:       "sshterm-wasm",
+		Screens:      wire.NewDefaultSetup(&wire.ServerConfig{}).Screens,
 	}
+	s.config.Screens[0].WidthInPixels = uint16(width)
+	s.config.Screens[0].HeightInPixels = uint16(height)
 
 	resizeHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		newWidth := win.Get("innerWidth").Int()
@@ -155,7 +158,16 @@ func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc wire.GC) (out string) 
 		debugf("getForegroundColor: cmap:%s gc=%+v %s", cmap, gc, out)
 	}()
 	r, g, b := w.GetRGBColor(cmap, gc.Foreground)
-	return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+	visual, ok := w.server.getVisualByID(w.server.visualID)
+	if !ok {
+		return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+	}
+	switch visual.Class {
+	case 0, 1: // StaticGray, GrayScale
+		return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, r, r)
+	default:
+		return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+	}
 }
 
 func (w *wasmX11Frontend) getBackgroundColor(cmap xID, gc wire.GC) (out string) {
@@ -163,7 +175,16 @@ func (w *wasmX11Frontend) getBackgroundColor(cmap xID, gc wire.GC) (out string) 
 		debugf("getBackgroundColor: cmap:%s gc=%+v %s", cmap, gc, out)
 	}()
 	r, g, b := w.GetRGBColor(cmap, gc.Background)
-	return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+	visual, ok := w.server.getVisualByID(w.server.visualID)
+	if !ok {
+		return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+	}
+	switch visual.Class {
+	case 0, 1: // StaticGray, GrayScale
+		return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, r, r)
+	default:
+		return fmt.Sprintf("rgba(%d, %d, %d, 1.0)", r, g, b)
+	}
 }
 
 func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values wire.WindowAttributes) {
@@ -1249,7 +1270,7 @@ func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), o
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		destCtx = pixmapInfo.context
-		colormap = xID{0, w.server.defaultColormap}
+		colormap = xID{local: w.server.defaultColormap}
 	} else {
 		debugf("applyGC: drawable %s not found", drawable)
 		return

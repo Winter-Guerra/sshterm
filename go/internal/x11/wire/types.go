@@ -85,4 +85,5 @@ type ServerConfig struct {
 	ScreenWidth  uint16
 	ScreenHeight uint16
 	Vendor       string
+	Screens      []Screen
 }

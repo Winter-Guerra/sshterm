@@ -1592,31 +1592,33 @@ func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 	if colormap.local == s.defaultColormap {
 		colormap.client = 0
 	}
-	if cm, ok := s.colormaps[colormap]; ok {
-		if color, ok := cm.pixels[pixel]; ok {
-			debugf("GetRGBColor: cmap:%s pixel:%x return %+v", colormap, pixel, color)
-			return uint8(color.Red >> 8), uint8(color.Green >> 8), uint8(color.Blue >> 8)
-		}
-		r = uint8((pixel & 0xff0000) >> 16)
-		g = uint8((pixel & 0x00ff00) >> 8)
-		b = uint8((pixel & 0x0000ff))
-		debugf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
-		return r, g, b
+	visual, ok := s.getVisualByID(s.visualID)
+	if !ok {
+		visual = s.rootVisual
 	}
-	// Explicitly handle black and white pixels based on server's setup
-	if pixel == s.blackPixel {
-		debugf("GetRGBColor: cmap:%s pixel:%x return blackPixel", colormap, pixel)
-		return 0, 0, 0 // Black
-	}
-	if pixel == s.whitePixel {
-		debugf("GetRGBColor: cmap:%s pixel:%x return whitePixel", colormap, pixel)
-		return 0xFF, 0xFF, 0xFF // White
-	}
+
 	// For TrueColor visuals, the pixel value directly encodes RGB components.
-	if s.rootVisual.Class == 4 { // TrueColor
-		r = uint8((pixel & s.rootVisual.RedMask) >> calculateShift(s.rootVisual.RedMask))
-		g = uint8((pixel & s.rootVisual.GreenMask) >> calculateShift(s.rootVisual.GreenMask))
-		b = uint8((pixel & s.rootVisual.BlueMask) >> calculateShift(s.rootVisual.BlueMask))
+	switch visual.Class {
+	case 0, 1: // StaticGray, GrayScale
+		// For grayscale, the pixel value is an index into a ramp of gray colors.
+		// We can simulate this by scaling the pixel value to the 0-255 range.
+		maxVal := visual.ColormapEntries - 1
+		if maxVal == 0 {
+			maxVal = 255
+		}
+		gray := uint8(float64(pixel) / float64(maxVal) * 255.0)
+		return gray, gray, gray
+	case 2, 3: // StaticColor, PseudoColor
+		// These visuals use a colormap to look up RGB values.
+		if cm, ok := s.colormaps[colormap]; ok {
+			if color, ok := cm.pixels[pixel]; ok {
+				return uint8(color.Red >> 8), uint8(color.Green >> 8), uint8(color.Blue >> 8)
+			}
+		}
+	case 4, 5: // TrueColor, DirectColor
+		r = uint8((pixel & visual.RedMask) >> calculateShift(visual.RedMask))
+		g = uint8((pixel & visual.GreenMask) >> calculateShift(visual.GreenMask))
+		b = uint8((pixel & visual.BlueMask) >> calculateShift(visual.BlueMask))
 		debugf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
 		return r, g, b
 	}
@@ -1626,6 +1628,19 @@ func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 }
 
 // calculateShift determines the right shift needed to extract the color component.
+func (s *x11Server) getVisualByID(visualID uint32) (wire.VisualType, bool) {
+	for _, screen := range s.config.Screens {
+		for _, depth := range screen.Depths {
+			for _, visual := range depth.Visuals {
+				if visual.VisualID == visualID {
+					return visual, true
+				}
+			}
+		}
+	}
+	return wire.VisualType{}, false
+}
+
 func calculateShift(mask uint32) uint32 {
 	if mask == 0 {
 		return 0
@@ -2014,7 +2029,14 @@ func (s *x11Server) handshake(client *x11Client) {
 		return
 	}
 	s.visualID = setup.Screens[0].RootVisual
-	s.rootVisual = setup.Screens[0].Depths[0].Visuals[0]
+	for _, d := range setup.Screens[0].Depths {
+		for _, v := range d.Visuals {
+			if v.VisualID == s.visualID {
+				s.rootVisual = v
+				break
+			}
+		}
+	}
 	s.blackPixel = setup.Screens[0].BlackPixel
 	s.whitePixel = setup.Screens[0].WhitePixel
 }

@@ -1577,7 +1577,7 @@ func NewDefaultSetup(config *ServerConfig) *Setup {
 					},
 					{
 						Depth:      24,
-						NumVisuals: 2,
+						NumVisuals: 6,
 						Visuals: []VisualType{
 							{
 								VisualID:        0x1,
@@ -1596,6 +1596,30 @@ func NewDefaultSetup(config *ServerConfig) *Setup {
 								RedMask:         0xff0000,
 								GreenMask:       0x00ff00,
 								BlueMask:        0x0000ff,
+							},
+							{
+								VisualID:        0x4,
+								Class:           0, // StaticGray
+								BitsPerRGBValue: 8,
+								ColormapEntries: 256,
+							},
+							{
+								VisualID:        0x5,
+								Class:           1, // GrayScale
+								BitsPerRGBValue: 8,
+								ColormapEntries: 256,
+							},
+							{
+								VisualID:        0x6,
+								Class:           2, // StaticColor
+								BitsPerRGBValue: 8,
+								ColormapEntries: 256,
+							},
+							{
+								VisualID:        0x7,
+								Class:           3, // PseudoColor
+								BitsPerRGBValue: 8,
+								ColormapEntries: 256,
 							},
 						},
 					},
