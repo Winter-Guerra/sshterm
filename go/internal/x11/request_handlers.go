@@ -43,6 +43,7 @@ func (s *x11Server) handleCreateWindow(client *x11Client, req wire.Request, seq 
 		newWindow.colormap = xID{local: s.defaultColormap}
 	}
 	s.windows[xid] = newWindow
+	s.windowStack = append(s.windowStack, xid)
 
 	// Add to parent's children list
 	if parentWindow, ok := s.windows[parentXID]; ok {
@@ -147,6 +148,7 @@ func (s *x11Server) handleDestroyWindow(client *x11Client, req wire.Request, seq
 		return err
 	}
 	delete(s.windows, xid)
+	s.removeWindowFromStack(xid)
 	s.frontend.DestroyWindow(xid)
 	return nil
 }
@@ -231,6 +233,10 @@ func (s *x11Server) handleReparentWindow(client *x11Client, req wire.Request, se
 	window.x = p.X
 	window.y = p.Y
 
+	// Note: Reparenting does not change the global stacking order (z-index),
+	// so we don't need to modify s.windowStack here. The window remains in its
+	// current position in the stack.
+
 	s.frontend.ReparentWindow(windowXID, parentXID, p.X, p.Y)
 	return nil
 }
@@ -243,6 +249,9 @@ func (s *x11Server) handleMapWindow(client *x11Client, req wire.Request, seq uin
 	}
 	if w, ok := s.windows[xid]; ok {
 		w.mapped = true
+		// Move to top of stack on map
+		s.removeWindowFromStack(xid)
+		s.windowStack = append(s.windowStack, xid)
 		s.frontend.MapWindow(xid)
 		s.sendExposeEvent(xid, 0, 0, w.width, w.height)
 	}
@@ -308,6 +317,74 @@ func (s *x11Server) handleConfigureWindow(client *x11Client, req wire.Request, s
 	if xid.local == s.rootWindowID() {
 		return wire.NewGenericError(seq, uint32(p.Window), 0, wire.ConfigureWindow, wire.MatchErrorCode)
 	}
+
+	if p.ValueMask&wire.CWStackMode != 0 {
+		var stackMode, sibling uint32
+		valueIndex := 0
+		// The order of values is determined by the bit position in the value-mask (from LSB to MSB).
+		if (p.ValueMask & (1 << 0)) != 0 { // x
+			valueIndex++
+		}
+		if (p.ValueMask & (1 << 1)) != 0 { // y
+			valueIndex++
+		}
+		if (p.ValueMask & (1 << 2)) != 0 { // width
+			valueIndex++
+		}
+		if (p.ValueMask & (1 << 3)) != 0 { // height
+			valueIndex++
+		}
+		if (p.ValueMask & (1 << 4)) != 0 { // border-width
+			valueIndex++
+		}
+		if (p.ValueMask & wire.CWSibling) != 0 {
+			sibling = p.Values[valueIndex]
+			valueIndex++
+		}
+		if (p.ValueMask & wire.CWStackMode) != 0 {
+			stackMode = p.Values[valueIndex]
+		}
+
+		s.removeWindowFromStack(xid)
+		done := false
+		switch stackMode {
+		case 0: // Above
+			if p.ValueMask&wire.CWSibling != 0 {
+				siblingID := client.xID(sibling)
+				for i, id := range s.windowStack {
+					if id == siblingID {
+						s.windowStack = append(s.windowStack[:i+1], append([]xID{xid}, s.windowStack[i+1:]...)...)
+						done = true
+						break
+					}
+				}
+			}
+			if !done {
+				s.windowStack = append(s.windowStack, xid) // Default to top
+			}
+		case 1: // Below
+			if p.ValueMask&wire.CWSibling != 0 {
+				siblingID := client.xID(sibling)
+				for i, id := range s.windowStack {
+					if id == siblingID {
+						s.windowStack = append(s.windowStack[:i], append([]xID{xid}, s.windowStack[i:]...)...)
+						done = true
+						break
+					}
+				}
+			}
+			if !done {
+				s.windowStack = append([]xID{xid}, s.windowStack...) // Default to bottom
+			}
+		case 2: // TopIf
+			s.windowStack = append(s.windowStack, xid)
+		case 3: // BottomIf
+			s.windowStack = append([]xID{xid}, s.windowStack...)
+		case 4: // Opposite
+			s.windowStack = append(s.windowStack, xid) // Treat as Top for simplicity
+		}
+	}
+
 	s.frontend.ConfigureWindow(xid, p.ValueMask, p.Values)
 	return nil
 }
@@ -347,6 +424,23 @@ func (s *x11Server) handleCirculateWindow(client *x11Client, req wire.Request, s
 		}
 	} else if window.parent != s.rootWindowID() {
 		return wire.NewGenericError(seq, window.parent, 0, wire.CirculateWindow, wire.WindowErrorCode)
+	}
+
+	// Also update the global window stack
+	idx := -1
+	for i, id := range s.windowStack {
+		if id == xid {
+			idx = i
+			break
+		}
+	}
+	if idx != -1 {
+		stack := append(s.windowStack[:idx], s.windowStack[idx+1:]...)
+		if p.Direction == 0 { // RaiseLowest - move to end (top)
+			s.windowStack = append(stack, xid)
+		} else { // LowerHighest - move to beginning (bottom)
+			s.windowStack = append([]xID{xid}, stack...)
+		}
 	}
 
 	s.frontend.CirculateWindow(xid, p.Direction)
@@ -1060,7 +1154,9 @@ func (s *x11Server) handleTranslateCoords(client *x11Client, req wire.Request, s
 	dstY := absPointY - dstAbsY
 
 	var childID uint32
-	if w, isWindow := s.windows[dstWindow]; isWindow && w.mapped {
+	if dstWindow.local == s.rootWindowID() {
+		childID = s.findTopLevelWindowAt(dstX, dstY)
+	} else if w, isWindow := s.windows[dstWindow]; isWindow && w.mapped {
 		childID = s.findChildWindowAt(dstWindow, dstX, dstY)
 	}
 

@@ -219,6 +219,7 @@ type x11Server struct {
 	frontend              X11FrontendAPI
 	config                wire.ServerConfig
 	windows               map[xID]*window
+	windowStack           []xID
 	gcs                   map[xID]wire.GC
 	pixmaps               map[xID]*pixmap
 	cursors               map[xID]bool
@@ -524,32 +525,53 @@ func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) uint32 {
 		return 0 // None
 	}
 
-	// Iterate backwards, as higher windows in stacking order are later in the list
-	for i := len(parent.children) - 1; i >= 0; i-- {
-		childID := parent.children[i]
-		childXID, ok := s.findWindowByID(childID)
-		if !ok {
-			continue
-		}
+	// Iterate backwards through the global window stack to find the topmost child.
+	for i := len(s.windowStack) - 1; i >= 0; i-- {
+		childXID := s.windowStack[i]
 		child, ok := s.windows[childXID]
-		if !ok || !child.mapped {
+
+		// Ensure the window is valid, mapped, and actually a child of the target parent.
+		if !ok || !child.mapped || child.parent != parentXID.local {
 			continue
 		}
 
-		// Check if pointer is within the child's bounds (relative to parent)
+		// Check if the pointer is within the child's bounds (relative to its parent).
 		if x >= child.x && x < (child.x+int16(child.width)) &&
 			y >= child.y && y < (child.y+int16(child.height)) {
-			// Pointer is over this child. Recursively check its children.
-			// The coordinates need to be relative to the child.
+			// The pointer is over this child. Recursively check its children.
+			// The coordinates need to be made relative to the child for the recursive call.
 			grandchildID := s.findChildWindowAt(childXID, x-child.x, y-child.y)
+			if grandchildID != 0 {
+				return grandchildID
+			}
+			// If no grandchild is found, this child is the target.
+			return child.xid.local
+		}
+	}
+
+	return 0 // No child found at these coordinates
+}
+
+func (s *x11Server) findTopLevelWindowAt(x, y int16) uint32 {
+	// Iterate backwards through the window stack to check the top-most windows first.
+	for i := len(s.windowStack) - 1; i >= 0; i-- {
+		xid := s.windowStack[i]
+		child, ok := s.windows[xid]
+		if !ok || !child.mapped || child.parent != s.rootWindowID() {
+			continue
+		}
+
+		if x >= child.x && x < (child.x+int16(child.width)) &&
+			y >= child.y && y < (child.y+int16(child.height)) {
+			// This window contains the point. Check its children recursively.
+			grandchildID := s.findChildWindowAt(child.xid, x-child.x, y-child.y)
 			if grandchildID != 0 {
 				return grandchildID
 			}
 			return child.xid.local
 		}
 	}
-
-	return 0 // No child found at these coordinates
+	return 0 // No child found
 }
 
 func (s *x11Server) GetWindowAttributes(xid xID) (wire.WindowAttributes, bool) {
@@ -558,6 +580,19 @@ func (s *x11Server) GetWindowAttributes(xid xID) (wire.WindowAttributes, bool) {
 		return wire.WindowAttributes{}, false
 	}
 	return w.attributes, true
+}
+
+func (s *x11Server) removeWindowFromStack(xid xID) {
+	idx := -1
+	for i, id := range s.windowStack {
+		if id == xid {
+			idx = i
+			break
+		}
+	}
+	if idx != -1 {
+		s.windowStack = append(s.windowStack[:idx], s.windowStack[idx+1:]...)
+	}
 }
 
 func (s *x11Server) checkWindow(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
@@ -2059,13 +2094,14 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 
 			once.Do(func() {
 				x11ServerInstance = &x11Server{
-					logger:     logger,
-					windows:    make(map[xID]*window),
-					gcs:        make(map[xID]wire.GC),
-					pixmaps:    make(map[xID]*pixmap),
-					cursors:    make(map[xID]bool),
-					selections: make(map[uint32]*selectionOwner),
-					properties: make(map[xID]map[uint32]*property),
+					logger:      logger,
+					windows:     make(map[xID]*window),
+					windowStack: make([]xID, 0),
+					gcs:         make(map[xID]wire.GC),
+					pixmaps:     make(map[xID]*pixmap),
+					cursors:     make(map[xID]bool),
+					selections:  make(map[uint32]*selectionOwner),
+					properties:  make(map[xID]map[uint32]*property),
 					colormaps: map[xID]*colormap{
 						xID{local: 0x1}: {
 							pixels: map[uint32]wire.XColorItem{

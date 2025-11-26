@@ -255,8 +255,8 @@ const (
 	CWDontPropagate    = 1 << 12 // Dont propagate attribute.
 	CWColormap         = 1 << 13 // Colormap attribute.
 	CWCursor           = 1 << 14 // Cursor attribute.
-	CWSibling          = 1 << 15 // Sibling attribute (ConfigureWindow).
-	CWStackMode        = 1 << 16 // Stack mode attribute (ConfigureWindow).
+	CWSibling          = 1 << 5  // Sibling attribute (ConfigureWindow).
+	CWStackMode        = 1 << 6  // Stack mode attribute (ConfigureWindow).
 )
 
 // Color Masks
