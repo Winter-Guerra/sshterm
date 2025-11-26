@@ -135,7 +135,11 @@ func poll(t *testing.T, f func() error) {
 func TestDrawRectangle(t *testing.T) {
 	t.Log("Running TestDrawRectangle")
 	t.Cleanup(func() { cleanupDOMElements(t) })
-	setup := wire.NewDefaultSetup()
+	setup := wire.NewDefaultSetup(&wire.ServerConfig{
+		ScreenWidth:  1024,
+		ScreenHeight: 768,
+		Vendor:       "test",
+	})
 	s := &x11Server{
 		logger: &testLogger{t: t},
 		windows: map[xID]*window{
@@ -181,7 +185,11 @@ func TestDrawRectangle(t *testing.T) {
 func TestColors(t *testing.T) {
 	t.Log("Running TestColors")
 	t.Cleanup(func() { cleanupDOMElements(t) })
-	setup := wire.NewDefaultSetup()
+	setup := wire.NewDefaultSetup(&wire.ServerConfig{
+		ScreenWidth:  1024,
+		ScreenHeight: 768,
+		Vendor:       "test",
+	})
 	s := &x11Server{
 		logger: &testLogger{t: t},
 		windows: map[xID]*window{
@@ -304,7 +312,11 @@ func checkTextDrawn(img *image.RGBA) error {
 func TestDrawText(t *testing.T) {
 	t.Log("Running TestDrawText")
 	t.Cleanup(func() { cleanupDOMElements(t) })
-	setup := wire.NewDefaultSetup()
+	setup := wire.NewDefaultSetup(&wire.ServerConfig{
+		ScreenWidth:  1024,
+		ScreenHeight: 768,
+		Vendor:       "test",
+	})
 	s := &x11Server{
 		logger:          &testLogger{t: t},
 		windows:         make(map[xID]*window),
@@ -348,7 +360,11 @@ func TestDrawText(t *testing.T) {
 func TestOverlappingWindows(t *testing.T) {
 	t.Log("Running TestOverlappingWindows")
 	t.Cleanup(func() { cleanupDOMElements(t) })
-	setup := wire.NewDefaultSetup()
+	setup := wire.NewDefaultSetup(&wire.ServerConfig{
+		ScreenWidth:  1024,
+		ScreenHeight: 768,
+		Vendor:       "test",
+	})
 	s := &x11Server{
 		logger:          &testLogger{t: t},
 		windows:         make(map[xID]*window),
@@ -410,7 +426,11 @@ func TestOverlappingWindows(t *testing.T) {
 func TestGCLogicalOperations(t *testing.T) {
 	t.Log("Running TestGCLogicalOperations")
 
-	setup := wire.NewDefaultSetup()
+	setup := wire.NewDefaultSetup(&wire.ServerConfig{
+		ScreenWidth:  1024,
+		ScreenHeight: 768,
+		Vendor:       "test",
+	})
 	s := &x11Server{
 		logger:    &testLogger{t: t},
 		windows:   make(map[xID]*window),
