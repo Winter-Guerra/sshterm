@@ -30,8 +30,14 @@ func (s *x11Server) handleCreateWindow(client *x11Client, req wire.Request, seq 
 		depth:      p.Depth,
 		children:   []uint32{},
 		attributes: p.Values,
+		visual:     uint32(p.Visual),
 	}
 	if p.Values.Colormap > 0 {
+		if cm, ok := s.colormaps[client.xID(uint32(p.Values.Colormap))]; !ok {
+			return wire.NewGenericError(seq, uint32(p.Values.Colormap), 0, wire.CreateWindow, wire.ColormapErrorCode)
+		} else if cm.visual.VisualID != uint32(p.Visual) {
+			return wire.NewGenericError(seq, 0, 0, wire.CreateWindow, wire.MatchErrorCode)
+		}
 		newWindow.colormap = client.xID(uint32(p.Values.Colormap))
 	} else {
 		newWindow.colormap = xID{local: s.defaultColormap}
@@ -1709,15 +1715,21 @@ func (s *x11Server) handleCreateColormap(client *x11Client, req wire.Request, se
 	if err := s.checkWindow(client.xID(uint32(p.Window)), seq, wire.CreateColormap, 0); err != nil {
 		return err
 	}
+	visual, ok := s.visuals[uint32(p.Visual)]
+	if !ok {
+		return wire.NewGenericError(seq, uint32(p.Visual), 0, wire.CreateColormap, wire.ValueErrorCode)
+	}
 
 	newColormap := &colormap{
+		visual: visual,
 		pixels: make(map[uint32]wire.XColorItem),
 	}
 
 	if p.Alloc == 1 { // All
-		// For TrueColor, pre-allocating doesn't make much sense as pixels are calculated.
-		// For other visual types, this would be important.
-		// For now, we'll just create an empty map.
+		newColormap.writable = make([]bool, visual.ColormapEntries)
+		for i := range newColormap.writable {
+			newColormap.writable[i] = true
+		}
 	}
 
 	s.colormaps[xid] = newColormap
@@ -1902,20 +1914,98 @@ func (s *x11Server) handleAllocNamedColor(client *x11Client, req wire.Request, s
 	}
 }
 
+func (s *x11Server) findAllocatableCells(cm *colormap, n uint16) []uint32 {
+	pixels := make([]uint32, 0, n)
+	for i := 0; i < int(cm.visual.ColormapEntries); i++ {
+		if len(pixels) == int(n) {
+			break
+		}
+		if cm.writable[i] {
+			pixels = append(pixels, uint32(i))
+		} else {
+			pixels = pixels[:0] // Reset, we need a contiguous block
+		}
+	}
+
+	if len(pixels) < int(n) {
+		return nil
+	}
+	return pixels
+}
+
 func (s *x11Server) handleAllocColorCells(client *x11Client, req wire.Request, seq uint16) messageEncoder {
-	// This request is not supported because the server uses a TrueColor visual,
-	// which does not have a mutable colormap. The protocol specification
-	// states that a Match error should be returned in this case.
-	// Supporting other visual types is a larger task that is outside the scope of this request.
-	return wire.NewGenericError(seq, 0, 0, wire.AllocColorCells, wire.MatchErrorCode)
+	p := req.(*wire.AllocColorCellsRequest)
+	cm, ok := s.colormaps[client.xID(uint32(p.Cmap))]
+	if !ok {
+		return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.AllocColorCells, wire.ColormapErrorCode)
+	}
+	if cm.visual.Class != wire.PseudoColor {
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorCells, wire.MatchErrorCode)
+	}
+	nreq := p.Colors + p.Planes
+	if nreq > 0 && len(cm.writable) == 0 {
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorCells, wire.AllocErrorCode)
+	}
+
+	pixels := s.findAllocatableCells(cm, nreq)
+	if pixels == nil {
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorCells, wire.AllocErrorCode)
+	}
+
+	for _, pixel := range pixels {
+		cm.writable[pixel] = false
+	}
+
+	return &wire.AllocColorCellsReply{
+		Sequence: seq,
+		Pixels:   pixels[:p.Colors],
+		Masks:    pixels[p.Colors:],
+	}
 }
 
 func (s *x11Server) handleAllocColorPlanes(client *x11Client, req wire.Request, seq uint16) messageEncoder {
-	// This request is not supported because the server uses a TrueColor visual,
-	// which does not have a mutable colormap. The protocol specification
-	// states that a Match error should be returned in this case.
-	// Supporting other visual types is a larger task that is outside the scope of this request.
-	return wire.NewGenericError(seq, 0, 0, wire.AllocColorPlanes, wire.MatchErrorCode)
+	p := req.(*wire.AllocColorPlanesRequest)
+	cm, ok := s.colormaps[client.xID(uint32(p.Cmap))]
+	if !ok {
+		return wire.NewGenericError(seq, uint32(p.Cmap), 0, wire.AllocColorPlanes, wire.ColormapErrorCode)
+	}
+	if cm.visual.Class != wire.PseudoColor {
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorPlanes, wire.MatchErrorCode)
+	}
+	nreq := p.Reds + p.Greens + p.Blues
+	if nreq > 0 && len(cm.writable) == 0 {
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorPlanes, wire.AllocErrorCode)
+	}
+
+	pixels := s.findAllocatableCells(cm, nreq)
+	if pixels == nil {
+		return wire.NewGenericError(seq, 0, 0, wire.AllocColorPlanes, wire.AllocErrorCode)
+	}
+
+	for _, pixel := range pixels {
+		cm.writable[pixel] = false
+	}
+
+	redMask := uint32(0)
+	greenMask := uint32(0)
+	blueMask := uint32(0)
+	for i := 0; i < int(p.Reds); i++ {
+		redMask |= 1 << pixels[i]
+	}
+	for i := 0; i < int(p.Greens); i++ {
+		greenMask |= 1 << pixels[int(p.Reds)+i]
+	}
+	for i := 0; i < int(p.Blues); i++ {
+		blueMask |= 1 << pixels[int(p.Reds)+int(p.Greens)+i]
+	}
+
+	return &wire.AllocColorPlanesReply{
+		Sequence:  seq,
+		Pixels:    pixels[:p.Colors],
+		RedMask:   redMask,
+		GreenMask: greenMask,
+		BlueMask:  blueMask,
+	}
 }
 
 func (s *x11Server) handleFreeColors(client *x11Client, req wire.Request, seq uint16) messageEncoder {

@@ -361,3 +361,8 @@ const (
 const (
 	IsUnmapped = 0 // Window is unmapped.
 )
+
+// Visual Class
+const (
+	PseudoColor = 3 // PseudoColor.
+)

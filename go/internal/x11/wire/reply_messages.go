@@ -1627,6 +1627,9 @@ func NewDefaultSetup(config *ServerConfig) *Setup {
 			},
 		},
 	}
+	if config.Screens != nil {
+		s.Screens = config.Screens
+	}
 	return s
 }
 

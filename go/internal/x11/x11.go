@@ -166,6 +166,7 @@ type window struct {
 	attributes                wire.WindowAttributes
 	colormap                  xID
 	dontPropagateDeviceEvents map[uint32]bool
+	visual                    uint32
 }
 
 func (w *window) mapState() byte {
@@ -176,7 +177,9 @@ func (w *window) mapState() byte {
 }
 
 type colormap struct {
-	pixels map[uint32]wire.XColorItem
+	visual   wire.VisualType
+	pixels   map[uint32]wire.XColorItem
+	writable []bool // For PseudoColor, etc.
 }
 
 type property struct {
@@ -228,6 +231,7 @@ type x11Server struct {
 	defaultColormap       uint32
 	installedColormap     xID
 	visualID              uint32
+	visuals               map[uint32]wire.VisualType
 	rootVisual            wire.VisualType
 	blackPixel            uint32
 	whitePixel            uint32
@@ -1630,16 +1634,8 @@ func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 
 // calculateShift determines the right shift needed to extract the color component.
 func (s *x11Server) getVisualByID(visualID uint32) (wire.VisualType, bool) {
-	for _, screen := range s.config.Screens {
-		for _, depth := range screen.Depths {
-			for _, visual := range depth.Visuals {
-				if visual.VisualID == visualID {
-					return visual, true
-				}
-			}
-		}
-	}
-	return wire.VisualType{}, false
+	visual, ok := s.visuals[visualID]
+	return visual, ok
 }
 
 func calculateShift(mask uint32) uint32 {
@@ -2038,14 +2034,14 @@ func (s *x11Server) handshake(client *x11Client) {
 		return
 	}
 	s.visualID = setup.Screens[0].RootVisual
-	for _, d := range setup.Screens[0].Depths {
-		for _, v := range d.Visuals {
-			if v.VisualID == s.visualID {
-				s.rootVisual = v
-				break
+	for _, screen := range setup.Screens {
+		for _, depth := range screen.Depths {
+			for _, visual := range depth.Visuals {
+				s.visuals[visual.VisualID] = visual
 			}
 		}
 	}
+	s.rootVisual, _ = s.visuals[s.visualID]
 	s.blackPixel = setup.Screens[0].BlackPixel
 	s.whitePixel = setup.Screens[0].WhitePixel
 }
@@ -2093,6 +2089,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					motionEvents:       make([]motionEvent, 0, 1024),
 					pressedKeys:        make(map[byte]bool),
 					dirtyDrawables:     make(map[xID]bool),
+					visuals:            make(map[uint32]wire.VisualType),
 				}
 				x11ServerInstance.initAtoms()
 				x11ServerInstance.initRequestHandlers()
