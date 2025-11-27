@@ -364,5 +364,10 @@ const (
 
 // Visual Class
 const (
+	StaticGray  = 0
+	GrayScale   = 1
+	StaticColor = 2
 	PseudoColor = 3 // PseudoColor.
+	TrueColor   = 4
+	DirectColor = 5
 )

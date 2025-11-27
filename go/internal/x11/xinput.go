@@ -166,9 +166,9 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		}
 
 	case *wire.ChangeDeviceDontPropagateListRequest:
-		win, ok := s.windows[client.xID(p.Window)]
+		win, ok := s.windows[xID(p.Window)]
 		if !ok {
-			return wire.NewError(wire.WindowErrorCode, seq, p.Window, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeDeviceDontPropagateList})
+			return wire.NewError(wire.WindowErrorCode, seq, uint32(p.Window), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangeDeviceDontPropagateList})
 		}
 		if win.dontPropagateDeviceEvents == nil {
 			win.dontPropagateDeviceEvents = make(map[uint32]bool)
@@ -193,9 +193,9 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return wire.NewError(wire.DeviceErrorCode, seq, 0, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XChangePointerDevice})
 
 	case *wire.GetDeviceDontPropagateListRequest:
-		win, ok := s.windows[client.xID(p.Window)]
+		win, ok := s.windows[xID(p.Window)]
 		if !ok {
-			return wire.NewError(wire.WindowErrorCode, seq, p.Window, wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XGetDeviceDontPropagateList})
+			return wire.NewError(wire.WindowErrorCode, seq, uint32(p.Window), wire.Opcodes{Major: wire.XInputOpcode, Minor: wire.XGetDeviceDontPropagateList})
 		}
 		classes := make([]uint32, 0, len(win.dontPropagateDeviceEvents))
 		for class := range win.dontPropagateDeviceEvents {
@@ -259,11 +259,12 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		if _, ok := s.deviceGrabs[p.DeviceID]; ok {
 			return &wire.GrabDeviceReply{Sequence: seq, Status: wire.AlreadyGrabbed}
 		}
-		grabWindow := client.xID(p.GrabWindow)
+		grabWindow := xID(p.GrabWindow)
 		if err := s.checkWindow(grabWindow, seq, wire.XInputOpcode, byte(wire.XGrabDevice)); err != nil {
 			return err
 		}
 		grab := &deviceGrab{
+			clientID:    client.id,
 			window:      grabWindow,
 			ownerEvents: p.OwnerEvents,
 			eventMask:   p.Classes,
@@ -274,14 +275,14 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 
 	case *wire.UngrabDeviceRequest:
 		if grab, ok := s.deviceGrabs[p.DeviceID]; ok {
-			if grab.window.client == client.id {
+			if grab.clientID == client.id {
 				delete(s.deviceGrabs, p.DeviceID)
 			}
 		}
 		return nil
 
 	case *wire.GrabDeviceKeyRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
+		grabWindow := xID(p.GrabWindow)
 		grab := &passiveDeviceGrab{
 			clientID:  client.id,
 			deviceID:  p.DeviceID,
@@ -294,7 +295,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return nil
 
 	case *wire.UngrabDeviceKeyRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
+		grabWindow := xID(p.GrabWindow)
 		if grabs, ok := s.passiveDeviceGrabs[grabWindow]; ok {
 			newGrabs := make([]*passiveDeviceGrab, 0, len(grabs))
 			for _, grab := range grabs {
@@ -307,7 +308,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return nil
 
 	case *wire.GrabDeviceButtonRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
+		grabWindow := xID(p.GrabWindow)
 		grab := &passiveDeviceGrab{
 			clientID:  client.id,
 			deviceID:  p.DeviceID,
@@ -320,7 +321,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return nil
 
 	case *wire.UngrabDeviceButtonRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
+		grabWindow := xID(p.GrabWindow)
 		if grabs, ok := s.passiveDeviceGrabs[grabWindow]; ok {
 			newGrabs := make([]*passiveDeviceGrab, 0, len(grabs))
 			for _, grab := range grabs {
@@ -335,12 +336,12 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 	case *wire.GetDeviceFocusRequest:
 		return &wire.GetDeviceFocusReply{
 			Sequence: seq,
-			Focus:    s.inputFocus.local,
+			Focus:    uint32(s.inputFocus),
 			RevertTo: 1, // RevertToParent
 		}
 
 	case *wire.SetDeviceFocusRequest:
-		s.inputFocus = client.xID(uint32(p.Focus))
+		s.inputFocus = xID(p.Focus)
 		return nil
 
 	case *wire.GetFeedbackControlRequest:
@@ -418,12 +419,13 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 			maskU32[i/4] |= uint32(p.Mask[i]) << ((i % 4) * 8)
 		}
 
-		grabWindow := client.xID(uint32(p.GrabWindow))
+		grabWindow := xID(p.GrabWindow)
 		if err := s.checkWindow(grabWindow, seq, wire.XInputOpcode, byte(wire.XIGrabDevice)); err != nil {
 			return err
 		}
 
 		grab := &deviceGrab{
+			clientID:     client.id,
 			window:       grabWindow,
 			ownerEvents:  p.OwnerEvents,
 			xi2EventMask: maskU32,
@@ -434,14 +436,14 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 
 	case *wire.XIUngrabDeviceRequest:
 		if grab, ok := s.deviceGrabs[byte(p.DeviceID)]; ok {
-			if grab.window.client == client.id {
+			if grab.clientID == client.id {
 				delete(s.deviceGrabs, byte(p.DeviceID))
 			}
 		}
 		return nil
 
 	case *wire.XIPassiveGrabDeviceRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
+		grabWindow := xID(p.GrabWindow)
 
 		maskU32 := make([]uint32, (len(p.Mask)+3)/4)
 		for i := 0; i < len(p.Mask); i++ {
@@ -496,7 +498,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		}
 
 	case *wire.XIPassiveUngrabDeviceRequest:
-		grabWindow := client.xID(uint32(p.GrabWindow))
+		grabWindow := xID(p.GrabWindow)
 		if grabs, ok := s.passiveDeviceGrabs[grabWindow]; ok {
 			newGrabs := make([]*passiveDeviceGrab, 0, len(grabs))
 
@@ -548,14 +550,14 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		}
 
 	case *wire.XIQueryPointerRequest:
-		xid := client.xID(uint32(p.Window))
+		xid := xID(p.Window)
 		var winX, winY int32
 
 		rootX := int32(s.pointerX)
 		rootY := int32(s.pointerY)
 
-		var child uint32
-		if xid.local == s.rootWindowID() {
+		var child xID
+		if uint32(xid) == s.rootWindowID() {
 			winX = rootX
 			winY = rootY
 			child = s.findTopLevelWindowAt(s.pointerX, s.pointerY)
@@ -603,7 +605,7 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 		return &wire.XIQueryPointerReply{
 			Sequence:   seq,
 			Root:       wire.Window(s.rootWindowID()),
-			Child:      wire.Window(child),
+			Child:      wire.Window(uint32(child)),
 			RootX:      rootX << 16,
 			RootY:      rootY << 16,
 			WinX:       winX << 16,
@@ -616,7 +618,8 @@ func (s *x11Server) handleXInputRequest(client *x11Client, req wire.Request, seq
 
 	case *wire.XISelectEventsRequest:
 		windowID := uint32(p.Window)
-		if err := s.checkWindow(client.xID(windowID), seq, wire.XInputOpcode, byte(wire.XISelectEvents)); err != nil {
+		fullWindowID := xID(windowID)
+		if err := s.checkWindow(fullWindowID, seq, wire.XInputOpcode, byte(wire.XISelectEvents)); err != nil {
 			return err
 		}
 		for _, mask := range p.Masks {

@@ -26,9 +26,6 @@ type x11Client struct {
 	xi2EventMasks      map[uint32]map[uint16][]uint32 // window ID -> device ID -> mask
 }
 
-func (c *x11Client) xID(local uint32) xID {
-	return xID{c.id, local}
-}
 
 // send sends a message to the client.
 func (c *x11Client) send(m messageEncoder) error {

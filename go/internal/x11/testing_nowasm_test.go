@@ -46,7 +46,7 @@ func setupTestServerWithClients(t *testing.T, numClients int) (*x11Server, []*x1
 	}
 	server.initAtoms()
 	server.initRequestHandlers()
-	server.colormaps[xID{local: server.defaultColormap}] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
+	server.colormaps[xID(server.defaultColormap)] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
 	for k, v := range KeyCodeToKeysym {
 		server.keymap[k] = v
 	}

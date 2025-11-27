@@ -13,14 +13,14 @@ func TestXIGrabDeviceRequest(t *testing.T) {
 	server, _, _, clientBuffer := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.windows[windowID] = &window{
 		xid: windowID,
 	}
 
 	req := &wire.XIGrabDeviceRequest{
 		DeviceID:         2, // Virtual Pointer
-		GrabWindow:       wire.Window(windowID.local),
+		GrabWindow:       wire.Window(windowID),
 		Time:             0,
 		Cursor:           0,
 		GrabMode:         1,
@@ -33,6 +33,9 @@ func TestXIGrabDeviceRequest(t *testing.T) {
 	if reply == nil {
 		t.Fatal("XIGrabDevice should return a reply")
 	}
+	if err, ok := reply.(wire.Error); ok {
+		t.Fatalf("XIGrabDevice failed: %v", err)
+	}
 
 	encodedReply := reply.EncodeMessage(client.byteOrder)
 	clientBuffer.Write(encodedReply)
@@ -43,7 +46,7 @@ func TestXIGrabDeviceRequest(t *testing.T) {
 	assert.NoError(t, err, "Failed to parse XIGrabDeviceReply")
 	grabReply, ok := replyMsg.(*wire.XIGrabDeviceReply)
 	assert.True(t, ok, "Expected *wire.XIGrabDeviceReply, got %T", replyMsg)
-	assert.Equal(t, wire.GrabSuccess, grabReply.Status, "Expected success status")
+	assert.Equal(t, byte(wire.GrabSuccess), grabReply.Status, "Expected success status")
 
 	assert.Contains(t, server.deviceGrabs, byte(2))
 	grab := server.deviceGrabs[2]
@@ -55,9 +58,10 @@ func TestXIUngrabDeviceRequest(t *testing.T) {
 	server, _, _, _ := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.deviceGrabs[2] = &deviceGrab{
-		window: windowID,
+		clientID: client.id,
+		window:   windowID,
 	}
 
 	req := &wire.XIUngrabDeviceRequest{
@@ -73,14 +77,14 @@ func TestXIPassiveGrabDeviceRequest(t *testing.T) {
 	server, _, _, clientBuffer := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.windows[windowID] = &window{
 		xid: windowID,
 	}
 
 	req := &wire.XIPassiveGrabDeviceRequest{
 		DeviceID:         2,
-		GrabWindow:       wire.Window(windowID.local),
+		GrabWindow:       wire.Window(windowID),
 		Time:             0,
 		Cursor:           0,
 		Detail:           1, // Button 1
@@ -128,7 +132,7 @@ func TestXIPassiveUngrabDeviceRequest(t *testing.T) {
 	server, _, _, _ := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.windows[windowID] = &window{
 		xid: windowID,
 	}
@@ -145,7 +149,7 @@ func TestXIPassiveUngrabDeviceRequest(t *testing.T) {
 
 	req := &wire.XIPassiveUngrabDeviceRequest{
 		DeviceID:     2,
-		GrabWindow:   wire.Window(windowID.local),
+		GrabWindow:   wire.Window(windowID),
 		Detail:       1,
 		NumModifiers: 0,
 		GrabType:     wire.XI_ButtonPress,

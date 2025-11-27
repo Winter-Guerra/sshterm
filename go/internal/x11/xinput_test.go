@@ -7,28 +7,34 @@ import (
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGrabDeviceKeyRequest(t *testing.T) {
 	server, _, _, _ := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.windows[windowID] = &window{
 		xid: windowID,
 	}
 
 	req := &wire.GrabDeviceKeyRequest{
-		GrabWindow: wire.Window(windowID.local),
+		GrabWindow: wire.Window(windowID),
 		Modifiers:  wire.ShiftMask,
 		Key:        38, // KeyA
 		DeviceID:   3,  // Virtual Keyboard
 	}
-	server.handleXInputRequest(client, req, 2)
+	reply := server.handleXInputRequest(client, req, 2)
+	if reply != nil {
+		if err, ok := reply.(wire.Error); ok {
+			t.Fatalf("GrabDeviceKeyRequest failed: %v", err)
+		}
+	}
 
 	grabs, ok := server.passiveDeviceGrabs[windowID]
 	assert.True(t, ok, "No passive device grabs found for window")
-	assert.Len(t, grabs, 1, "Expected 1 passive device grab")
+	require.Len(t, grabs, 1, "Expected 1 passive device grab")
 	assert.Equal(t, byte(3), grabs[0].deviceID)
 	assert.Equal(t, wire.KeyCode(38), grabs[0].key)
 	assert.Equal(t, uint16(wire.ShiftMask), grabs[0].modifiers)
@@ -38,7 +44,7 @@ func TestUngrabDeviceKeyRequest(t *testing.T) {
 	server, _, _, _ := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.windows[windowID] = &window{
 		xid: windowID,
 	}
@@ -51,7 +57,7 @@ func TestUngrabDeviceKeyRequest(t *testing.T) {
 	}
 
 	req := &wire.UngrabDeviceKeyRequest{
-		GrabWindow: wire.Window(windowID.local),
+		GrabWindow: wire.Window(windowID),
 		Modifiers:  wire.ShiftMask,
 		Key:        38, // KeyA
 		DeviceID:   3,  // Virtual Keyboard
@@ -66,33 +72,33 @@ func TestXIQueryPointer_DeepTraversal(t *testing.T) {
 	client := server.clients[1]
 
 	// Window hierarchy: root -> parent (10,10) -> child (20,20) -> grandchild (30,30)
-	parentID := xID{client: 1, local: 100}
-	childID := xID{client: 1, local: 101}
-	grandchildID := xID{client: 1, local: 102}
+	parentID := clientXID(client, 100)
+	childID := clientXID(client, 101)
+	grandchildID := clientXID(client, 102)
 
 	server.windows[parentID] = &window{
 		xid:      parentID,
-		parent:   server.rootWindowID(),
+		parent:   xID(server.rootWindowID()),
 		x:        10,
 		y:        10,
 		width:    100,
 		height:   100,
 		mapped:   true,
-		children: []uint32{childID.local},
+		children: []xID{childID},
 	}
 	server.windows[childID] = &window{
 		xid:      childID,
-		parent:   parentID.local,
+		parent:   parentID,
 		x:        10,
 		y:        10,
 		width:    50,
 		height:   50,
 		mapped:   true,
-		children: []uint32{grandchildID.local},
+		children: []xID{grandchildID},
 	}
 	server.windows[grandchildID] = &window{
 		xid:    grandchildID,
-		parent: childID.local,
+		parent: childID,
 		x:      10,
 		y:      10,
 		width:  20,
@@ -107,7 +113,7 @@ func TestXIQueryPointer_DeepTraversal(t *testing.T) {
 
 	// Query relative to the parent window
 	req := &wire.XIQueryPointerRequest{
-		Window:   wire.Window(parentID.local),
+		Window:   wire.Window(parentID),
 		DeviceID: 2, // Virtual Pointer
 	}
 	reply := server.handleXInputRequest(client, req, 2)
@@ -122,7 +128,7 @@ func TestXIQueryPointer_DeepTraversal(t *testing.T) {
 	assert.NoError(t, err, "Failed to parse XIQueryPointerReply")
 	queryReply, ok := replyMsg.(*wire.XIQueryPointerReply)
 	if assert.True(t, ok, "Expected *wire.XIQueryPointerReply, got %T", replyMsg) {
-		assert.Equal(t, childID.local, uint32(queryReply.Child), "Expected direct child to be the child under the pointer")
+		assert.Equal(t, uint32(childID), uint32(queryReply.Child), "Expected direct child to be the child under the pointer")
 		// WinX/Y should be relative to parent window (10, 10)
 		// Pointer (35,35) - Parent (10,10) = (25, 25)
 		assert.Equal(t, int32(25<<16), queryReply.WinX, "WinX mismatch")
@@ -406,9 +412,9 @@ func TestGetSetDeviceFocusRequest(t *testing.T) {
 	client := server.clients[1]
 
 	// 1. Set the focus
-	focusWindowID := xID{client: 1, local: 10}
+	focusWindowID := clientXID(client, 10)
 	setReq := &wire.SetDeviceFocusRequest{
-		Focus:    wire.Window(focusWindowID.local),
+		Focus:    wire.Window(focusWindowID),
 		DeviceID: 3, // Virtual Keyboard
 	}
 	server.handleXInputRequest(client, setReq, 2)
@@ -429,20 +435,20 @@ func TestGetSetDeviceFocusRequest(t *testing.T) {
 	focusReply, ok := replyMsg.(*wire.GetDeviceFocusReply)
 	assert.True(t, ok, "Expected *wire.GetDeviceFocusReply, got %T", replyMsg)
 
-	assert.Equal(t, focusWindowID.local, focusReply.Focus, "GetDeviceFocus returned incorrect focus window")
+	assert.Equal(t, uint32(focusWindowID), focusReply.Focus, "GetDeviceFocus returned incorrect focus window")
 }
 
 func TestGrabDeviceButtonRequest(t *testing.T) {
 	server, _, _, _ := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.windows[windowID] = &window{
 		xid: windowID,
 	}
 
 	req := &wire.GrabDeviceButtonRequest{
-		GrabWindow: wire.Window(windowID.local),
+		GrabWindow: wire.Window(windowID),
 		Modifiers:  wire.ShiftMask,
 		Button:     1,
 		DeviceID:   2, // Virtual Pointer
@@ -461,7 +467,7 @@ func TestUngrabDeviceButtonRequest(t *testing.T) {
 	server, _, _, _ := setupTestServerWithClient(t)
 	client := server.clients[1]
 
-	windowID := xID{client: 1, local: 10}
+	windowID := clientXID(client, 10)
 	server.windows[windowID] = &window{
 		xid: windowID,
 	}
@@ -474,7 +480,7 @@ func TestUngrabDeviceButtonRequest(t *testing.T) {
 	}
 
 	req := &wire.UngrabDeviceButtonRequest{
-		GrabWindow: wire.Window(windowID.local),
+		GrabWindow: wire.Window(windowID),
 		Modifiers:  wire.ShiftMask,
 		Button:     1,
 		DeviceID:   2,

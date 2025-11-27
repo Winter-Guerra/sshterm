@@ -5,7 +5,6 @@ package x11
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"runtime/debug"
@@ -19,14 +18,18 @@ import (
 
 var errParseError = errors.New("x11: request parsing error")
 
-type xID struct {
-	client uint32
-	local  uint32
-}
+// xID is a resource identifier.
+type xID uint32
 
-func (x xID) String() string {
-	return fmt.Sprintf("%d-%d", x.client, x.local)
-}
+const (
+	clientIDBits    = 12
+	localIDBits     = 20
+	clientIDMask    = (1 << clientIDBits) - 1
+	localIDMask     = (1 << localIDBits) - 1
+	maxClients      = 1 << clientIDBits
+	maxLocalIDs     = 1 << localIDBits
+	resourceIDShift = localIDBits
+)
 
 var (
 	x11ServerInstance *x11Server
@@ -109,6 +112,7 @@ type X11FrontendAPI interface {
 	SetDashes(gc xID, dashOffset uint16, dashes []byte)
 	SetClipRectangles(gc xID, clippingX, clippingY int16, rectangles []wire.Rectangle, ordering byte)
 	RecolorCursor(cursor xID, foreColor, backColor [3]uint16)
+	QueryBestSize(class byte, drawable xID, width, height uint16) (rwidth, rheight uint16)
 	SetPointerMapping(pMap []byte) (byte, error)
 	GetPointerMapping() ([]byte, error)
 	GetPointerControl() (accelNumerator, accelDenominator, threshold uint16, err error)
@@ -157,12 +161,12 @@ type CanvasOperation struct {
 
 type window struct {
 	xid                       xID
-	parent                    uint32
+	parent                    xID
 	x, y                      int16
 	width, height             uint16
 	mapped                    bool
 	depth                     byte
-	children                  []uint32
+	children                  []xID
 	attributes                wire.WindowAttributes
 	colormap                  xID
 	dontPropagateDeviceEvents map[uint32]bool
@@ -241,6 +245,8 @@ type x11Server struct {
 	nextClientID          uint32
 	pointerGrabWindow     xID
 	keyboardGrabWindow    xID
+	pointerGrabClientID   uint32
+	keyboardGrabClientID  uint32
 	pointerGrabTime       uint32
 	keyboardGrabTime      uint32
 	pointerGrabOwner      bool
@@ -426,6 +432,7 @@ type passiveDeviceGrab struct {
 }
 
 type deviceGrab struct {
+	clientID     uint32
 	window       xID
 	ownerEvents  bool
 	eventMask    []uint32
@@ -487,17 +494,10 @@ func (s *x11Server) getAbsoluteWindowCoords(xid xID) (int16, int16, bool) {
 		return 0, 0, false
 	}
 	absX, absY := w.x, w.y
-	for w.parent != s.rootWindowID() {
-		parentXID, ok := s.findWindowByID(w.parent)
+	for uint32(w.parent) != s.rootWindowID() {
+		parentW, ok := s.windows[w.parent]
 		if !ok {
-			// This indicates a broken parent link. Stop traversing.
-			s.logger.Errorf("Could not find parent window for %d", w.parent)
-			break
-		}
-		parentW, ok := s.windows[parentXID]
-		if !ok {
-			// This should not happen if findWindowByID works correctly
-			s.logger.Errorf("Could not find parent window object for %s", parentXID)
+			s.logger.Errorf("Could not find parent window object for %d", w.parent)
 			break
 		}
 		absX += parentW.x
@@ -507,19 +507,8 @@ func (s *x11Server) getAbsoluteWindowCoords(xid xID) (int16, int16, bool) {
 	return absX, absY, true
 }
 
-// findWindowByID finds a window by its local ID across all clients.
-func (s *x11Server) findWindowByID(localID uint32) (xID, bool) {
-	// A more efficient implementation would be to have a separate map
-	// from localID to xID, but for now, iterating is acceptable.
-	for xid := range s.windows {
-		if xid.local == localID {
-			return xid, true
-		}
-	}
-	return xID{}, false
-}
 
-func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) uint32 {
+func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) xID {
 	parent, ok := s.windows[parentXID]
 	if !ok || !parent.mapped {
 		return 0 // None
@@ -531,7 +520,7 @@ func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) uint32 {
 		child, ok := s.windows[childXID]
 
 		// Ensure the window is valid, mapped, and actually a child of the target parent.
-		if !ok || !child.mapped || child.parent != parentXID.local {
+		if !ok || !child.mapped || child.parent != parentXID {
 			continue
 		}
 
@@ -545,14 +534,14 @@ func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) uint32 {
 				return grandchildID
 			}
 			// If no grandchild is found, this child is the target.
-			return child.xid.local
+			return child.xid
 		}
 	}
 
 	return 0 // No child found at these coordinates
 }
 
-func (s *x11Server) findDirectChildWindowAt(parentXID xID, x, y int16) uint32 {
+func (s *x11Server) findDirectChildWindowAt(parentXID xID, x, y int16) xID {
 	parent, ok := s.windows[parentXID]
 	if !ok || !parent.mapped {
 		return 0 // None
@@ -564,7 +553,7 @@ func (s *x11Server) findDirectChildWindowAt(parentXID xID, x, y int16) uint32 {
 		child, ok := s.windows[childXID]
 
 		// Ensure the window is valid, mapped, and actually a direct child of the target parent.
-		if !ok || !child.mapped || child.parent != parentXID.local {
+		if !ok || !child.mapped || child.parent != parentXID {
 			continue
 		}
 
@@ -572,19 +561,19 @@ func (s *x11Server) findDirectChildWindowAt(parentXID xID, x, y int16) uint32 {
 		if x >= child.x && x < (child.x+int16(child.width)) &&
 			y >= child.y && y < (child.y+int16(child.height)) {
 			// This is the top-most direct child. Return it.
-			return child.xid.local
+			return child.xid
 		}
 	}
 
 	return 0 // No child found at these coordinates
 }
 
-func (s *x11Server) findTopLevelWindowAt(x, y int16) uint32 {
+func (s *x11Server) findTopLevelWindowAt(x, y int16) xID {
 	// Iterate backwards through the window stack to check the top-most windows first.
 	for i := len(s.windowStack) - 1; i >= 0; i-- {
 		xid := s.windowStack[i]
 		child, ok := s.windows[xid]
-		if !ok || !child.mapped || child.parent != s.rootWindowID() {
+		if !ok || !child.mapped || uint32(child.parent) != s.rootWindowID() {
 			continue
 		}
 
@@ -595,7 +584,7 @@ func (s *x11Server) findTopLevelWindowAt(x, y int16) uint32 {
 			if grandchildID != 0 {
 				return grandchildID
 			}
-			return child.xid.local
+			return child.xid
 		}
 	}
 	return 0 // No child found
@@ -623,18 +612,25 @@ func (s *x11Server) removeWindowFromStack(xid xID) {
 }
 
 func (s *x11Server) checkWindow(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
-	if xid.local == s.rootWindowID() {
+	if uint32(xid) == s.rootWindowID() {
 		return nil
 	}
 	if _, ok := s.windows[xid]; !ok {
-		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.WindowErrorCode)
+		return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.WindowErrorCode)
+	}
+	return nil
+}
+
+func (s *x11Server) checkClientID(xid xID, client *x11Client, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
+	if (uint32(xid)>>resourceIDShift)&clientIDMask != client.id {
+		return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.AccessErrorCode)
 	}
 	return nil
 }
 
 func (s *x11Server) checkPixmap(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
 	if _, ok := s.pixmaps[xid]; !ok {
-		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.PixmapErrorCode)
+		return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.PixmapErrorCode)
 	}
 	return nil
 }
@@ -646,39 +642,39 @@ func (s *x11Server) checkDrawable(xid xID, seq uint16, majorReq wire.ReqCode, mi
 	if _, ok := s.pixmaps[xid]; ok {
 		return nil
 	}
-	if xid.local == s.rootWindowID() {
+	if uint32(xid) == s.rootWindowID() {
 		return nil
 	}
-	return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.DrawableErrorCode)
+	return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.DrawableErrorCode)
 }
 
 func (s *x11Server) checkGC(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
 	if _, ok := s.gcs[xid]; !ok {
-		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.GContextErrorCode)
+		return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.GContextErrorCode)
 	}
 	return nil
 }
 
 func (s *x11Server) checkCursor(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
 	if _, ok := s.cursors[xid]; !ok {
-		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.CursorErrorCode)
+		return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.CursorErrorCode)
 	}
 	return nil
 }
 
 func (s *x11Server) checkColormap(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
-	if xid.local == s.defaultColormap {
-		xid.client = 0
+	if uint32(xid) == s.defaultColormap {
+		xid = xID(uint32(xid))
 	}
 	if _, ok := s.colormaps[xid]; !ok {
-		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.ColormapErrorCode)
+		return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.ColormapErrorCode)
 	}
 	return nil
 }
 
 func (s *x11Server) checkFont(xid xID, seq uint16, majorReq wire.ReqCode, minorReq byte) wire.Error {
 	if _, ok := s.fonts[xid]; !ok {
-		return wire.NewGenericError(seq, xid.local, minorReq, majorReq, wire.FontErrorCode)
+		return wire.NewGenericError(seq, uint32(xid), minorReq, majorReq, wire.FontErrorCode)
 	}
 	return nil
 }
@@ -688,7 +684,7 @@ func NewWindowAttributes() wire.WindowAttributes {
 }
 
 func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32) {
-	debugf("X11: SendMouseEvent xid=%s type=%s x=%d y=%d detail=%d", xid, eventType, x, y, detail)
+	debugf("X11: SendMouseEvent xid=%d type=%s x=%d y=%d detail=%d", xid, eventType, x, y, detail)
 
 	originalXID := xid
 	if _, ok := s.windows[originalXID]; !ok {
@@ -780,6 +776,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 
 				if xi1Match || xi2Match {
 					activeDeviceGrab = &deviceGrab{
+						clientID:     grab.clientID,
 						window:       originalXID, // Grab is on this window
 						ownerEvents:  grab.owner,
 						eventMask:    grab.eventMask,
@@ -788,7 +785,6 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 					}
 					s.deviceGrabs[deviceID] = activeDeviceGrab
 					deviceGrabbed = true
-					activeDeviceGrab.window.client = grab.clientID // Ensure client is set correctly
 					break
 				}
 			}
@@ -805,7 +801,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 
 	if deviceGrabbed {
 		// Send XInput event to grabbing client if mask matches
-		grabbingClient, clientExists := s.clients[activeDeviceGrab.window.client]
+		grabbingClient, clientExists := s.clients[activeDeviceGrab.clientID]
 		if clientExists {
 			// XI 1.x
 			if xiEventMask > 0 {
@@ -821,7 +817,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 					}
 				}
 				if match {
-					s.sendXInputMouseEvent(grabbingClient, eventType, deviceID, button, originalXID.local, x, y, state)
+					s.sendXInputMouseEvent(grabbingClient, eventType, deviceID, button, uint32(originalXID), x, y, state)
 				}
 			}
 
@@ -841,7 +837,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 					wordIdx := int(evType / 32)
 					bitIdx := int(evType % 32)
 					if wordIdx < len(activeDeviceGrab.xi2EventMask) && (activeDeviceGrab.xi2EventMask[wordIdx]&(1<<bitIdx)) != 0 {
-						s.sendXInput2MouseEvent(grabbingClient, evType, deviceID, button, originalXID.local, x, y, state)
+						s.sendXInput2MouseEvent(grabbingClient, evType, deviceID, button, uint32(originalXID), x, y, state)
 					}
 				}
 			}
@@ -851,7 +847,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 	}
 
 	// 2. Handle Core Grabs and Events (only if device not grabbed)
-	grabActive := s.pointerGrabWindow.local != 0
+	grabActive := s.pointerGrabWindow != 0
 	if grabActive {
 		xid = s.pointerGrabWindow
 	}
@@ -889,7 +885,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 			for _, grab := range grabs {
 				if grab.button == button && (grab.modifiers == wire.AnyModifier || grab.modifiers == state) {
 					s.pointerGrabWindow = originalXID
-					s.pointerGrabWindow.client = grab.clientID
+					s.pointerGrabClientID = grab.clientID
 					s.pointerGrabOwner = grab.owner
 					s.pointerGrabEventMask = grab.eventMask
 					s.pointerGrabMode = grab.pointerMode
@@ -907,30 +903,31 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 
 	// Dispatch Core events.
 	if grabActive {
-		grabbingClient, grabberOk := s.clients[s.pointerGrabWindow.client]
+		grabbingClient, grabberOk := s.clients[s.pointerGrabClientID]
 		if grabberOk && (uint32(s.pointerGrabEventMask)&eventMask) != 0 {
-			eventWindowID := originalXID.local
+			eventWindowID := uint32(originalXID)
 			if !s.pointerGrabOwner {
-				eventWindowID = s.pointerGrabWindow.local
+				eventWindowID = uint32(s.pointerGrabWindow)
 			}
 			s.sendCoreMouseEvent(grabbingClient, eventType, button, eventWindowID, x, y, state)
 		}
 
 		if s.pointerGrabOwner {
-			ownerClient, ownerOk := s.clients[originalXID.client]
+			ownerClient, ownerOk := s.clients[((uint32(originalXID) >> resourceIDShift) & clientIDMask)]
 			if ownerOk && (!grabberOk || ownerClient.id != grabbingClient.id) {
 				if w, ok := s.windows[originalXID]; ok {
 					if w.attributes.EventMask&eventMask != 0 {
-						s.sendCoreMouseEvent(ownerClient, eventType, button, originalXID.local, x, y, state)
+						s.sendCoreMouseEvent(ownerClient, eventType, button, uint32(originalXID), x, y, state)
 					}
 				}
 			}
 		}
 	} else {
-		for _, client := range s.clients {
-			w, ok := s.windows[client.xID(xid.local)]
-			if ok && w.attributes.EventMask&eventMask != 0 {
-				s.sendCoreMouseEvent(client, eventType, button, originalXID.local, x, y, state)
+		if w, ok := s.windows[originalXID]; ok {
+			if client, ok := s.clients[((uint32(originalXID) >> resourceIDShift) & clientIDMask)]; ok {
+				if w.attributes.EventMask&eventMask != 0 {
+					s.sendCoreMouseEvent(client, eventType, button, uint32(originalXID), x, y, state)
+				}
 			}
 		}
 	}
@@ -940,9 +937,9 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 		// XI 1.x
 		if xiEventMask > 0 {
 			if deviceInfo, ok := client.openDevices[deviceID]; ok {
-				if mask, ok := deviceInfo.EventMasks[originalXID.local]; ok {
+				if mask, ok := deviceInfo.EventMasks[uint32(originalXID)]; ok {
 					if mask&xiEventMask != 0 {
-						s.sendXInputMouseEvent(client, eventType, deviceID, button, originalXID.local, x, y, state)
+						s.sendXInputMouseEvent(client, eventType, deviceID, button, uint32(originalXID), x, y, state)
 					}
 				}
 			}
@@ -950,7 +947,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 
 		// XI 2.x
 		if client.xi2EventMasks != nil {
-			if devMasks, ok := client.xi2EventMasks[originalXID.local]; ok {
+			if devMasks, ok := client.xi2EventMasks[uint32(originalXID)]; ok {
 				// Check specific device or AllDevices (0) or AllMasterDevices (1)
 				// For now, check deviceID (2) and AllMasterDevices (1)
 				var mask []uint32
@@ -977,7 +974,7 @@ func (s *x11Server) SendMouseEvent(xid xID, eventType string, x, y, detail int32
 						wordIdx := int(evType / 32)
 						bitIdx := int(evType % 32)
 						if wordIdx < len(mask) && (mask[wordIdx]&(1<<bitIdx)) != 0 {
-							s.sendXInput2MouseEvent(client, evType, deviceID, button, originalXID.local, x, y, state)
+							s.sendXInput2MouseEvent(client, evType, deviceID, button, uint32(originalXID), x, y, state)
 						}
 					}
 				}
@@ -1240,7 +1237,7 @@ func (s *x11Server) sendXInputMouseEvent(client *x11Client, eventType string, de
 }
 
 func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, altKey, ctrlKey, shiftKey, metaKey bool) {
-	debugf("X11: SendKeyboardEvent xid=%s type=%s code=%s alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
+	debugf("X11: SendKeyboardEvent xid=%d type=%s code=%s alt=%t ctrl=%t shift=%t meta=%t", xid, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
 
 	state := uint16(0)
 	if shiftKey {
@@ -1298,6 +1295,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 
 				if xi1Match || xi2Match {
 					activeDeviceGrab = &deviceGrab{
+						clientID:     grab.clientID,
 						window:       xid,
 						ownerEvents:  grab.owner,
 						eventMask:    grab.eventMask,
@@ -1306,7 +1304,6 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 					}
 					s.deviceGrabs[deviceID] = activeDeviceGrab
 					deviceGrabbed = true
-					activeDeviceGrab.window.client = grab.clientID
 					break
 				}
 			}
@@ -1322,7 +1319,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	if deviceGrabbed {
-		grabbingClient, clientExists := s.clients[activeDeviceGrab.window.client]
+		grabbingClient, clientExists := s.clients[activeDeviceGrab.clientID]
 		if clientExists {
 			if xiEventMask > 0 {
 				match := false
@@ -1336,7 +1333,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 					}
 				}
 				if match {
-					s.sendXInputKeyboardEvent(grabbingClient, eventType, keycode, s.inputFocus.local, state)
+					s.sendXInputKeyboardEvent(grabbingClient, eventType, keycode, uint32(s.inputFocus), state)
 				}
 			}
 
@@ -1353,7 +1350,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 					wordIdx := int(evType / 32)
 					bitIdx := int(evType % 32)
 					if wordIdx < len(activeDeviceGrab.xi2EventMask) && (activeDeviceGrab.xi2EventMask[wordIdx]&(1<<bitIdx)) != 0 {
-						s.sendXInput2KeyboardEvent(grabbingClient, evType, deviceID, keycode, s.inputFocus.local, state)
+						s.sendXInput2KeyboardEvent(grabbingClient, evType, deviceID, keycode, uint32(s.inputFocus), state)
 					}
 				}
 			}
@@ -1362,7 +1359,7 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	// 2. Handle Core Grabs and Events
-	grabActive := s.keyboardGrabWindow.local != 0
+	grabActive := s.keyboardGrabWindow != 0
 
 	var eventMask uint32
 	switch eventType {
@@ -1377,14 +1374,14 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 			for _, grab := range grabs {
 				if grab.key == wire.KeyCode(keycode) && (grab.modifiers == wire.AnyModifier || grab.modifiers == state) {
 					s.keyboardGrabWindow = xid
-					s.keyboardGrabWindow.client = grab.clientID
+					s.keyboardGrabClientID = grab.clientID
 					s.keyboardGrabOwner = grab.owner
 					s.pointerGrabMode = grab.pointerMode
 					s.keyboardGrabMode = grab.keyboardMode
 					s.keyboardGrabTime = s.serverTime()
 					grabActive = true
-					if client, ok := s.clients[s.keyboardGrabWindow.client]; ok {
-						s.sendCoreKeyboardEvent(client, eventType, keycode, xid.local, state)
+					if client, ok := s.clients[s.keyboardGrabClientID]; ok {
+						s.sendCoreKeyboardEvent(client, eventType, keycode, uint32(xid), state)
 					}
 					return
 				}
@@ -1393,21 +1390,21 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	if grabActive {
-		grabbingClient, grabberOk := s.clients[s.keyboardGrabWindow.client]
+		grabbingClient, grabberOk := s.clients[s.keyboardGrabClientID]
 		if grabberOk {
-			eventWindow := s.keyboardGrabWindow.local
+			eventWindow := uint32(s.keyboardGrabWindow)
 			if s.keyboardGrabOwner {
-				eventWindow = xid.local
+				eventWindow = uint32(xid)
 			}
 			s.sendCoreKeyboardEvent(grabbingClient, eventType, keycode, eventWindow, state)
 		}
 
 		if s.keyboardGrabOwner {
-			ownerClient, ownerOk := s.clients[xid.client]
+			ownerClient, ownerOk := s.clients[((uint32(xid) >> resourceIDShift) & clientIDMask)]
 			if ownerOk && (!grabberOk || ownerClient.id != grabbingClient.id) {
 				if w, ok := s.windows[xid]; ok {
 					if w.attributes.EventMask&eventMask != 0 {
-						s.sendCoreKeyboardEvent(ownerClient, eventType, keycode, xid.local, state)
+						s.sendCoreKeyboardEvent(ownerClient, eventType, keycode, uint32(xid), state)
 					}
 				}
 			}
@@ -1416,10 +1413,10 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	// No active grab, send to interested clients
-	for _, client := range s.clients {
-		if w, ok := s.windows[client.xID(s.inputFocus.local)]; ok {
+	if w, ok := s.windows[s.inputFocus]; ok {
+		if client, ok := s.clients[((uint32(s.inputFocus) >> resourceIDShift) & clientIDMask)]; ok {
 			if w.attributes.EventMask&eventMask != 0 {
-				s.sendCoreKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
+				s.sendCoreKeyboardEvent(client, eventType, keycode, uint32(s.inputFocus), state)
 			}
 		}
 	}
@@ -1428,9 +1425,9 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	if xiEventMask > 0 {
 		for _, client := range s.clients {
 			if deviceInfo, ok := client.openDevices[virtualKeyboard.Header.DeviceID]; ok {
-				if mask, ok := deviceInfo.EventMasks[s.inputFocus.local]; ok {
+				if mask, ok := deviceInfo.EventMasks[uint32(s.inputFocus)]; ok {
 					if mask&xiEventMask != 0 {
-						s.sendXInputKeyboardEvent(client, eventType, keycode, s.inputFocus.local, state)
+						s.sendXInputKeyboardEvent(client, eventType, keycode, uint32(s.inputFocus), state)
 					}
 				}
 			}
@@ -1513,9 +1510,9 @@ func (s *x11Server) sendXInputKeyboardEvent(client *x11Client, eventType string,
 }
 
 func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY, eventX, eventY int16, state uint16, mode, detail byte) {
-	client, ok := s.clients[xid.client]
+	client, ok := s.clients[((uint32(xid) >> resourceIDShift) & clientIDMask)]
 	if !ok {
-		log.Printf("X11: Failed to write pointer crossing event: client %d not found", xid.client)
+		log.Printf("X11: Failed to write pointer crossing event: client %d not found", ((uint32(xid) >> resourceIDShift) & clientIDMask))
 		return
 	}
 
@@ -1526,7 +1523,7 @@ func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY
 			Detail:     detail,
 			Time:       s.serverTime(),
 			Root:       s.rootWindowID(),
-			Event:      xid.local,
+			Event:      uint32(xid),
 			Child:      0, // Or a child window ID if applicable
 			RootX:      rootX,
 			RootY:      rootY,
@@ -1543,7 +1540,7 @@ func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY
 			Detail:     detail,
 			Time:       s.serverTime(),
 			Root:       s.rootWindowID(),
-			Event:      xid.local,
+			Event:      uint32(xid),
 			Child:      0, // Or a child window ID if applicable
 			RootX:      rootX,
 			RootY:      rootY,
@@ -1563,16 +1560,16 @@ func (s *x11Server) SendPointerCrossingEvent(isEnter bool, xid xID, rootX, rootY
 
 func (s *x11Server) sendConfigureNotifyEvent(windowID xID, x, y int16, width, height uint16) {
 	debugf("X11: Sending ConfigureNotify event for window %d", windowID)
-	client, ok := s.clients[windowID.client]
+	client, ok := s.clients[((uint32(windowID) >> resourceIDShift) & clientIDMask)]
 	if !ok {
-		log.Print("X11: Failed to write ConfigureNotify event: client not found")
+		log.Printf("X11: Failed to write ConfigureNotify event: client %d not found", ((uint32(windowID) >> resourceIDShift) & clientIDMask))
 		return
 	}
 
 	event := &wire.ConfigureNotifyEvent{
 		Sequence:         client.sequence - 1,
-		Event:            windowID.local,
-		Window:           windowID.local,
+		Event:            uint32(windowID),
+		Window:           uint32(windowID),
 		AboveSibling:     0, // None
 		X:                x,
 		Y:                y,
@@ -1588,16 +1585,16 @@ func (s *x11Server) sendConfigureNotifyEvent(windowID xID, x, y int16, width, he
 }
 
 func (s *x11Server) sendExposeEvent(windowID xID, x, y, width, height uint16) {
-	debugf("X11: Sending Expose event for window %s", windowID)
-	client, ok := s.clients[windowID.client]
+	debugf("X11: Sending Expose event for window %d", windowID)
+	client, ok := s.clients[((uint32(windowID) >> resourceIDShift) & clientIDMask)]
 	if !ok {
-		debugf("X11: sendExposeEvent unknown client %d", windowID.client)
+		debugf("X11: sendExposeEvent unknown client %d", ((uint32(windowID) >> resourceIDShift) & clientIDMask))
 		return
 	}
 
 	event := &wire.ExposeEvent{
 		Sequence: client.sequence - 1,
-		Window:   windowID.local,
+		Window:   uint32(windowID),
 		X:        x,
 		Y:        y,
 		Width:    width,
@@ -1611,17 +1608,17 @@ func (s *x11Server) sendExposeEvent(windowID xID, x, y, width, height uint16) {
 }
 
 func (s *x11Server) SendClientMessageEvent(windowID xID, messageTypeAtom uint32, data [20]byte) {
-	debugf("X11: Sending ClientMessage event for window %s", windowID)
-	client, ok := s.clients[windowID.client]
+	debugf("X11: Sending ClientMessage event for window %d", windowID)
+	client, ok := s.clients[((uint32(windowID) >> resourceIDShift) & clientIDMask)]
 	if !ok {
-		debugf("X11: SendClientMessageEvent unknown client %d", windowID.client)
+		debugf("X11: SendClientMessageEvent unknown client %d", ((uint32(windowID) >> resourceIDShift) & clientIDMask))
 		return
 	}
 
 	event := &wire.ClientMessageEvent{
 		Sequence:    client.sequence - 1,
 		Format:      32, // Format is always 32 for ClientMessage
-		Window:      windowID.local,
+		Window:      uint32(windowID),
 		MessageType: messageTypeAtom,
 		Data:        data,
 	}
@@ -1632,15 +1629,15 @@ func (s *x11Server) SendClientMessageEvent(windowID xID, messageTypeAtom uint32,
 }
 
 func (s *x11Server) SendSelectionNotify(requestor xID, selection, target, property uint32, data []byte) {
-	client, ok := s.clients[requestor.client]
+	client, ok := s.clients[((uint32(requestor) >> resourceIDShift) & clientIDMask)]
 	if !ok {
-		debugf("X11: SendSelectionNotify unknown client %d", requestor.client)
+		debugf("X11: SendSelectionNotify unknown client %d", ((uint32(requestor) >> resourceIDShift) & clientIDMask))
 		return
 	}
 
 	event := &wire.SelectionNotifyEvent{
 		Sequence:  client.sequence - 1,
-		Requestor: requestor.local,
+		Requestor: uint32(requestor),
 		Selection: selection,
 		Target:    target,
 		Property:  property,
@@ -1656,8 +1653,8 @@ func (s *x11Server) sendEvent(client *x11Client, event messageEncoder) {
 }
 
 func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
-	if colormap.local == s.defaultColormap {
-		colormap.client = 0
+	if uint32(colormap) == s.defaultColormap {
+		colormap = xID(uint32(colormap))
 	}
 	visual, ok := s.getVisualByID(s.visualID)
 	if !ok {
@@ -1686,11 +1683,11 @@ func (s *x11Server) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 		r = uint8((pixel & visual.RedMask) >> calculateShift(visual.RedMask))
 		g = uint8((pixel & visual.GreenMask) >> calculateShift(visual.GreenMask))
 		b = uint8((pixel & visual.BlueMask) >> calculateShift(visual.BlueMask))
-		debugf("GetRGBColor: cmap:%s pixel:%x return RGB for pixel", colormap, pixel)
+		debugf("GetRGBColor: cmap:%d pixel:%x return RGB for pixel", colormap, pixel)
 		return r, g, b
 	}
 	// Default to black if not found
-	debugf("GetRGBColor: cmap:%s pixel:%x return black", colormap, pixel)
+	debugf("GetRGBColor: cmap:%d pixel:%x return black", colormap, pixel)
 	return 0, 0, 0
 }
 
@@ -1834,12 +1831,12 @@ func (s *x11Server) DeleteProperty(xid xID, propertyID uint32) {
 }
 
 func (s *x11Server) sendPropertyNotify(windowID xID, atom uint32, state byte) {
-	if client, ok := s.clients[windowID.client]; ok {
+	if client, ok := s.clients[((uint32(windowID) >> resourceIDShift) & clientIDMask)]; ok {
 		if w, ok := s.windows[windowID]; ok {
 			if w.attributes.EventMask&wire.PropertyChangeMask != 0 {
 				event := &wire.PropertyNotifyEvent{
 					Sequence: client.sequence - 1,
-					Window:   windowID.local,
+					Window:   uint32(windowID),
 					Atom:     atom,
 					Time:     s.serverTime(),
 					State:    state,
@@ -2066,6 +2063,8 @@ func (s *x11Server) handshake(client *x11Client) {
 	}
 
 	setup := wire.NewDefaultSetup(&s.config)
+	setup.ResourceIDBase = (client.id << resourceIDShift)
+	setup.ResourceIDMask = localIDMask
 
 	// Create the setup response message encoder
 	responseMsg := &wire.SetupResponse{
@@ -2130,7 +2129,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 					selections:  make(map[uint32]*selectionOwner),
 					properties:  make(map[xID]map[uint32]*property),
 					colormaps: map[xID]*colormap{
-						xID{local: 0x1}: {
+						xID(1): {
 							pixels: map[uint32]wire.XColorItem{
 								0x000000: {Pixel: 0x000000, Red: 0x0000, Green: 0x0000, Blue: 0x0000, Flags: 0},
 								1:        {Pixel: 1, Red: 0xffff, Green: 0xffff, Blue: 0xffff, Flags: 0},
@@ -2138,7 +2137,7 @@ func HandleX11Forwarding(logger Logger, client *ssh.Client, authProtocol string,
 							},
 						},
 					},
-					defaultColormap:    0x1,
+					defaultColormap:    1,
 					clients:            make(map[uint32]*x11Client),
 					nextClientID:       1,
 					passiveGrabs:       make(map[xID][]*passiveGrab),

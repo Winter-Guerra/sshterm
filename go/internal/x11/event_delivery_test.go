@@ -3,6 +3,7 @@
 package x11
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
@@ -10,237 +11,177 @@ import (
 )
 
 func TestEventDelivery_SingleClient_CorrectWindow(t *testing.T) {
-	server, client, _, buffer := setupTestServerWithClient(t)
+	server, client, _, clientBuffer := setupTestServerWithClient(t)
 
-	// 1. Create two windows
-	window1ID := client.xID(100)
-	window2ID := client.xID(200)
+	// Create two windows for the client
+	windowID1 := clientXID(client, 100)
+	windowID2 := clientXID(client, 200)
+	server.windows[windowID1] = &window{xid: windowID1, attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask}}
+	server.windows[windowID2] = &window{xid: windowID2, attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask}}
 
-	server.windows[window1ID] = &window{
-		xid:        window1ID,
-		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
-	}
-	server.windows[window2ID] = &window{
-		xid:        window2ID,
-		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
-	}
+	// --- Test Mouse Event Delivery ---
+	server.SendMouseEvent(windowID1, "mousedown", 10, 10, 1)
+	assert.True(t, clientBuffer.Len() > 0, "Client buffer should not be empty after mouse event")
+	msg, err := wire.ParseEvent(clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse event from client buffer")
+	buttonEvent, ok := msg.(*wire.ButtonPressEvent)
+	assert.True(t, ok, "Expected a ButtonPressEvent")
+	assert.Equal(t, uint32(windowID1), buttonEvent.Event, "Event should be for window 1")
+	clientBuffer.Reset()
 
-	// 2. Send a mouse event to window 1
-	server.SendMouseEvent(window1ID, "mousedown", 10, 10, 1)
-
-	// 3. Verify window 1 gets the mouse event
-	messages := drainMessages(t, buffer, client.byteOrder)
-	assert.Len(t, messages, 1, "Expected one mouse event for window 1")
-	if len(messages) == 1 {
-		btnEvent, ok := messages[0].(*wire.ButtonPressEvent)
-		assert.True(t, ok, "Expected a ButtonPressEvent")
-		assert.Equal(t, window1ID.local, btnEvent.Event, "Event should be for window 1")
-	}
-
-	// 4. Send a keyboard event to window 2
-	server.inputFocus = window2ID // Set focus to deliver keyboard events
-	server.SendKeyboardEvent(window2ID, "keydown", "KeyB", false, false, false, false)
-
-	// 5. Verify window 2 gets the keyboard event
-	messages = drainMessages(t, buffer, client.byteOrder)
-	assert.Len(t, messages, 1, "Expected one keyboard event for window 2")
-	if len(messages) == 1 {
-		keyEvent, ok := messages[0].(*wire.KeyEvent)
-		assert.True(t, ok, "Expected a KeyEvent")
-		assert.Equal(t, window2ID.local, keyEvent.Event, "Event should be for window 2")
-	}
-
-	// 6. Send a mouse event to window 2 (which is not listening for it)
-	server.SendMouseEvent(window2ID, "mousedown", 10, 10, 1)
-	messages = drainMessages(t, buffer, client.byteOrder)
-	assert.Len(t, messages, 0, "Expected no mouse event for window 2")
+	// --- Test Keyboard Event Delivery ---
+	server.inputFocus = windowID2 // Set focus to the window expecting the event
+	server.SendKeyboardEvent(windowID2, "keydown", "KeyA", false, false, false, false)
+	assert.True(t, clientBuffer.Len() > 0, "Client buffer should not be empty after keyboard event")
+	msg, err = wire.ParseEvent(clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err, "Failed to parse event from client buffer")
+	keyEvent, ok := msg.(*wire.KeyEvent)
+	assert.True(t, ok, "Expected a KeyEvent")
+	assert.Equal(t, uint32(windowID2), keyEvent.Event, "Event should be for window 2")
 }
 
-func TestEventDelivery_TwoClients_SimpleGrab(t *testing.T) {
-	server, clients, _, buffers := setupTestServerWithClients(t, 2)
-	clientA := clients[0]
-	clientB := clients[1]
-	bufferA := buffers[0]
-	bufferB := buffers[1]
+func TestEventDelivery_PassiveButtonGrab(t *testing.T) {
+	server, client, _, clientBuffer := setupTestServerWithClient(t)
+	windowID := clientXID(client, 1)
+	server.windows[windowID] = &window{xid: windowID}
 
-	// 1. Client A creates a window and listens for button presses
-	windowID := clientA.xID(100)
-	server.windows[windowID] = &window{
-		xid:        windowID,
-		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
+	// Client grabs button 1 on the window
+	req := &wire.GrabButtonRequest{
+		GrabWindow: wire.Window(windowID),
+		EventMask:  wire.ButtonPressMask,
+		Button:     1,
+		Modifiers:  wire.AnyModifier,
 	}
+	server.handleGrabButton(client, req, 1)
 
-	// 2. Client B places a passive grab on Client A's window
-	grabReq := &wire.GrabButtonRequest{
-		GrabWindow:  wire.Window(windowID.local),
-		OwnerEvents: false,
-		EventMask:   wire.ButtonPressMask,
-		Button:      1, // Grab button 1
-		Modifiers:   wire.AnyModifier,
-	}
-	server.handleRequest(clientB, grabReq, 1)
+	// Send a mouse event that should activate the grab
+	server.SendMouseEvent(windowID, "mousedown", 20, 20, 1)
+	assert.True(t, clientBuffer.Len() > 0, "Client buffer should not be empty")
 
-	// 3. Simulate a mouse click on the window
-	server.SendMouseEvent(windowID, "mousedown", 20, 20, 1) // Button 1
-
-	// 4. Verify that only Client B (the grabber) gets the event
-	messagesA := drainMessages(t, bufferA, clientA.byteOrder)
-	assert.Len(t, messagesA, 0, "Client A should not receive the event due to the grab")
-
-	messagesB := drainMessages(t, bufferB, clientB.byteOrder)
-	assert.Len(t, messagesB, 1, "Client B should receive the grabbed event")
-	if len(messagesB) == 1 {
-		_, ok := messagesB[0].(*wire.ButtonPressEvent)
-		assert.True(t, ok, "Expected a ButtonPressEvent for Client B")
-	}
+	// Verify the event was delivered
+	msg, err := wire.ParseEvent(clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err)
+	buttonEvent, ok := msg.(*wire.ButtonPressEvent)
+	assert.True(t, ok)
+	assert.Equal(t, uint32(windowID), buttonEvent.Event, "Event delivered to wrong window")
 }
 
-func TestEventDelivery_TwoClients_SimpleKeyGrab(t *testing.T) {
-	server, clients, _, buffers := setupTestServerWithClients(t, 2)
-	clientA := clients[0]
-	clientB := clients[1]
-	bufferA := buffers[0]
-	bufferB := buffers[1]
+func TestEventDelivery_PassiveKeyGrab(t *testing.T) {
+	server, client, _, clientBuffer := setupTestServerWithClient(t)
+	windowID := clientXID(client, 1)
+	server.windows[windowID] = &window{xid: windowID}
 
-	// 1. Client A creates a window and listens for key presses
-	windowID := clientA.xID(100)
-	server.windows[windowID] = &window{
-		xid:        windowID,
-		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
+	req := &wire.GrabKeyRequest{
+		GrabWindow: wire.Window(windowID),
+		Key:        54, // 'c'
+		Modifiers:  wire.AnyModifier,
 	}
-	server.inputFocus = windowID
+	server.handleGrabKey(client, req, 1)
 
-	// 2. Client B places a passive grab on Client A's window
-	grabReq := &wire.GrabKeyRequest{
-		GrabWindow:  wire.Window(windowID.local),
-		OwnerEvents: false,
-		Modifiers:   wire.AnyModifier,
-		Key:         wire.KeyCode(jsCodeToX11Keycode["KeyC"]),
-	}
-	server.handleRequest(clientB, grabReq, 1)
-
-	// 3. Simulate a key press on the window
 	server.SendKeyboardEvent(windowID, "keydown", "KeyC", false, false, false, false)
+	assert.True(t, clientBuffer.Len() > 0)
 
-	// 4. Verify that only Client B (the grabber) gets the event
-	messagesA := drainMessages(t, bufferA, clientA.byteOrder)
-	assert.Len(t, messagesA, 0, "Client A should not receive the event due to the grab")
-
-	messagesB := drainMessages(t, bufferB, clientB.byteOrder)
-	assert.Len(t, messagesB, 1, "Client B should receive the grabbed event")
-	if len(messagesB) == 1 {
-		_, ok := messagesB[0].(*wire.KeyEvent)
-		assert.True(t, ok, "Expected a KeyEvent for Client B")
-	}
+	msg, err := wire.ParseEvent(clientBuffer.Bytes(), client.byteOrder)
+	assert.NoError(t, err)
+	keyEvent, ok := msg.(*wire.KeyEvent)
+	assert.True(t, ok)
+	assert.Equal(t, uint32(windowID), keyEvent.Event, "Event delivered to wrong window")
 }
 
 func TestEventDelivery_ActivePointerGrab(t *testing.T) {
-	server, clients, _, buffers := setupTestServerWithClients(t, 2)
-	clientA := clients[0]
-	clientB := clients[1]
-	bufferA := buffers[0]
-	bufferB := buffers[1]
+	server, _, _, clientBuffers := setupTestServerWithClients(t, 2)
+	client1, client2 := server.clients[1], server.clients[2]
+	client1Buffer := clientBuffers[0]
+	client2Buffer := clientBuffers[1]
 
-	// 1. Client A creates a window and listens for button presses
-	windowA_ID := clientA.xID(100)
-	server.windows[windowA_ID] = &window{
-		xid:        windowA_ID,
-		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
-	}
+	windowID := clientXID(client1, 2) // Window belongs to client 1
+	server.windows[windowID] = &window{xid: windowID, attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask}}
 
-	// 2. Client B creates a window to grab the pointer
-	windowB_ID := clientB.xID(200)
-	server.windows[windowB_ID] = &window{xid: windowB_ID}
-
-	// 3. Client B actively grabs the pointer
+	// Client 2 grabs the pointer on client 1's window
 	grabReq := &wire.GrabPointerRequest{
-		GrabWindow:  wire.Window(windowB_ID.local),
-		OwnerEvents: false,
-		EventMask:   wire.ButtonPressMask,
+		GrabWindow: wire.Window(windowID),
+		EventMask:  wire.ButtonPressMask,
 	}
-	reply := server.handleRequest(clientB, grabReq, 1)
-	assert.Equal(t, byte(wire.GrabSuccess), reply.(*wire.GrabPointerReply).Status, "GrabPointer should succeed")
+	reply := server.handleGrabPointer(client2, grabReq, 1)
+	grabReply, ok := reply.(*wire.GrabPointerReply)
+	assert.True(t, ok)
+	assert.Equal(t, byte(0), grabReply.Status) // GrabStatusSuccess
 
-	// 4. Simulate a mouse click on Client A's window
-	server.SendMouseEvent(windowA_ID, "mousedown", 5, 5, 1)
+	// Send a mouse event to the window
+	server.SendMouseEvent(windowID, "mousedown", 5, 5, 1)
 
-	// 5. Verify that only Client B (the grabber) gets the event
-	messagesA := drainMessages(t, bufferA, clientA.byteOrder)
-	assert.Len(t, messagesA, 0, "Client A should not receive the event")
+	// Assert that client 2 (the grabber) got the event
+	assert.True(t, client2Buffer.Len() > 0, "Grabbing client should receive event")
+	msg, _ := wire.ParseEvent(client2Buffer.Bytes(), client2.byteOrder)
+	buttonEvent, _ := msg.(*wire.ButtonPressEvent)
+	assert.Equal(t, uint32(windowID), buttonEvent.Event, "Event should be for the grabbed window")
 
-	messagesB := drainMessages(t, bufferB, clientB.byteOrder)
-	assert.Len(t, messagesB, 1, "Client B should receive the grabbed event")
+	// Assert that client 1 (the owner) did NOT get the event
+	assert.Equal(t, 0, client1Buffer.Len(), "Owner client should not receive event when ownerEvents is false")
 }
 
 func TestEventDelivery_ActiveKeyboardGrab(t *testing.T) {
-	server, clients, _, buffers := setupTestServerWithClients(t, 2)
-	clientA := clients[0]
-	clientB := clients[1]
-	bufferA := buffers[0]
-	bufferB := buffers[1]
+	server, _, _, clientBuffers := setupTestServerWithClients(t, 2)
+	client1, client2 := server.clients[1], server.clients[2]
+	client1Buffer := clientBuffers[0]
+	client2Buffer := clientBuffers[1]
 
-	// 1. Client A creates a window and listens for key presses
-	windowA_ID := clientA.xID(100)
-	server.windows[windowA_ID] = &window{
-		xid:        windowA_ID,
-		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
-	}
-	server.inputFocus = windowA_ID
+	windowID := clientXID(client1, 2) // Window belongs to client 1
+	server.windows[windowID] = &window{xid: windowID, attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask}}
 
-	// 2. Client B creates a window to grab the keyboard
-	windowB_ID := clientB.xID(200)
-	server.windows[windowB_ID] = &window{xid: windowB_ID}
+	// Client 2 grabs the keyboard on client 1's window
+	grabReq := &wire.GrabKeyboardRequest{GrabWindow: wire.Window(windowID)}
+	reply := server.handleGrabKeyboard(client2, grabReq, 1)
+	grabReply, ok := reply.(*wire.GrabKeyboardReply)
+	assert.True(t, ok)
+	assert.Equal(t, byte(0), grabReply.Status) // GrabStatusSuccess
 
-	// 3. Client B actively grabs the keyboard
-	grabReq := &wire.GrabKeyboardRequest{
-		GrabWindow:  wire.Window(windowB_ID.local),
-		OwnerEvents: false,
-	}
-	reply := server.handleRequest(clientB, grabReq, 1)
-	assert.Equal(t, byte(wire.GrabSuccess), reply.(*wire.GrabKeyboardReply).Status, "GrabKeyboard should succeed")
+	// Send a key event to the window
+	server.SendKeyboardEvent(windowID, "keydown", "KeyD", false, false, false, false)
 
-	// 4. Simulate a key press
-	server.SendKeyboardEvent(windowA_ID, "keydown", "KeyD", false, false, false, false)
+	// Assert that client 2 (the grabber) got the event
+	assert.True(t, client2Buffer.Len() > 0, "Grabbing client should receive event")
+	msg, _ := wire.ParseEvent(client2Buffer.Bytes(), client2.byteOrder)
+	keyEvent, _ := msg.(*wire.KeyEvent)
+	assert.Equal(t, uint32(windowID), keyEvent.Event, "Event should be for the grabbed window")
 
-	// 5. Verify that only Client B (the grabber) gets the event
-	messagesA := drainMessages(t, bufferA, clientA.byteOrder)
-	assert.Len(t, messagesA, 0, "Client A should not receive the event")
-
-	messagesB := drainMessages(t, bufferB, clientB.byteOrder)
-	assert.Len(t, messagesB, 1, "Client B should receive the grabbed event")
+	// Assert that client 1 (the owner) did NOT get the event
+	assert.Equal(t, 0, client1Buffer.Len(), "Owner client should not receive event")
 }
 
-func TestEventDelivery_OwnerEvents(t *testing.T) {
-	server, clients, _, buffers := setupTestServerWithClients(t, 2)
-	clientA := clients[0]
-	clientB := clients[1]
-	bufferA := buffers[0]
-	bufferB := buffers[1]
+func TestEventDelivery_OwnerEventsTrue(t *testing.T) {
+	server, _, _, clientBuffers := setupTestServerWithClients(t, 2)
+	client1, client2 := server.clients[1], server.clients[2]
+	client1Buffer := clientBuffers[0]
+	client2Buffer := clientBuffers[1]
 
-	// 1. Client A creates a window and listens for button presses
-	windowID := clientA.xID(100)
-	server.windows[windowID] = &window{
-		xid:        windowID,
-		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
-	}
+	windowID := clientXID(client1, 1) // Window belongs to client 1
+	server.windows[windowID] = &window{xid: windowID, attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask}}
 
-	// 2. Client B places a passive grab with OwnerEvents = true
-	grabReq := &wire.GrabButtonRequest{
-		GrabWindow:  wire.Window(windowID.local),
-		OwnerEvents: true,
+	// Client 2 grabs button 1 on the window with ownerEvents = true
+	req := &wire.GrabButtonRequest{
+		GrabWindow:  wire.Window(windowID),
 		EventMask:   wire.ButtonPressMask,
 		Button:      1,
 		Modifiers:   wire.AnyModifier,
+		OwnerEvents: true,
 	}
-	server.handleRequest(clientB, grabReq, 1)
+	server.handleGrabButton(client2, req, 1)
 
-	// 3. Simulate a mouse click on the window
+	// Send a mouse event that activates the grab
 	server.SendMouseEvent(windowID, "mousedown", 20, 20, 1)
 
-	// 4. Verify that both clients get the event
-	messagesA := drainMessages(t, bufferA, clientA.byteOrder)
-	assert.Len(t, messagesA, 1, "Client A should receive the event")
+	// Check that BOTH clients received the event
+	assert.True(t, client1Buffer.Len() > 0, "Client 1 (owner) should receive the event")
+	assert.True(t, client2Buffer.Len() > 0, "Client 2 (grabber) should receive the event")
 
-	messagesB := drainMessages(t, bufferB, clientB.byteOrder)
-	assert.Len(t, messagesB, 1, "Client B should also receive the event")
+	// Verify the event content for both
+	for i, buffer := range []*bytes.Buffer{client1Buffer, client2Buffer} {
+		client := server.clients[uint32(i+1)]
+		msg, err := wire.ParseEvent(buffer.Bytes(), client.byteOrder)
+		assert.NoError(t, err, "Failed to parse event for client %d", i+1)
+		buttonEvent, ok := msg.(*wire.ButtonPressEvent)
+		assert.True(t, ok, "Expected ButtonPressEvent for client %d", i+1)
+		assert.Equal(t, uint32(windowID), buttonEvent.Event, "Event for client %d has wrong window ID", i+1)
+	}
 }

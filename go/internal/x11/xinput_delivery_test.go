@@ -8,13 +8,14 @@ import (
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestXInputEventDelivery_Simple(t *testing.T) {
 	server, client, _, buffer := setupTestServerWithClient(t)
 
 	// 1. Create a window
-	windowID := client.xID(100)
+	windowID := clientXID(client, 100)
 	server.windows[windowID] = &window{
 		xid:        windowID,
 		attributes: wire.WindowAttributes{},
@@ -34,7 +35,7 @@ func TestXInputEventDelivery_Simple(t *testing.T) {
 	// Class = (Mask << 8) | DeviceID
 	class := uint32(wire.DeviceButtonPressMask<<8) | 2
 	selectReq := &wire.SelectExtensionEventRequest{
-		Window:  wire.Window(windowID.local),
+		Window:  wire.Window(windowID),
 		Classes: []uint32{class},
 	}
 	server.handleRequest(client, selectReq, 1)
@@ -52,7 +53,7 @@ func TestXInputEventDelivery_Simple(t *testing.T) {
 		if inputEvent, ok := msg.(*wire.DeviceButtonPressEvent); ok {
 			foundXInputEvent = true
 			assert.Equal(t, byte(2), inputEvent.DeviceID)
-			assert.Equal(t, windowID.local, inputEvent.Event)
+			assert.Equal(t, uint32(windowID), inputEvent.Event)
 			assert.Equal(t, byte(1), inputEvent.Detail)
 		}
 	}
@@ -63,7 +64,7 @@ func TestXInputEventDelivery_Keyboard(t *testing.T) {
 	server, client, _, buffer := setupTestServerWithClient(t)
 
 	// 1. Create a window and focus it
-	windowID := client.xID(100)
+	windowID := clientXID(client, 100)
 	server.windows[windowID] = &window{
 		xid:        windowID,
 		attributes: wire.WindowAttributes{},
@@ -81,7 +82,7 @@ func TestXInputEventDelivery_Keyboard(t *testing.T) {
 	// Mask for DeviceKeyPress is DeviceKeyPressMask (1<<0 = 1)
 	class := uint32(wire.DeviceKeyPressMask<<8) | 3
 	selectReq := &wire.SelectExtensionEventRequest{
-		Window:  wire.Window(windowID.local),
+		Window:  wire.Window(windowID),
 		Classes: []uint32{class},
 	}
 	server.handleRequest(client, selectReq, 1)
@@ -97,7 +98,7 @@ func TestXInputEventDelivery_Keyboard(t *testing.T) {
 		if inputEvent, ok := msg.(*wire.DeviceKeyPressEvent); ok {
 			foundXInputEvent = true
 			assert.Equal(t, byte(3), inputEvent.DeviceID)
-			assert.Equal(t, windowID.local, inputEvent.Event)
+			assert.Equal(t, uint32(windowID), inputEvent.Event)
 			// Detail/KeyCode checks depends on keymap, skipping for now
 		}
 	}
@@ -123,13 +124,13 @@ func TestXInput2_QueryVersion(t *testing.T) {
 
 func TestXInput2_SelectEvents(t *testing.T) {
 	server, client, _, _ := setupTestServerWithClient(t)
-	windowID := client.xID(100)
+	windowID := clientXID(client, 100)
 	server.windows[windowID] = &window{xid: windowID}
 
 	// XISelectEvents
 	mask := []uint32{0} // Empty mask for now
 	req := &wire.XISelectEventsRequest{
-		Window:   wire.Window(windowID.local),
+		Window:   wire.Window(windowID),
 		NumMasks: 1,
 		Masks: []wire.XIEventMask{
 			{
@@ -139,14 +140,16 @@ func TestXInput2_SelectEvents(t *testing.T) {
 			},
 		},
 	}
-	// This is expected to fail or do nothing currently as it is unhandled
 	reply := server.handleRequest(client, req, 1)
-
-	assert.Nil(t, reply, "XISelectEvents should be handled (return nil)")
+	if reply != nil {
+		if err, ok := reply.(wire.Error); ok {
+			t.Fatalf("XISelectEvents returned an error: %v", err)
+		}
+	}
 
 	// Verify mask is stored
 	assert.NotNil(t, client.xi2EventMasks)
-	masks, ok := client.xi2EventMasks[windowID.local]
+	masks, ok := client.xi2EventMasks[uint32(windowID)]
 	assert.True(t, ok, "Window masks should be present")
 	devMask, ok := masks[2] // Device 2
 	assert.True(t, ok, "Device mask should be present")
@@ -157,7 +160,7 @@ func TestXInputGrab_Active(t *testing.T) {
 	server, client, _, buffer := setupTestServerWithClient(t)
 
 	// 1. Create a window and listen for Core events
-	windowID := client.xID(100)
+	windowID := clientXID(client, 100)
 	server.windows[windowID] = &window{
 		xid:        windowID,
 		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
@@ -169,7 +172,7 @@ func TestXInputGrab_Active(t *testing.T) {
 	// 3. Active Grab Device
 	mask := uint32(wire.DeviceButtonPressMask<<8) | 2
 	grabReq := &wire.GrabDeviceRequest{
-		GrabWindow:  uint32(windowID.local),
+		GrabWindow:  uint32(windowID),
 		DeviceID:    2,
 		OwnerEvents: false,
 		NumClasses:  1,
@@ -177,9 +180,12 @@ func TestXInputGrab_Active(t *testing.T) {
 		Time:        0,
 	}
 	reply := server.handleRequest(client, grabReq, 2)
-	assert.NotNil(t, reply)
+	require.NotNil(t, reply, "GrabDevice should return a reply")
+	if err, ok := reply.(wire.Error); ok {
+		t.Fatalf("GrabDevice failed: %v", err)
+	}
 	grabReply, ok := reply.(*wire.GrabDeviceReply)
-	assert.True(t, ok, "Expected GrabDeviceReply")
+	require.True(t, ok, "Expected GrabDeviceReply")
 	assert.Equal(t, wire.GrabSuccess, grabReply.Status)
 
 	// 4. Send event
@@ -205,7 +211,7 @@ func TestXInputGrab_PassiveButton(t *testing.T) {
 	server, client, _, buffer := setupTestServerWithClient(t)
 
 	// 1. Create window with Core event mask
-	windowID := client.xID(100)
+	windowID := clientXID(client, 100)
 	server.windows[windowID] = &window{
 		xid:        windowID,
 		attributes: wire.WindowAttributes{EventMask: wire.ButtonPressMask},
@@ -217,7 +223,7 @@ func TestXInputGrab_PassiveButton(t *testing.T) {
 	// 3. Establish Passive Grab (GrabDeviceButton)
 	mask := uint32(wire.DeviceButtonPressMask<<8) | 2
 	passiveReq := &wire.GrabDeviceButtonRequest{
-		GrabWindow:  wire.Window(windowID.local),
+		GrabWindow:  wire.Window(windowID),
 		DeviceID:    2,
 		Button:      1, // Left button
 		Modifiers:   wire.AnyModifier,
@@ -250,7 +256,7 @@ func TestXInputGrab_PassiveKey(t *testing.T) {
 	server, client, _, buffer := setupTestServerWithClient(t)
 
 	// 1. Create window
-	windowID := client.xID(100)
+	windowID := clientXID(client, 100)
 	server.windows[windowID] = &window{
 		xid:        windowID,
 		attributes: wire.WindowAttributes{EventMask: wire.KeyPressMask},
@@ -263,7 +269,7 @@ func TestXInputGrab_PassiveKey(t *testing.T) {
 	// 3. Passive Grab Key
 	mask := uint32(wire.DeviceKeyPressMask<<8) | 3
 	passiveReq := &wire.GrabDeviceKeyRequest{
-		GrabWindow:  wire.Window(windowID.local),
+		GrabWindow:  wire.Window(windowID),
 		DeviceID:    3,
 		Key:         byte(jsCodeToX11Keycode["KeyA"]),
 		Modifiers:   wire.AnyModifier,
@@ -297,10 +303,10 @@ func TestXIRawMotionDelivery(t *testing.T) {
 		s, client, _, buffer := setupTestServerWithClient(t)
 
 		// Create a window to send events to
-		winID := xID{client.id, 1}
+		winID := clientXID(client, 1)
 		s.windows[winID] = &window{
 			xid:    winID,
-			parent: 0, // Root
+			parent: xID(s.rootWindowID()), // Root
 			mapped: true,
 			attributes: wire.WindowAttributes{
 				EventMask: 0,
@@ -399,10 +405,10 @@ func TestXIRawMotionDelivery(t *testing.T) {
 		s, client, _, buffer := setupTestServerWithClient(t)
 
 		// Create a window to send events to
-		winID := xID{client.id, 1}
+		winID := clientXID(client, 1)
 		s.windows[winID] = &window{
 			xid:    winID,
-			parent: 0, // Root
+			parent: xID(s.rootWindowID()), // Root
 			mapped: true,
 			attributes: wire.WindowAttributes{
 				EventMask: 0,
@@ -463,10 +469,10 @@ func TestXIRawMotionDelivery_NotSelected(t *testing.T) {
 	s, client, _, buffer := setupTestServerWithClient(t)
 
 	// Create a window
-	winID := xID{client.id, 1}
+	winID := clientXID(client, 1)
 	s.windows[winID] = &window{
 		xid:    winID,
-		parent: 0,
+		parent: xID(s.rootWindowID()),
 		mapped: true,
 	}
 

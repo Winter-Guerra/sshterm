@@ -171,6 +171,7 @@ type MockX11Frontend struct {
 	SetWindowTitleCalls             []*setWindowTitleCall
 	CanvasOperations                []CanvasOperation
 	SetInputFocusCalls              []setInputFocusCall
+	QueryBestSizeCalls              [][]any
 	SetPointerMappingCalls          [][]byte
 	keymap                          map[byte]uint32
 	modifierMap                     []wire.KeyCode
@@ -421,7 +422,7 @@ func (m *MockX11Frontend) FreeCursor(cursorID xID) {
 
 func (m *MockX11Frontend) SendEvent(eventData messageEncoder) {}
 
-func (m *MockX11Frontend) GetFocusWindow(uint32) xID { return xID{} }
+func (m *MockX11Frontend) GetFocusWindow(uint32) xID { return 0 }
 
 func (m *MockX11Frontend) SetWindowTitle(xid xID, title string) {
 	m.SetWindowTitleCalls = append(m.SetWindowTitleCalls, &setWindowTitleCall{xid, title})
@@ -500,6 +501,11 @@ func (m *MockX11Frontend) GetCanvasOperations() []CanvasOperation {
 	return m.CanvasOperations
 }
 
+func (m *MockX11Frontend) QueryBestSize(class byte, drawable xID, width, height uint16) (rwidth, rheight uint16) {
+	m.QueryBestSizeCalls = append(m.QueryBestSizeCalls, []any{class, drawable, width, height})
+	return width, height
+}
+
 func (m *MockX11Frontend) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8) {
 	if pixel == 0 {
 		return 0xFF, 0xFF, 0xFF // White
@@ -534,6 +540,9 @@ func (m *MockX11Frontend) SetPointerMapping(pMap []byte) (byte, error) {
 }
 
 func (m *MockX11Frontend) GetPointerMapping() ([]byte, error) {
+	if len(m.SetPointerMappingCalls) > 0 {
+		return m.SetPointerMappingCalls[len(m.SetPointerMappingCalls)-1], nil
+	}
 	return []byte{1, 2, 3}, nil
 }
 

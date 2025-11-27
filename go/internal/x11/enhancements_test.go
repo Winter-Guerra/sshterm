@@ -3,202 +3,352 @@
 package x11
 
 import (
+	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/c2FmZQ/sshterm/internal/x11/wire"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// clientXID creates a full xID from a client and a local ID.
+func clientXID(client *x11Client, localID uint32) xID {
+	return xID((client.id << resourceIDShift) | localID)
+}
+
 func TestQueryBestSize(t *testing.T) {
-	s, c, _, _ := setupTestServerWithClient(t)
-	createWindow(t, s, c, 1, 0, 0, 0, 10, 10)
+	server, client, mockFrontend, _ := setupTestServerWithClient(t)
+	drawableID := clientXID(client, 1)
+	server.pixmaps[drawableID] = &pixmap{} // Create the drawable
 
-	// Test cursor
-	reqCursor := &wire.QueryBestSizeRequest{
-		Drawable: 1,
-		Class:    0, // Cursor
-		Width:    16,
-		Height:   16,
+	testCases := []struct {
+		class         byte
+		width, height uint16
+	}{
+		{0, 16, 16},   // Cursor
+		{1, 100, 100}, // Tile
+		{2, 200, 200}, // Stipple
 	}
-	replyCursor := s.handleQueryBestSize(c, reqCursor, 0).(*wire.QueryBestSizeReply)
-	require.Equal(t, uint16(16), replyCursor.Width)
-	require.Equal(t, uint16(16), replyCursor.Height)
 
-	// Test tile
-	reqTile := &wire.QueryBestSizeRequest{
-		Drawable: 1,
-		Class:    1, // Tile
-		Width:    100,
-		Height:   100,
-	}
-	replyTile := s.handleQueryBestSize(c, reqTile, 0).(*wire.QueryBestSizeReply)
-	require.Equal(t, uint16(100), replyTile.Width)
-	require.Equal(t, uint16(100), replyTile.Height)
+	for _, tc := range testCases {
+		req := &wire.QueryBestSizeRequest{
+			Class:    tc.class,
+			Drawable: wire.Drawable(drawableID),
+			Width:    tc.width,
+			Height:   tc.height,
+		}
+		reply := server.handleQueryBestSize(client, req, 1)
 
-	// Test stipple
-	reqStipple := &wire.QueryBestSizeRequest{
-		Drawable: 1,
-		Class:    2, // Stipple
-		Width:    200,
-		Height:   200,
+		assert.NotNil(t, reply, "QueryBestSize should return a reply")
+		bestSizeReply, ok := reply.(*wire.QueryBestSizeReply)
+		require.True(t, ok, "Expected QueryBestSizeReply")
+
+		assert.Equal(t, tc.width, bestSizeReply.Width, "Width should match for class %d", tc.class)
+		assert.Equal(t, tc.height, bestSizeReply.Height, "Height should match for class %d", tc.class)
 	}
-	replyStipple := s.handleQueryBestSize(c, reqStipple, 0).(*wire.QueryBestSizeReply)
-	require.Equal(t, uint16(200), replyStipple.Width)
-	require.Equal(t, uint16(200), replyStipple.Height)
+	assert.Len(t, mockFrontend.QueryBestSizeCalls, len(testCases), "Expected QueryBestSize to be called for each test case")
 }
 
-func TestDrawingBatching(t *testing.T) {
-	s, c, fe, out := setupTestServerWithClient(t)
+func TestRotateProperties(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+	windowID := clientXID(client, 1)
+	server.windows[windowID] = &window{xid: windowID} // Create the window
 
-	createWindow(t, s, c, 1, 0, 10, 10, 100, 100)
-	createGC(t, s, c, 2, 1)
-
-	// Perform a drawing operation
-	polyPointReq := &wire.PolyPointRequest{
-		Drawable: 1,
-		Gc:       2,
-		Coordinates: []uint32{
-			10, 20,
-			30, 40,
-		},
+	// Setup initial properties
+	atom1 := server.GetAtom("PROP1")
+	atom2 := server.GetAtom("PROP2")
+	atom3 := server.GetAtom("PROP3")
+	server.properties[windowID] = map[uint32]*property{
+		atom1: {data: []byte("value1")},
+		atom2: {data: []byte("value2")},
+		atom3: {data: []byte("value3")},
 	}
-	s.handlePolyPoint(c, polyPointReq, 0)
-	s.handlePolyPoint(c, polyPointReq, 0)
 
-	// Check that ComposeWindow was not called yet
-	require.Equal(t, 0, fe.ComposeWindowCount)
+	req := &wire.RotatePropertiesRequest{
+		Window: wire.Window(windowID),
+		Delta:  1,
+		Atoms:  []wire.Atom{wire.Atom(atom1), wire.Atom(atom2), wire.Atom(atom3)},
+	}
+	server.handleRotateProperties(client, req, 1)
 
-	// Flush the dirty windows
-	s.flushDirtyWindows()
-
-	// Check that ComposeWindow was called once
-	require.Equal(t, 1, fe.ComposeWindowCount)
-
-	// Clear the buffer for the next check
-	out.Reset()
-	fe.ComposeWindowCount = 0
-
-	// Perform another drawing operation
-	s.handlePolyPoint(c, polyPointReq, 0)
-	s.flushDirtyWindows()
-	require.Equal(t, 1, fe.ComposeWindowCount)
+	props := server.properties[windowID]
+	assert.Equal(t, "value3", string(props[atom1].data), "Property 1 should have value 3 after rotation")
+	assert.Equal(t, "value1", string(props[atom2].data), "Property 2 should have value 1 after rotation")
+	assert.Equal(t, "value2", string(props[atom3].data), "Property 3 should have value 2 after rotation")
 }
 
-func TestSendEventMask(t *testing.T) {
-	s, c, _, out := setupTestServerWithClient(t)
-	require.NotNil(t, s.byteOrder, "s.byteOrder should not be nil")
+func TestSetGetPointerMapping(t *testing.T) {
+	server, client, mockFrontend, _ := setupTestServerWithClient(t)
+	newMap := []byte{3, 1, 2}
 
-	// Create a window and select for key press events
-	createWindow(t, s, c, 1, 0, 0, 0, 100, 100)
-	changeWindowAttributes(t, s, c, 1, wire.CWEventMask, &wire.WindowAttributes{
-		EventMask: wire.KeyPressMask,
-	})
+	// 1. Set the mapping
+	setReq := &wire.SetPointerMappingRequest{Map: newMap}
+	reply := server.handleSetPointerMapping(client, setReq, 1)
+	setReply, ok := reply.(*wire.SetPointerMappingReply)
+	require.True(t, ok)
+	assert.Equal(t, byte(0), setReply.Status, "SetPointerMapping should be successful")
+	require.Len(t, mockFrontend.SetPointerMappingCalls, 1, "Expected frontend to be called for Set")
+	assert.Equal(t, newMap, mockFrontend.SetPointerMappingCalls[0])
 
-	// Send a KeyPress event
-	keyPressEvent := &wire.KeyEvent{
-		Opcode:     wire.KeyPress,
-		Sequence:   1,
-		Detail:     10,
-		Time:       12345,
-		Root:       s.rootWindowID(),
-		Event:      1,
-		Child:      0,
-		RootX:      10,
-		RootY:      10,
-		EventX:     10,
-		EventY:     10,
-		State:      0,
-		SameScreen: true,
+	// 2. Get the mapping
+	getReq := &wire.GetPointerMappingRequest{}
+	reply = server.handleGetPointerMapping(client, getReq, 2)
+	getReply, ok := reply.(*wire.GetPointerMappingReply)
+	require.True(t, ok)
+	assert.Equal(t, newMap, getReply.PMap, "GetPointerMapping should return the newly set map")
+}
+
+func TestGetSetModifierMapping(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+	keycodes := []wire.KeyCode{10, 20, 30, 0, 0, 0, 0, 0} // 1 keycode per modifier for 8 modifiers
+
+	// 1. Set the mapping
+	setReq := &wire.SetModifierMappingRequest{
+		KeyCodesPerModifier: 1,
+		KeyCodes:            keycodes,
 	}
-	eventData := keyPressEvent.EncodeMessage(s.byteOrder)
-	sendEventReq := &wire.SendEventRequest{
-		Propagate:   false,
-		Destination: wire.Window(1),
-		EventMask:   wire.KeyPressMask,
-		EventData:   eventData,
+	reply := server.handleSetModifierMapping(client, setReq, 1)
+	setReply, ok := reply.(*wire.SetModifierMappingReply)
+	require.True(t, ok)
+	assert.Equal(t, byte(0), setReply.Status, "SetModifierMapping should be successful")
+
+	// 2. Get the mapping
+	getReq := &wire.GetModifierMappingRequest{}
+	reply = server.handleGetModifierMapping(client, getReq, 2)
+	getReply, ok := reply.(*wire.GetModifierMappingReply)
+	require.True(t, ok)
+	assert.Equal(t, byte(1), getReply.KeyCodesPerModifier, "KeycodesPerModifier should be 1")
+	assert.Equal(t, keycodes, getReply.KeyCodes, "GetModifierMapping should return the set keycodes")
+}
+
+func TestQueryKeymap(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+
+	// Simulate some pressed keys
+	server.pressedKeys[38] = true // Key 'a'
+	server.pressedKeys[56] = true // Key 'Shift'
+
+	req := &wire.QueryKeymapRequest{}
+	reply := server.handleQueryKeymap(client, req, 1)
+	keymapReply, ok := reply.(*wire.QueryKeymapReply)
+	require.True(t, ok)
+
+	// Check if the bits for the pressed keys are set
+	assert.NotZero(t, keymapReply.Keys[38/8]&(1<<(38%8)), "Key 'a' should be marked as pressed")
+	assert.NotZero(t, keymapReply.Keys[56/8]&(1<<(56%8)), "Key 'Shift' should be marked as pressed")
+}
+
+func TestTranslateCoords(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+
+	parentID := clientXID(client, 1)
+	server.windows[parentID] = &window{xid: parentID, parent: xID(server.rootWindowID()), x: 100, y: 100}
+
+	req := &wire.TranslateCoordsRequest{
+		SrcWindow:  wire.Window(parentID),
+		DstWindow:  wire.Window(server.rootWindowID()),
+		SrcX:       10,
+		SrcY:       20,
 	}
-	s.handleSendEvent(c, sendEventReq, 0)
+	reply := server.handleTranslateCoords(client, req, 1)
+	translateReply, ok := reply.(*wire.TranslateCoordsReply)
+	require.True(t, ok)
 
-	// Check that the event was sent
-	require.True(t, out.Len() > 0)
-	out.Reset()
-
-	// Send a KeyRelease event (not selected)
-	keyReleaseEvent := &wire.KeyEvent{
-		Opcode:     wire.KeyRelease,
-		Sequence:   1,
-		Detail:     10,
-		Time:       12345,
-		Root:       s.rootWindowID(),
-		Event:      1,
-		Child:      0,
-		RootX:      10,
-		RootY:      10,
-		EventX:     10,
-		EventY:     10,
-		State:      0,
-		SameScreen: true,
-	}
-	eventData = keyReleaseEvent.EncodeMessage(s.byteOrder)
-	sendEventReq.EventData = eventData
-	s.handleSendEvent(c, sendEventReq, 0)
-
-	// Check that the event was not sent
-	require.Equal(t, 0, out.Len())
+	assert.Equal(t, true, translateReply.SameScreen, "SameScreen should be true")
+	assert.Equal(t, uint32(0), translateReply.Child, "Child should be None")
+	assert.Equal(t, int16(110), translateReply.DstX, "Translated X coordinate is incorrect")
+	assert.Equal(t, int16(120), translateReply.DstY, "Translated Y coordinate is incorrect")
 }
 
 func TestTranslateCoordsWithChild(t *testing.T) {
-	s, c, _, _ := setupTestServerWithClient(t)
+	server, client, _, _ := setupTestServerWithClient(t)
 
-	// Create parent and child windows
-	createWindow(t, s, c, 1, 0, 10, 10, 200, 200)
-	s.windows[c.xID(1)].mapped = true
-	createWindow(t, s, c, 2, 1, 50, 50, 100, 100)
-	s.windows[c.xID(2)].mapped = true
-	s.windows[c.xID(2)].parent = c.xID(1).local
-	s.windows[c.xID(1)].children = []uint32{2}
+	parentID := clientXID(client, 1)
+	childID := clientXID(client, 2)
+	server.windows[parentID] = &window{
+		xid:      parentID,
+		parent:   xID(server.rootWindowID()),
+		x:        100,
+		y:        100,
+		width:    200,
+		height:   200,
+		children: []xID{childID},
+		mapped:   true,
+	}
+	server.windows[childID] = &window{
+		xid:    childID,
+		parent: parentID,
+		x:      10,
+		y:      20,
+		width:  50,
+		height: 50,
+		mapped: true,
+	}
+	// Put child on top of parent in the stacking order
+	server.windowStack = []xID{parentID, childID}
 
-	// Translate coordinates from root to parent, hitting the child
 	req := &wire.TranslateCoordsRequest{
-		SrcWindow: wire.Window(s.rootWindowID()),
-		DstWindow: wire.Window(1),
-		SrcX:      65,
-		SrcY:      65,
+		SrcWindow:  wire.Window(server.rootWindowID()),
+		DstWindow:  wire.Window(parentID),
+		SrcX:       115, // A point inside the child window
+		SrcY:       125,
 	}
-	reply := s.handleTranslateCoords(c, req, 0).(*wire.TranslateCoordsReply)
+	reply := server.handleTranslateCoords(client, req, 1)
+	translateReply, ok := reply.(*wire.TranslateCoordsReply)
+	require.True(t, ok)
 
-	require.Equal(t, int16(55), reply.DstX)
-	require.Equal(t, int16(55), reply.DstY)
-	require.Equal(t, uint32(2), reply.Child)
+	assert.Equal(t, uint32(childID), translateReply.Child, "TranslateCoords should identify the child window")
+	assert.Equal(t, int16(15), translateReply.DstX, "Translated X should be relative to the destination window")
+	assert.Equal(t, int16(25), translateReply.DstY, "Translated Y should be relative to the destination window")
 }
 
-// Helper functions to create requests
-func createWindow(t *testing.T, s *x11Server, c *x11Client, id, parent uint32, x, y, width, height int16) {
-	req := &wire.CreateWindowRequest{
-		Drawable: wire.Window(id),
-		Parent:   wire.Window(parent),
-		X:        x,
-		Y:        y,
-		Width:    uint16(width),
-		Height:   uint16(height),
-		Depth:    24,
+func TestGetMotionEvents(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+	windowID := clientXID(client, 1)
+	server.windows[windowID] = &window{xid: windowID} // Create the window
+
+	// Populate motion buffer
+	server.motionEvents = []motionEvent{
+		{time: 1000, x: 10, y: 10, window: windowID},
+		{time: 1010, x: 12, y: 15, window: windowID},
+		{time: 1020, x: 15, y: 20, window: windowID},
 	}
-	s.handleCreateWindow(c, req, 0)
+
+	req := &wire.GetMotionEventsRequest{
+		Window: wire.Window(windowID),
+		Start:  1005,
+		Stop:   1025,
+	}
+	reply := server.handleGetMotionEvents(client, req, 1)
+	motionReply, ok := reply.(*wire.GetMotionEventsReply)
+	require.True(t, ok, "Expected GetMotionEventsReply")
+	require.Len(t, motionReply.Events, 2, "Should return 2 events within the time range")
+	assert.Equal(t, uint32(1010), motionReply.Events[0].Time)
+	assert.Equal(t, int16(12), motionReply.Events[0].X)
+	assert.Equal(t, int16(15), motionReply.Events[0].Y)
+	assert.Equal(t, uint32(1020), motionReply.Events[1].Time)
 }
 
-func createGC(t *testing.T, s *x11Server, c *x11Client, id, drawable uint32) {
-	req := &wire.CreateGCRequest{
-		Cid:      wire.GContext(id),
-		Drawable: wire.Drawable(drawable),
+func TestListProperties(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+	windowID := clientXID(client, 1)
+	server.windows[windowID] = &window{xid: windowID} // Create the window
+	atom1 := server.GetAtom("PROP1")
+	atom2 := server.GetAtom("PROP2")
+
+	server.properties[windowID] = map[uint32]*property{
+		atom1: {},
+		atom2: {},
 	}
-	s.handleCreateGC(c, req, 0)
+
+	req := &wire.ListPropertiesRequest{Window: wire.Window(windowID)}
+	reply := server.handleListProperties(client, req, 1)
+	listReply, ok := reply.(*wire.ListPropertiesReply)
+	require.True(t, ok)
+	assert.ElementsMatch(t, []uint32{atom1, atom2}, listReply.Atoms, "Listed properties should match")
 }
 
-func changeWindowAttributes(t *testing.T, s *x11Server, c *x11Client, id uint32, mask uint32, values *wire.WindowAttributes) {
-	req := &wire.ChangeWindowAttributesRequest{
-		Window:    wire.Window(id),
-		ValueMask: uint32(mask),
-		Values:    *values,
+func TestAllocNamedColor(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+
+	req := &wire.AllocNamedColorRequest{
+		Cmap: wire.Colormap(server.defaultColormap),
+		Name:     []byte("blue"),
 	}
-	s.handleChangeWindowAttributes(c, req, 0)
+
+	reply := server.handleAllocNamedColor(client, req, 1)
+	colorReply, ok := reply.(*wire.AllocNamedColorReply)
+	require.True(t, ok)
+
+	assert.NotZero(t, colorReply.Pixel, "Pixel value should be allocated")
+	// "blue" is #0000FF
+	assert.Equal(t, uint16(0x0000), colorReply.ExactRed, "Exact red is wrong for blue")
+	assert.Equal(t, uint16(0x0000), colorReply.ExactGreen, "Exact green is wrong for blue")
+	assert.Equal(t, uint16(0xFFFF), colorReply.ExactBlue, "Exact blue is wrong for blue")
+}
+
+func TestAllocColorCells_TrueColor(t *testing.T) {
+	server, client, _, clientBuffer := setupTestServerWithClient(t)
+	colormapID := clientXID(client, 1)
+	server.colormaps[colormapID] = &colormap{
+		visual: wire.VisualType{Class: wire.TrueColor}, // Read-only colormap
+	}
+
+	req := &wire.AllocColorCellsRequest{
+		Cmap: wire.Colormap(colormapID),
+		Colors:   2,
+		Planes:   0,
+	}
+
+	// Should fail with BadAccess on a read-only colormap
+	errReply := server.handleAllocColorCells(client, req, 1)
+	encoded := errReply.EncodeMessage(client.byteOrder)
+	clientBuffer.Write(encoded)
+
+	msg, err := wire.ParseError(clientBuffer.Bytes(), client.byteOrder)
+	require.NoError(t, err)
+	assert.Equal(t, wire.AccessErrorCode, msg.Code(), "AllocColorCells on TrueColor should return BadAccess")
+}
+
+func TestAllocColorCells_PseudoColor(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+	colormapID := clientXID(client, 1)
+	server.colormaps[colormapID] = &colormap{
+		visual:   wire.VisualType{Class: wire.PseudoColor, ColormapEntries: 256},
+		pixels:   make(map[uint32]wire.XColorItem),
+		writable: make([]bool, 256),
+	}
+	// Mark all cells as available
+	for i := range server.colormaps[colormapID].writable {
+		server.colormaps[colormapID].writable[i] = true
+	}
+
+	req := &wire.AllocColorCellsRequest{
+		Cmap: wire.Colormap(colormapID),
+		Colors:   5, // Request 5 contiguous cells
+		Planes:   0,
+	}
+
+	reply := server.handleAllocColorCells(client, req, 1)
+	allocReply, ok := reply.(*wire.AllocColorCellsReply)
+	require.True(t, ok)
+	assert.Len(t, allocReply.Pixels, 5, "Should allocate 5 pixel values")
+
+	// Check that the allocated cells are now marked as not writable
+	for _, pixel := range allocReply.Pixels {
+		assert.False(t, server.colormaps[colormapID].writable[pixel], "Allocated cell should be marked as read-only")
+	}
+}
+
+func TestCopyColormapAndFree(t *testing.T) {
+	server, client, _, _ := setupTestServerWithClient(t)
+	srcCmapID := clientXID(client, 1)
+	dstCmapID := clientXID(client, 2)
+
+	server.colormaps[srcCmapID] = &colormap{
+		pixels: map[uint32]wire.XColorItem{
+			1: {Pixel: 1, Red: 0xffff, ClientID: client.id},
+		},
+	}
+
+	req := &wire.CopyColormapAndFreeRequest{
+		SrcCmap: wire.Colormap(srcCmapID),
+		Mid:         wire.Colormap(dstCmapID),
+	}
+
+	server.handleCopyColormapAndFree(client, req, 1)
+	_, srcExists := server.colormaps[srcCmapID]
+	dstCmap, dstExists := server.colormaps[dstCmapID]
+
+	assert.False(t, srcExists, "Source colormap should be freed")
+	assert.True(t, dstExists, "Destination colormap should be created")
+	assert.Contains(t, dstCmap.pixels, uint32(1), "Color item should be copied to destination")
+}
+
+// Helper to decode a single message from a buffer for testing replies.
+func decodeSingleReply(t *testing.T, buffer *bytes.Buffer, order binary.ByteOrder, seq uint16, opcodes wire.Opcodes) (wire.ServerMessage, error) {
+	t.Helper()
+	wire.ExpectReply(seq, opcodes)
+	return wire.ParseReply(opcodes, buffer.Bytes(), order)
 }
