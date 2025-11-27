@@ -23,6 +23,15 @@ func (s *x11Server) handleCreateWindow(client *x11Client, req wire.Request, seq 
 		return wire.NewGenericError(seq, uint32(p.Drawable), 0, wire.CreateWindow, wire.IDChoiceErrorCode)
 	}
 
+	effectiveVisual := uint32(p.Visual)
+	if effectiveVisual == 0 {
+		if parent, ok := s.windows[parentXID]; ok {
+			effectiveVisual = parent.visual
+		} else if uint32(parentXID) == s.rootWindowID() {
+			effectiveVisual = s.rootVisual.VisualID
+		}
+	}
+
 	newWindow := &window{
 		xid:        xid,
 		parent:     parentXID,
@@ -33,12 +42,12 @@ func (s *x11Server) handleCreateWindow(client *x11Client, req wire.Request, seq 
 		depth:      p.Depth,
 		children:   []xID{},
 		attributes: p.Values,
-		visual:     uint32(p.Visual),
+		visual:     effectiveVisual,
 	}
 	if p.Values.Colormap > 0 {
 		if cm, ok := s.colormaps[xID(p.Values.Colormap)]; !ok {
 			return wire.NewGenericError(seq, uint32(p.Values.Colormap), 0, wire.CreateWindow, wire.ColormapErrorCode)
-		} else if cm.visual.VisualID != uint32(p.Visual) {
+		} else if cm.visual.VisualID != effectiveVisual {
 			return wire.NewGenericError(seq, 0, 0, wire.CreateWindow, wire.MatchErrorCode)
 		}
 		newWindow.colormap = xID(p.Values.Colormap)

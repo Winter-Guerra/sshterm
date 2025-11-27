@@ -146,10 +146,10 @@ func TestTranslateCoords(t *testing.T) {
 	server.windows[parentID] = &window{xid: parentID, parent: xID(server.rootWindowID()), x: 100, y: 100}
 
 	req := &wire.TranslateCoordsRequest{
-		SrcWindow:  wire.Window(parentID),
-		DstWindow:  wire.Window(server.rootWindowID()),
-		SrcX:       10,
-		SrcY:       20,
+		SrcWindow: wire.Window(parentID),
+		DstWindow: wire.Window(server.rootWindowID()),
+		SrcX:      10,
+		SrcY:      20,
 	}
 	reply := server.handleTranslateCoords(client, req, 1)
 	translateReply, ok := reply.(*wire.TranslateCoordsReply)
@@ -189,10 +189,10 @@ func TestTranslateCoordsWithChild(t *testing.T) {
 	server.windowStack = []xID{parentID, childID}
 
 	req := &wire.TranslateCoordsRequest{
-		SrcWindow:  wire.Window(server.rootWindowID()),
-		DstWindow:  wire.Window(parentID),
-		SrcX:       115, // A point inside the child window
-		SrcY:       125,
+		SrcWindow: wire.Window(server.rootWindowID()),
+		DstWindow: wire.Window(parentID),
+		SrcX:      115, // A point inside the child window
+		SrcY:      125,
 	}
 	reply := server.handleTranslateCoords(client, req, 1)
 	translateReply, ok := reply.(*wire.TranslateCoordsReply)
@@ -254,7 +254,7 @@ func TestAllocNamedColor(t *testing.T) {
 
 	req := &wire.AllocNamedColorRequest{
 		Cmap: wire.Colormap(server.defaultColormap),
-		Name:     []byte("blue"),
+		Name: []byte("blue"),
 	}
 
 	reply := server.handleAllocNamedColor(client, req, 1)
@@ -276,9 +276,9 @@ func TestAllocColorCells_TrueColor(t *testing.T) {
 	}
 
 	req := &wire.AllocColorCellsRequest{
-		Cmap: wire.Colormap(colormapID),
-		Colors:   2,
-		Planes:   0,
+		Cmap:   wire.Colormap(colormapID),
+		Colors: 2,
+		Planes: 0,
 	}
 
 	// Should fail with BadAccess on a read-only colormap
@@ -305,9 +305,9 @@ func TestAllocColorCells_PseudoColor(t *testing.T) {
 	}
 
 	req := &wire.AllocColorCellsRequest{
-		Cmap: wire.Colormap(colormapID),
-		Colors:   5, // Request 5 contiguous cells
-		Planes:   0,
+		Cmap:   wire.Colormap(colormapID),
+		Colors: 5, // Request 5 contiguous cells
+		Planes: 0,
 	}
 
 	reply := server.handleAllocColorCells(client, req, 1)
@@ -334,7 +334,7 @@ func TestCopyColormapAndFree(t *testing.T) {
 
 	req := &wire.CopyColormapAndFreeRequest{
 		SrcCmap: wire.Colormap(srcCmapID),
-		Mid:         wire.Colormap(dstCmapID),
+		Mid:     wire.Colormap(dstCmapID),
 	}
 
 	server.handleCopyColormapAndFree(client, req, 1)

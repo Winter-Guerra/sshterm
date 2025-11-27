@@ -31,8 +31,7 @@ func clearX11Operations() {
 }
 
 func (s *sshServer) clientXID(id uint32) uint32 {
-	const clientID = 1
-	return (clientID << 20) | id
+	return s.resourceIdBase | (id & s.resourceIdMask)
 }
 
 func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProtocol string, authCookie []byte) {
@@ -109,6 +108,25 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 			s.t.Logf("Failed to read X11 SetupResponse remaining data: %v", err)
 			return
 		}
+
+		s.resourceIdBase = binary.LittleEndian.Uint32(remainingData[4:8])
+		s.resourceIdMask = binary.LittleEndian.Uint32(remainingData[8:12])
+
+		vendorLen := binary.LittleEndian.Uint16(remainingData[16:18])
+		numRoots := remainingData[20]
+		numFormats := remainingData[21]
+
+		pad := (4 - int(vendorLen)%4) % 4
+		rootsOffset := 32 + int(vendorLen) + pad + 8*int(numFormats)
+
+		if len(remainingData) >= rootsOffset+36 && numRoots > 0 {
+			s.rootWindowID = binary.LittleEndian.Uint32(remainingData[rootsOffset : rootsOffset+4])
+			s.rootVisualID = binary.LittleEndian.Uint32(remainingData[rootsOffset+32 : rootsOffset+36])
+			s.t.Logf("X11 Setup: ResourceBase=0x%x, Mask=0x%x, RootWindow=0x%x, RootVisual=0x%x", s.resourceIdBase, s.resourceIdMask, s.rootWindowID, s.rootVisualID)
+		} else {
+			s.t.Log("X11 Setup: Could not find RootWindow")
+			return
+		}
 	}
 
 	s.t.Logf("X11 client handshake successful")
@@ -119,26 +137,26 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 
 	// Create Window
 	s.t.Log("Sending CreateWindow")
-	if err := s.createWindow(x11Channel, 1, 0, 10, 20, uint32(windowWidth), uint32(windowHeight)); err != nil {
+	if err := s.createWindow(x11Channel, s.clientXID(1), s.rootWindowID, 10, 20, uint32(windowWidth), uint32(windowHeight)); err != nil {
 		s.t.Logf("Failed to create window: %v", err)
 		return
 	}
 
 	// MapWindow
 	s.t.Log("Sending MapWindow")
-	if err := s.mapWindow(x11Channel, 1); err != nil {
+	if err := s.mapWindow(x11Channel, s.clientXID(1)); err != nil {
 		s.t.Logf("Failed to map window: %v", err)
 		return
 	}
 
 	// Fill window with white background
 	s.t.Log("Filling window with white background")
-	if err := s.createGCWithBackground(x11Channel, 99, 1, 0xFFFFFF, 0); err != nil {
+	if err := s.createGCWithBackground(x11Channel, s.clientXID(99), s.clientXID(1), 0xFFFFFF, 0); err != nil {
 		s.t.Logf("Failed to create white GC: %v", err)
 		return
 	}
 	background := []int16{0, 0, int16(windowWidth), int16(windowHeight)}
-	if err := s.polyFillRectangle(x11Channel, 1, 99, background); err != nil {
+	if err := s.polyFillRectangle(x11Channel, s.clientXID(1), s.clientXID(99), background); err != nil {
 		s.t.Logf("Failed to fill window background: %v", err)
 		return
 	}
@@ -155,8 +173,8 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	gcs := make(map[string]uint32)
 	i := uint32(100)
 	for name, color := range colors {
-		gcs[name] = i
-		if err := s.createGCWithBackground(x11Channel, i, 1, color, 0); err != nil {
+		gcs[name] = s.clientXID(i)
+		if err := s.createGCWithBackground(x11Channel, gcs[name], s.clientXID(1), color, 0); err != nil {
 			s.t.Logf("Failed to create %s GC: %v", name, err)
 			return
 		}
@@ -166,7 +184,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	// Draw ground
 	s.t.Log("Drawing ground")
 	ground := []int16{0, 300, 600, 100}
-	if err := s.polyFillRectangle(x11Channel, 1, gcs["green"], ground); err != nil {
+	if err := s.polyFillRectangle(x11Channel, s.clientXID(1), gcs["green"], ground); err != nil {
 		s.t.Logf("Failed to draw ground: %v", err)
 		return
 	}
@@ -174,7 +192,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	// Draw house base
 	s.t.Log("Drawing house base")
 	houseBase := []int16{200, 200, 200, 150}
-	if err := s.polyFillRectangle(x11Channel, 1, gcs["brown"], houseBase); err != nil {
+	if err := s.polyFillRectangle(x11Channel, s.clientXID(1), gcs["brown"], houseBase); err != nil {
 		s.t.Logf("Failed to draw house base: %v", err)
 		return
 	}
@@ -182,7 +200,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	// Draw roof
 	s.t.Log("Drawing roof")
 	roof := []int16{180, 200, 300, 100, 420, 200}
-	if err := s.fillPoly(x11Channel, 1, gcs["red"], 0, roof); err != nil {
+	if err := s.fillPoly(x11Channel, s.clientXID(1), gcs["red"], 0, roof); err != nil {
 		s.t.Logf("Failed to draw roof: %v", err)
 		return
 	}
@@ -190,7 +208,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	// Draw sun
 	s.t.Log("Drawing sun")
 	sun := []int16{500, 50, 40, 40, 0, 360 * 64}
-	if err := s.polyFillArc(x11Channel, 1, gcs["yellow"], sun); err != nil {
+	if err := s.polyFillArc(x11Channel, s.clientXID(1), gcs["yellow"], sun); err != nil {
 		s.t.Logf("Failed to draw sun: %v", err)
 		return
 	}
@@ -201,7 +219,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 		100, 50, 110, 75, 135, 75, 115, 95, 125, 120,
 		100, 105, 75, 120, 85, 95, 65, 75, 90, 75, 100, 50,
 	}
-	if err := s.polyLine(x11Channel, 1, gcs["cyan"], 0, starPoints); err != nil {
+	if err := s.polyLine(x11Channel, s.clientXID(1), gcs["cyan"], 0, starPoints); err != nil {
 		s.t.Logf("Failed to draw cyan star: %v", err)
 		return
 	}
@@ -209,17 +227,17 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	// ChangeProperty (set window title)
 	s.t.Log("Sending ChangeProperty")
 	title := "SSHTERM X11 - House and Sun"
-	if err := s.changeProperty(x11Channel, 1, atomWmName, atomString, 0, 8, []byte(title)); err != nil {
+	if err := s.changeProperty(x11Channel, s.clientXID(1), atomWmName, atomString, 0, 8, []byte(title)); err != nil {
 		s.t.Logf("Failed to change property: %v", err)
 		return
 	}
 
-	if err := s.imageText8(x11Channel, 1, gcs["blue"], 50, 50, []byte("Hello X11!")); err != nil {
+	if err := s.imageText8(x11Channel, s.clientXID(1), gcs["blue"], 50, 50, []byte("Hello X11!")); err != nil {
 		s.t.Logf("Failed to draw text: %v", err)
 		return
 	}
 
-	if err := s.imageText16(x11Channel, 1, gcs["red"], 50, 70, []uint16{0x0048, 0x0065, 0x006c, 0x006c, 0x006f, 0x0020, 0x0057, 0x006f, 0x0072, 0x006c, 0x0064, 0x0021}); err != nil {
+	if err := s.imageText16(x11Channel, s.clientXID(1), gcs["red"], 50, 70, []uint16{0x0048, 0x0065, 0x006c, 0x006c, 0x006f, 0x0020, 0x0057, 0x006f, 0x0072, 0x006c, 0x0064, 0x0021}); err != nil {
 		s.t.Logf("Failed to draw ImageText16: %v", err)
 		return
 	}
@@ -228,7 +246,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 		{Delta: 0, Str: []byte("PolyText8 ")},
 		{Delta: 10, Str: []byte("Example")},
 	}
-	if err := s.polyText8(x11Channel, 1, gcs["yellow"], 50, 90, polyText8Items); err != nil {
+	if err := s.polyText8(x11Channel, s.clientXID(1), gcs["yellow"], 50, 90, polyText8Items); err != nil {
 		s.t.Logf("Failed to draw PolyText8: %v", err)
 		return
 	}
@@ -237,14 +255,14 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 		{Delta: 0, Str: []uint16{0x0050, 0x006f, 0x006c, 0x0079, 0x0054, 0x0065, 0x0078, 0x0074, 0x0031, 0x0036, 0x0020}},
 		{Delta: 10, Str: []uint16{0x0045, 0x0078, 0x0061, 0x006d, 0x0070, 0x006c, 0x0065}},
 	}
-	if err := s.polyText16(x11Channel, 1, gcs["cyan"], 50, 110, polyText16Items); err != nil {
+	if err := s.polyText16(x11Channel, s.clientXID(1), gcs["cyan"], 50, 110, polyText16Items); err != nil {
 		s.t.Logf("Failed to draw PolyText16: %v", err)
 		return
 	}
 
 	// Test Font API
 	s.t.Log("Testing Font API")
-	fontID := uint32(200)
+	fontID := s.clientXID(200)
 	fontName := "-*-helvetica-medium-r-normal-*-12-*-*-*-p-*-iso8859-1"
 	if err := s.openFont(x11Channel, fontID, fontName); err != nil {
 		s.t.Logf("Failed to open font: %v", err)
@@ -262,14 +280,14 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 	}
 
 	// Create a new GC with the font
-	fontGC := uint32(106)
-	if err := s.createGCWithFont(x11Channel, fontGC, 1, colors["blue"], 0, fontID); err != nil {
+	fontGC := s.clientXID(106)
+	if err := s.createGCWithFont(x11Channel, fontGC, s.clientXID(1), colors["blue"], 0, fontID); err != nil {
 		s.t.Logf("Failed to create GC with font: %v", err)
 		return
 	}
 
 	// Draw text with the new GC
-	if err := s.imageText8(x11Channel, 1, fontGC, 50, 130, []byte("Text with font!")); err != nil {
+	if err := s.imageText8(x11Channel, s.clientXID(1), fontGC, 50, 130, []byte("Text with font!")); err != nil {
 		s.t.Logf("Failed to draw text with font: %v", err)
 		return
 	}
@@ -393,8 +411,8 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.t.Log("Simulating GC operations")
 
 	// Create a new window for GC tests
-	gcWindowID := uint32(30)
-	if err := s.createWindow(channel, gcWindowID, 1, 220, 220, 300, 300); err != nil {
+	gcWindowID := s.clientXID(30)
+	if err := s.createWindow(channel, gcWindowID, s.clientXID(1), 220, 220, 300, 300); err != nil {
 		s.t.Errorf("Failed to create GC test window: %v", err)
 		return
 	}
@@ -405,7 +423,7 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 
 	// Create GCs with different attributes
 	// GC for thick red line
-	gcThickRed := uint32(300)
+	gcThickRed := s.clientXID(300)
 	if err := s.createGCWithAttributes(channel, gcThickRed, gcWindowID, map[uint32]uint32{
 		GCForeground: 0xFF0000,
 		GCLineWidth:  5,
@@ -416,7 +434,7 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.polyLine(channel, gcWindowID, gcThickRed, 0, []int16{10, 10, 100, 10})
 
 	// GC for dashed blue line with round caps and joins
-	gcDashedBlue := uint32(301)
+	gcDashedBlue := s.clientXID(301)
 	if err := s.createGCWithAttributes(channel, gcDashedBlue, gcWindowID, map[uint32]uint32{
 		GCForeground: 0x0000FF,
 		GCCapStyle:   2, // Round
@@ -433,7 +451,7 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.polyLine(channel, gcWindowID, gcDashedBlue, 0, []int16{10, 30, 100, 30, 100, 50})
 
 	// GC for winding fill rule
-	gcWindingFill := uint32(302)
+	gcWindingFill := s.clientXID(302)
 	if err := s.createGCWithAttributes(channel, gcWindingFill, gcWindowID, map[uint32]uint32{
 		GCForeground: 0x00FF00,
 		GCFillRule:   1, // Winding
@@ -445,9 +463,9 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.fillPoly(channel, gcWindowID, gcWindingFill, 0, points)
 
 	// Tiled rectangle
-	tilePixmapID := uint32(400)
+	tilePixmapID := s.clientXID(400)
 	s.createPixmap(channel, tilePixmapID, gcWindowID, 8, 8, 24)
-	gcTile := uint32(303)
+	gcTile := s.clientXID(303)
 	if err := s.createGCWithAttributes(channel, gcTile, tilePixmapID, map[uint32]uint32{
 		GCForeground: 0xFF00FF,
 	}); err != nil {
@@ -456,7 +474,7 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	}
 	s.polyFillRectangle(channel, tilePixmapID, gcTile, []int16{0, 0, 4, 4})
 	s.polyFillRectangle(channel, tilePixmapID, gcTile, []int16{4, 4, 4, 4})
-	gcTiledFill := uint32(304)
+	gcTiledFill := s.clientXID(304)
 	if err := s.createGCWithAttributes(channel, gcTiledFill, gcWindowID, map[uint32]uint32{
 		GCFillStyle: 1, // Tiled
 		GCTile:      tilePixmapID,
@@ -467,9 +485,9 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.polyFillRectangle(channel, gcWindowID, gcTiledFill, []int16{10, 70, 100, 50})
 
 	// Stippled rectangle
-	stipplePixmapID := uint32(401)
+	stipplePixmapID := s.clientXID(401)
 	s.createPixmap(channel, stipplePixmapID, gcWindowID, 8, 8, 1)
-	gcStipple := uint32(305)
+	gcStipple := s.clientXID(305)
 	if err := s.createGCWithAttributes(channel, gcStipple, stipplePixmapID, map[uint32]uint32{
 		GCForeground: 0x000000,
 	}); err != nil {
@@ -477,7 +495,7 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 		return
 	}
 	s.polyPoint(channel, stipplePixmapID, gcStipple, 0, []int16{0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7})
-	gcStippledFill := uint32(306)
+	gcStippledFill := s.clientXID(306)
 	if err := s.createGCWithAttributes(channel, gcStippledFill, gcWindowID, map[uint32]uint32{
 		GCForeground: 0x800080, // Purple
 		GCFillStyle:  2,        // Stippled
@@ -489,7 +507,7 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.polyFillRectangle(channel, gcWindowID, gcStippledFill, []int16{120, 70, 100, 50})
 
 	// GC for XOR function
-	gcXOR := uint32(307)
+	gcXOR := s.clientXID(307)
 	if err := s.createGCWithAttributes(channel, gcXOR, gcWindowID, map[uint32]uint32{
 		GCFunction:   6, // GXxor
 		GCForeground: 0xFF00FF,
@@ -501,9 +519,9 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.polyFillRectangle(channel, gcWindowID, gcXOR, []int16{40, 160, 50, 50})
 
 	// GC for ArcMode and font
-	fontID := uint32(402)
+	fontID := s.clientXID(402)
 	s.openFont(channel, fontID, "-*-helvetica-bold-r-normal--25-*-*-*-*-*-iso8859-1")
-	gcArcFont := uint32(308)
+	gcArcFont := s.clientXID(308)
 	if err := s.createGCWithAttributes(channel, gcArcFont, gcWindowID, map[uint32]uint32{
 		GCForeground: 0x000000,
 		GCArcMode:    1, // PieSlice
@@ -568,68 +586,70 @@ func (s *sshServer) readReplies(channel ssh.Channel) <-chan []byte {
 func (s *sshServer) simulateXEyes(x11Channel ssh.Channel) {
 	s.t.Log("Simulating xeyes")
 	// Create Window
-	if err := s.createWindow(x11Channel, 10, 64, 0, 0, 150, 100); err != nil {
+	wid10 := s.clientXID(10)
+	if err := s.createWindow(x11Channel, wid10, s.rootWindowID, 0, 0, 150, 100); err != nil {
 		s.t.Logf("Failed to create window: %v", err)
 		return
 	}
-	if err := s.createWindow(x11Channel, 11, 10, 0, 0, 150, 100); err != nil {
+	wid11 := s.clientXID(11)
+	if err := s.createWindow(x11Channel, wid11, wid10, 0, 0, 150, 100); err != nil {
 		s.t.Logf("Failed to create window: %v", err)
 		return
 	}
 
 	// Create GCs
-	whiteGC := uint32(13)
-	if err := s.createGCWithBackground(x11Channel, whiteGC, 11, 0xFFFFFF, 0); err != nil {
+	whiteGC := s.clientXID(13)
+	if err := s.createGCWithBackground(x11Channel, whiteGC, wid11, 0xFFFFFF, 0); err != nil {
 		s.t.Logf("Failed to create white GC: %v", err)
 		return
 	}
-	blackGC := uint32(14)
-	if err := s.createGCWithBackground(x11Channel, blackGC, 11, 0x000000, 0); err != nil {
+	blackGC := s.clientXID(14)
+	if err := s.createGCWithBackground(x11Channel, blackGC, wid11, 0x000000, 0); err != nil {
 		s.t.Logf("Failed to create black GC: %v", err)
 		return
 	}
 
 	// MapWindow
-	if err := s.mapWindow(x11Channel, 11); err != nil {
+	if err := s.mapWindow(x11Channel, wid11); err != nil {
 		s.t.Logf("Failed to map window: %v", err)
 		return
 	}
-	if err := s.mapWindow(x11Channel, 10); err != nil {
+	if err := s.mapWindow(x11Channel, wid10); err != nil {
 		s.t.Logf("Failed to map window: %v", err)
 		return
 	}
 
 	// Draw eyes
 	leftEyeOutline := []int16{17, 25, 13, 18, 5760, 23040}
-	if err := s.polyFillArc(x11Channel, 11, blackGC, leftEyeOutline); err != nil {
+	if err := s.polyFillArc(x11Channel, wid11, blackGC, leftEyeOutline); err != nil {
 		s.t.Logf("Failed to draw left eye outline: %v", err)
 		return
 	}
 	rightEyeOutline := []int16{92, 34, 13, 18, 5760, 23040}
-	if err := s.polyFillArc(x11Channel, 11, blackGC, rightEyeOutline); err != nil {
+	if err := s.polyFillArc(x11Channel, wid11, blackGC, rightEyeOutline); err != nil {
 		s.t.Logf("Failed to draw right eye outline: %v", err)
 		return
 	}
 
 	leftEye := []int16{18, 26, 11, 16, 5760, 23040}
-	if err := s.polyFillArc(x11Channel, 11, whiteGC, leftEye); err != nil {
+	if err := s.polyFillArc(x11Channel, wid11, whiteGC, leftEye); err != nil {
 		s.t.Logf("Failed to draw left eye: %v", err)
 		return
 	}
 	rightEye := []int16{93, 35, 11, 16, 5760, 23040}
-	if err := s.polyFillArc(x11Channel, 11, whiteGC, rightEye); err != nil {
+	if err := s.polyFillArc(x11Channel, wid11, whiteGC, rightEye); err != nil {
 		s.t.Logf("Failed to draw right eye: %v", err)
 		return
 	}
 
 	// Draw pupils
 	leftPupil := []int16{23, 31, 5, 8, 5760, 23040}
-	if err := s.polyFillArc(x11Channel, 11, blackGC, leftPupil); err != nil {
+	if err := s.polyFillArc(x11Channel, wid11, blackGC, leftPupil); err != nil {
 		s.t.Logf("Failed to draw left pupil: %v", err)
 		return
 	}
 	rightPupil := []int16{98, 40, 5, 8, 5760, 23040}
-	if err := s.polyFillArc(x11Channel, 11, blackGC, rightPupil); err != nil {
+	if err := s.polyFillArc(x11Channel, wid11, blackGC, rightPupil); err != nil {
 		s.t.Logf("Failed to draw right pupil: %v", err)
 		return
 	}
@@ -639,8 +659,8 @@ func (s *sshServer) simulateColorOperations(channel ssh.Channel, replyChan <-cha
 	s.t.Log("Simulating color operations")
 
 	// 1. Create a new colormap
-	colormapID := uint32(2)
-	if err := s.createColormap(channel, colormapID, 1, 0); err != nil {
+	colormapID := s.clientXID(2)
+	if err := s.createColormap(channel, colormapID, s.clientXID(1), s.rootVisualID); err != nil {
 		s.t.Errorf("Failed to create colormap: %v", err)
 		return
 	}
@@ -664,23 +684,24 @@ func (s *sshServer) simulateColorOperations(channel ssh.Channel, replyChan <-cha
 	}
 
 	// 3. Create a new window with the new colormap
-	if err := s.createWindowWithColormap(channel, 20, 1, 10, 20, 200, 200, colormapID); err != nil {
+	wid20 := s.clientXID(20)
+	if err := s.createWindowWithColormap(channel, wid20, s.clientXID(1), 10, 20, 200, 200, colormapID); err != nil {
 		s.t.Errorf("Failed to create window with colormap: %v", err)
 		return
 	}
-	if err := s.mapWindow(channel, 20); err != nil {
+	if err := s.mapWindow(channel, wid20); err != nil {
 		s.t.Errorf("Failed to map window: %v", err)
 		return
 	}
 
 	// 4. Draw something in the new window
-	blueGC := uint32(200)
-	if err := s.createGCWithBackground(channel, blueGC, 20, 0x0000FF, 0); err != nil {
+	blueGC := s.clientXID(200)
+	if err := s.createGCWithBackground(channel, blueGC, wid20, 0x0000FF, 0); err != nil {
 		s.t.Errorf("Failed to create blue GC: %v", err)
 		return
 	}
 	rect := []int16{10, 10, 180, 180}
-	if err := s.polyFillRectangle(channel, 20, blueGC, rect); err != nil {
+	if err := s.polyFillRectangle(channel, wid20, blueGC, rect); err != nil {
 		s.t.Errorf("Failed to draw rectangle: %v", err)
 		return
 	}
@@ -1674,7 +1695,7 @@ func (s *sshServer) installColormap(channel ssh.Channel, cmap uint32) error {
 
 func (s *sshServer) listInstalledColormaps(channel ssh.Channel, replyChan <-chan []byte) ([]uint32, error) {
 	payload := make([]byte, 4)
-	binary.LittleEndian.PutUint32(payload[0:4], 1) // dummy window
+	binary.LittleEndian.PutUint32(payload[0:4], s.clientXID(1)) // dummy window
 
 	expectedSequence, err := s.writeX11Request(channel, 83, 0, payload)
 	if err != nil {

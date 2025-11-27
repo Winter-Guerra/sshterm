@@ -31,6 +31,11 @@ type sshServer struct {
 	pubKey    ssh.PublicKey
 
 	x11SimDone chan struct{}
+
+	resourceIdBase uint32
+	resourceIdMask uint32
+	rootWindowID   uint32
+	rootVisualID   uint32
 }
 
 func newSSHServer(t *testing.T, dir string, hostCert bool) (*sshServer, error) {
