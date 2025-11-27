@@ -58,7 +58,7 @@ func getCanvasData(t *testing.T, s *x11Server, winID xID, x, y, w, h int) *image
 	fe := s.frontend.(*wasmX11Frontend)
 	winInfo, ok := fe.windows[winID]
 	if !ok {
-		t.Fatalf("window %s not found in frontend", winID)
+		t.Fatalf("window %d not found in frontend", winID)
 	}
 	ctx := winInfo.ctx
 	if !ctx.Truthy() {
@@ -79,9 +79,9 @@ func getWindowBounds(t *testing.T, winID xID) image.Rectangle {
 	if !doc.Truthy() {
 		t.Fatal("document not found")
 	}
-	div := doc.Call("querySelector", fmt.Sprintf("#x11-window-%d-%d", winID.client, winID.local))
+	div := doc.Call("querySelector", fmt.Sprintf("#x11-window-%d", winID))
 	if !div.Truthy() {
-		t.Fatalf("div #x11-window-%d-%d not found", winID.client, winID.local)
+		t.Fatalf("div #x11-window-%d not found", winID)
 	}
 	style := div.Get("style")
 	if !style.Truthy() {
@@ -143,8 +143,8 @@ func TestDrawRectangle(t *testing.T) {
 	s := &x11Server{
 		logger: &testLogger{t: t},
 		windows: map[xID]*window{
-			{local: 0}: {
-				children: []uint32{},
+			0: {
+				children: []xID{},
 			},
 		},
 		gcs:             make(map[xID]wire.GC),
@@ -172,12 +172,12 @@ func TestDrawRectangle(t *testing.T) {
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
-	winID := xID{client: 1, local: 1}
-	s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
+	winID := xID(1)
+	s.windows[winID] = &window{xid: winID, parent: xID(s.rootWindowID()), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID)
 
-	gcID := xID{client: 1, local: 2}
+	gcID := xID(2)
 	fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 
 	fe.PolyFillRectangle(winID, gcID, []uint32{20, 20, 50, 40})
@@ -200,8 +200,8 @@ func TestColors(t *testing.T) {
 	s := &x11Server{
 		logger: &testLogger{t: t},
 		windows: map[xID]*window{
-			{local: 0}: {
-				children: []uint32{},
+			0: {
+				children: []xID{},
 			},
 		},
 		gcs:       make(map[xID]wire.GC),
@@ -221,7 +221,7 @@ func TestColors(t *testing.T) {
 		whitePixel:      setup.Screens[0].WhitePixel,
 		defaultColormap: setup.Screens[0].DefaultColormap,
 	}
-	s.colormaps[xID{local: s.defaultColormap}] = &colormap{
+	s.colormaps[xID(s.defaultColormap)] = &colormap{
 		pixels: map[uint32]wire.XColorItem{
 			s.blackPixel: {Red: 0, Green: 0, Blue: 0},
 			s.whitePixel: {Red: 0xffff, Green: 0xffff, Blue: 0xffff},
@@ -230,18 +230,18 @@ func TestColors(t *testing.T) {
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
-	winID := xID{client: 1, local: 1}
-	s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: 200, height: 200, mapped: true}
+	winID := xID(1)
+	s.windows[winID] = &window{xid: winID, parent: xID(s.rootWindowID()), width: 200, height: 200, mapped: true}
 	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 200, 200, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID)
 
 	t.Run("DefaultColormap", func(t *testing.T) {
-		gcID := xID{client: 1, local: 10}
+		gcID := xID(10)
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{10, 10, 20, 20})
 		fe.ComposeWindow(winID)
 
-		gcID2 := xID{client: 1, local: 11}
+		gcID2 := xID(11)
 		fe.CreateGC(gcID2, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.whitePixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID2, []uint32{40, 10, 20, 20})
 		fe.ComposeWindow(winID)
@@ -257,14 +257,14 @@ func TestColors(t *testing.T) {
 	})
 
 	t.Run("CustomColormap", func(t *testing.T) {
-		cmapID := xID{client: 1, local: 2}
+		cmapID := xID(2)
 		s.colormaps[cmapID] = &colormap{pixels: make(map[uint32]wire.XColorItem)}
-		fe.ChangeWindowAttributes(winID, wire.CWColormap, wire.WindowAttributes{Colormap: wire.Colormap(cmapID.local)})
+		fe.ChangeWindowAttributes(winID, wire.CWColormap, wire.WindowAttributes{Colormap: wire.Colormap(cmapID)})
 
 		pixel := uint32(0xff0000)
 		s.colormaps[cmapID].pixels[pixel] = wire.XColorItem{Red: 0xff00, Green: 0, Blue: 0}
 
-		gcID := xID{client: 1, local: 12}
+		gcID := xID(12)
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: pixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{70, 10, 20, 20})
 		fe.ComposeWindow(winID)
@@ -277,7 +277,7 @@ func TestColors(t *testing.T) {
 
 	t.Run("TrueColorDirect", func(t *testing.T) {
 		pixel := uint32(0x0000ff) // Blue
-		gcID := xID{client: 1, local: 13}
+		gcID := xID(13)
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: pixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{100, 10, 20, 20})
 		fe.ComposeWindow(winID)
@@ -290,7 +290,7 @@ func TestColors(t *testing.T) {
 
 	t.Run("UnallocatedColor", func(t *testing.T) {
 		pixel := uint32(0x123456) // Some unallocated color
-		gcID := xID{client: 1, local: 14}
+		gcID := xID(14)
 		fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: pixel, Function: wire.FunctionCopy})
 		fe.PolyFillRectangle(winID, gcID, []uint32{130, 10, 20, 20})
 		fe.ComposeWindow(winID)
@@ -352,12 +352,12 @@ func TestDrawText(t *testing.T) {
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
-	winID := xID{client: 1, local: 1}
-	s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
+	winID := xID(1)
+	s.windows[winID] = &window{xid: winID, parent: xID(s.rootWindowID()), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID)
 
-	gcID := xID{client: 1, local: 2}
+	gcID := xID(2)
 	fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 
 	fe.PolyText8(winID, gcID, 20, 40, []wire.PolyTextItem{
@@ -400,22 +400,22 @@ func TestOverlappingWindows(t *testing.T) {
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
-	winID1 := xID{client: 1, local: 1}
-	s.windows[winID1] = &window{xid: winID1, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
+	winID1 := xID(1)
+	s.windows[winID1] = &window{xid: winID1, parent: xID(s.rootWindowID()), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID1, s.rootWindowID(), 10, 10, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID1)
 
-	gcID1 := xID{client: 1, local: 2}
+	gcID1 := xID(2)
 	fe.CreateGC(gcID1, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 	fe.PolyFillRectangle(winID1, gcID1, []uint32{20, 20, 50, 40})
 	fe.ComposeWindow(winID1)
 
-	winID2 := xID{client: 1, local: 3}
-	s.windows[winID2] = &window{xid: winID2, parent: s.rootWindowID(), width: 100, height: 80, mapped: true}
+	winID2 := xID(3)
+	s.windows[winID2] = &window{xid: winID2, parent: xID(s.rootWindowID()), width: 100, height: 80, mapped: true}
 	fe.CreateWindow(winID2, s.rootWindowID(), 30, 30, 100, 80, 24, 0, wire.WindowAttributes{})
 	fe.MapWindow(winID2)
 
-	gcID2 := xID{client: 1, local: 4}
+	gcID2 := xID(4)
 	fe.CreateGC(gcID2, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: s.blackPixel, Function: wire.FunctionCopy})
 	fe.PolyFillRectangle(winID2, gcID2, []uint32{20, 20, 50, 40})
 	fe.ComposeWindow(winID2)
@@ -465,13 +465,13 @@ func TestGCLogicalOperations(t *testing.T) {
 		whitePixel:      setup.Screens[0].WhitePixel,
 		defaultColormap: setup.Screens[0].DefaultColormap,
 	}
-	s.colormaps[xID{local: s.defaultColormap}] = &colormap{
+	s.colormaps[xID(s.defaultColormap)] = &colormap{
 		pixels: make(map[uint32]wire.XColorItem),
 	}
 	fe := newX11Frontend(&testLogger{t: t}, s)
 	s.frontend = fe
 
-	winID := xID{client: 1, local: 1}
+	winID := xID(1)
 	const (
 		winWidth  = 1
 		winHeight = 1
@@ -513,12 +513,12 @@ func TestGCLogicalOperations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Logf("Starting test case: %s", tc.name)
 			t.Cleanup(func() { cleanupDOMElements(t) })
-			s.windows[winID] = &window{xid: winID, parent: s.rootWindowID(), width: winWidth, height: winHeight, mapped: true}
+			s.windows[winID] = &window{xid: winID, parent: xID(s.rootWindowID()), width: winWidth, height: winHeight, mapped: true}
 			fe.CreateWindow(winID, s.rootWindowID(), 10, 10, winWidth, winHeight, 24, 0, wire.WindowAttributes{})
 			fe.MapWindow(winID)
 
 			// 1. Fill window with destination color
-			bgGCID := xID{client: 1, local: 100}
+			bgGCID := xID(100)
 			fe.CreateGC(bgGCID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: dst, Function: wire.FunctionCopy, PlaneMask: 0xffffff})
 			fe.PolyFillRectangle(winID, bgGCID, []uint32{0, 0, winWidth, winHeight})
 			fe.ComposeWindow(winID)
@@ -528,7 +528,7 @@ func TestGCLogicalOperations(t *testing.T) {
 			})
 
 			// 2. Create GC with logical operation and draw with source color
-			fgGCID := xID{client: 1, local: 200}
+			fgGCID := xID(200)
 			fe.CreateGC(fgGCID, wire.GCForeground|wire.GCFunction|wire.GCPlaneMask, wire.GC{Foreground: src, Function: tc.function, PlaneMask: 0xffffff})
 			fe.PolyFillRectangle(winID, fgGCID, []uint32{0, 0, 1, 1})
 			fe.ComposeWindow(winID)
@@ -613,7 +613,7 @@ func TestVisualTypes(t *testing.T) {
 				t.Fatalf("visual %d not found", tc.visualID)
 			}
 
-			s.colormaps[xID{local: s.defaultColormap}] = &colormap{
+			s.colormaps[xID(s.defaultColormap)] = &colormap{
 				pixels: map[uint32]wire.XColorItem{
 					0xff0000: {Red: 0xff00, Green: 0, Blue: 0},
 					0x00ff00: {Red: 0, Green: 0xff00, Blue: 0},
@@ -622,19 +622,19 @@ func TestVisualTypes(t *testing.T) {
 			fe := newX11Frontend(&testLogger{t: t}, s)
 			s.frontend = fe
 
-			winID := xID{client: 1, local: 1}
+			winID := xID(1)
 			s.windows[winID] = &window{
 				xid:      winID,
-				parent:   s.rootWindowID(),
+				parent:   xID(s.rootWindowID()),
 				width:    1,
 				height:   1,
 				mapped:   true,
-				colormap: xID{local: s.defaultColormap},
+				colormap: xID(s.defaultColormap),
 			}
 			fe.CreateWindow(winID, s.rootWindowID(), 10, 10, 1, 1, 24, wire.CWColormap, wire.WindowAttributes{Colormap: wire.Colormap(s.defaultColormap)})
 			fe.MapWindow(winID)
 
-			gcID := xID{client: 1, local: 2}
+			gcID := xID(2)
 			fe.CreateGC(gcID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: tc.pixel, Function: wire.FunctionCopy})
 			fe.PolyFillRectangle(winID, gcID, []uint32{0, 0, 1, 1})
 			fe.ComposeWindow(winID)

@@ -155,7 +155,7 @@ func newX11Frontend(logger Logger, s *x11Server) *wasmX11Frontend {
 
 func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc wire.GC) (out string) {
 	defer func() {
-		debugf("getForegroundColor: cmap:%s gc=%+v %s", cmap, gc, out)
+		debugf("getForegroundColor: cmap:%d gc=%+v %s", cmap, gc, out)
 	}()
 	r, g, b := w.GetRGBColor(cmap, gc.Foreground)
 	visual, ok := w.server.getVisualByID(w.server.visualID)
@@ -172,7 +172,7 @@ func (w *wasmX11Frontend) getForegroundColor(cmap xID, gc wire.GC) (out string) 
 
 func (w *wasmX11Frontend) getBackgroundColor(cmap xID, gc wire.GC) (out string) {
 	defer func() {
-		debugf("getBackgroundColor: cmap:%s gc=%+v %s", cmap, gc, out)
+		debugf("getBackgroundColor: cmap:%d gc=%+v %s", cmap, gc, out)
 	}()
 	r, g, b := w.GetRGBColor(cmap, gc.Background)
 	visual, ok := w.server.getVisualByID(w.server.visualID)
@@ -188,10 +188,10 @@ func (w *wasmX11Frontend) getBackgroundColor(cmap xID, gc wire.GC) (out string) 
 }
 
 func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values wire.WindowAttributes) {
-	debugf("X11: createWindow xid=%s parent=%d x=%d y=%d width=%d height=%d depth=%d values=%+v", xid, parent, x, y, width, height, depth, values)
+	debugf("X11: createWindow xid=%d parent=%d x=%d y=%d width=%d height=%d depth=%d values=%+v", xid, parent, x, y, width, height, depth, values)
 
 	windowDiv := w.document.Call("createElement", "div")
-	windowDiv.Set("id", js.ValueOf(fmt.Sprintf("x11-window-%s", xid)))
+	windowDiv.Set("id", js.ValueOf(fmt.Sprintf("x11-window-%d", xid)))
 	style := windowDiv.Get("style")
 	style.Set("position", "absolute")
 	style.Set("width", js.ValueOf(fmt.Sprintf("%dpx", width)))
@@ -201,7 +201,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 	// Create canvas first so it can be referenced in handlers, but don't append yet.
 	canvas := w.document.Call("createElement", "canvas")
-	canvas.Set("id", js.ValueOf(fmt.Sprintf("x11-canvas-%s", xid)))
+	canvas.Set("id", js.ValueOf(fmt.Sprintf("x11-canvas-%d", xid)))
 	canvas.Set("width", width)
 	canvas.Set("height", height)
 	canvas.Get("style").Set("display", "block")
@@ -230,7 +230,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 		// Title bar
 		titleBar = w.document.Call("createElement", "div")
-		titleBar.Set("id", js.ValueOf(fmt.Sprintf("x11-titlebar-%s", xid)))
+		titleBar.Set("id", js.ValueOf(fmt.Sprintf("x11-titlebar-%d", xid)))
 		titleBarStyle = titleBar.Get("style")
 		titleBarStyle.Set("height", "20px")
 		titleBarStyle.Set("backgroundColor", "#333")
@@ -245,8 +245,8 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 		// Window title text
 		windowTitleSpan = w.document.Call("createElement", "span")
-		windowTitleSpan.Set("id", js.ValueOf(fmt.Sprintf("x11-window-title-%s", xid)))
-		windowTitleSpan.Set("textContent", fmt.Sprintf("Window %s", xid)) // Default title
+		windowTitleSpan.Set("id", js.ValueOf(fmt.Sprintf("x11-window-title-%d", xid)))
+		windowTitleSpan.Set("textContent", fmt.Sprintf("Window %d", xid)) // Default title
 		titleBar.Call("appendChild", windowTitleSpan)
 
 		// Close button
@@ -471,7 +471,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	var parentDiv js.Value = w.body
 
 	if !isTopLevel {
-		if parentInfo, ok := w.windows[xID{xid.client, parent}]; ok {
+		if parentInfo, ok := w.windows[xID(parent)]; ok {
 			parentDiv = parentInfo.div
 			if parentInfo.isTopLevel {
 				finalY = y + 20
@@ -498,15 +498,15 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	keyUpEvent := w.keyboardEventHandler(xid, "keyup")
 
 	focusEvent := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		debugf("X11: Window %s focused", xid)
+		debugf("X11: Window %d focused", xid)
 		w.focusedWindowID = xid
 		w.document.Call("addEventListener", "keydown", keyDownEvent)
 		w.document.Call("addEventListener", "keyup", keyUpEvent)
 		return nil
 	})
 	blurEvent := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		debugf("X11: Window %s blurred", xid)
-		w.focusedWindowID = xID{}
+		debugf("X11: Window %d blurred", xid)
+		w.focusedWindowID = 0
 		w.document.Call("removeEventListener", "keydown", keyDownEvent)
 		w.document.Call("removeEventListener", "keyup", keyUpEvent)
 		if isTopLevel {
@@ -564,14 +564,14 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 		resizeMouseUp:   resizeMouseUp,
 	}
 	if values.Colormap != 0 {
-		w.windows[xid].colormap = xID{client: xid.client, local: uint32(values.Colormap)}
+		w.windows[xid].colormap = xID(values.Colormap)
 	}
 
 	parentDiv.Call("appendChild", windowDiv)
 
 	w.recordOperation(CanvasOperation{
 		Type: "createWindow",
-		Args: []any{xid.local, parent, x, y, width, height, depth},
+		Args: []any{uint32(xid), parent, x, y, width, height, depth},
 	})
 }
 
@@ -587,7 +587,7 @@ func (w *wasmX11Frontend) DestroyWindow(wid xID) {
 }
 
 func (w *wasmX11Frontend) DestroySubwindows(xid xID) {
-	debugf("X11: destroySubwindows id=%s", xid)
+	debugf("X11: destroySubwindows id=%d", xid)
 	if winInfo, ok := w.windows[xid]; ok {
 		// Create a slice to hold children to be removed, to avoid modifying the list while iterating
 		var toRemove []js.Value
@@ -602,36 +602,34 @@ func (w *wasmX11Frontend) DestroySubwindows(xid xID) {
 		}
 		for _, child := range toRemove {
 			childXIDStr := strings.TrimPrefix(child.Get("id").String(), "x11-window-")
-			parts := strings.Split(childXIDStr, "-")
-			if len(parts) == 2 {
-				client, _ := strconv.Atoi(parts[0])
-				local, _ := strconv.Atoi(parts[1])
-				w.destroyWindow(xID{uint32(client), uint32(local)}, false)
+			id, err := strconv.Atoi(childXIDStr)
+			if err == nil {
+				w.destroyWindow(xID(id), false)
 			}
 		}
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "destroySubwindows",
-		Args: []any{xid.local},
+		Args: []any{uint32(xid)},
 	})
 }
 
 func (w *wasmX11Frontend) ReparentWindow(windowID, parentID xID, x, y int16) {
-	debugf("X11: ReparentWindow window=%s parent=%s x=%d y=%d", windowID, parentID, x, y)
+	debugf("X11: ReparentWindow window=%d parent=%d x=%d y=%d", windowID, parentID, x, y)
 
 	winInfo, ok := w.windows[windowID]
 	if !ok {
-		debugf("X11: ReparentWindow: window %s not found", windowID)
+		debugf("X11: ReparentWindow: window %d not found", windowID)
 		return
 	}
 
 	var parentDiv js.Value
-	if parentID.local == w.server.rootWindowID() {
+	if uint32(parentID) == w.server.rootWindowID() {
 		parentDiv = w.body
 	} else if parentInfo, ok := w.windows[parentID]; ok {
 		parentDiv = parentInfo.div
 	} else {
-		debugf("X11: ReparentWindow: parent window %s not found", parentID)
+		debugf("X11: ReparentWindow: parent window %d not found", parentID)
 		return
 	}
 
@@ -643,7 +641,7 @@ func (w *wasmX11Frontend) ReparentWindow(windowID, parentID xID, x, y int16) {
 
 	w.recordOperation(CanvasOperation{
 		Type: "reparentWindow",
-		Args: []any{windowID.local, parentID.local, x, y},
+		Args: []any{uint32(windowID), uint32(parentID), x, y},
 	})
 }
 
@@ -705,7 +703,7 @@ func (w *wasmX11Frontend) destroyWindow(wid xID, logit bool) {
 	if logit {
 		w.recordOperation(CanvasOperation{
 			Type: "destroyWindow",
-			Args: []any{wid.local},
+			Args: []any{uint32(wid)},
 		})
 	}
 }
@@ -733,14 +731,14 @@ func (w *wasmX11Frontend) CloseWindow(xid xID) {
 	}
 
 	if supportsDelete {
-		debugf("X11: Sending WM_DELETE_WINDOW ClientMessage to window %s", xid)
+		debugf("X11: Sending WM_DELETE_WINDOW ClientMessage to window %d", xid)
 		var data [20]byte
 		w.server.byteOrder.PutUint32(data[0:4], wmDeleteWindowAtom)
 		// The second element is a timestamp, which we can leave as 0 for now.
 		w.server.byteOrder.PutUint32(data[4:8], 0) // Timestamp
 		w.server.SendClientMessageEvent(xid, wmProtocolsAtom, data)
 	} else {
-		debugf("X11: WM_DELETE_WINDOW not supported for window %s, destroying directly", xid)
+		debugf("X11: WM_DELETE_WINDOW not supported for window %d, destroying directly", xid)
 		w.destroyWindow(xid, false)
 	}
 }
@@ -751,7 +749,7 @@ func (w *wasmX11Frontend) MapWindow(wid xID) {
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "mapWindow",
-		Args: []any{wid.local},
+		Args: []any{uint32(wid)},
 	})
 }
 func (w *wasmX11Frontend) UnmapWindow(wid xID) {
@@ -760,12 +758,12 @@ func (w *wasmX11Frontend) UnmapWindow(wid xID) {
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "unmapWindow",
-		Args: []any{wid.local},
+		Args: []any{uint32(wid)},
 	})
 }
 
 func (w *wasmX11Frontend) CirculateWindow(xid xID, direction byte) {
-	debugf("X11: circulateWindow id=%s direction=%d", xid, direction)
+	debugf("X11: circulateWindow id=%d direction=%d", xid, direction)
 	if winInfo, ok := w.windows[xid]; ok {
 		parent := winInfo.div.Get("parentNode")
 		if direction == 0 { // RaiseLowest
@@ -776,7 +774,7 @@ func (w *wasmX11Frontend) CirculateWindow(xid xID, direction byte) {
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "circulateWindow",
-		Args: []any{xid.local, direction},
+		Args: []any{uint32(xid), direction},
 	})
 }
 
@@ -790,7 +788,7 @@ func (w *wasmX11Frontend) ConfigureWindow(xid xID, valueMask uint16, values []ui
 		CWSibling     = 1 << 5
 		CWStackMode   = 1 << 6
 	)
-	debugf("X11: configureWindow id=%s valueMask=%d values=%v", xid, valueMask, values)
+	debugf("X11: configureWindow id=%d valueMask=%d values=%v", xid, valueMask, values)
 	if winInfo, ok := w.windows[xid]; ok {
 		style := winInfo.div.Get("style")
 		var valueIndex int
@@ -832,7 +830,7 @@ func (w *wasmX11Frontend) ConfigureWindow(xid xID, valueMask uint16, values []ui
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "configureWindow",
-		Args: []any{xid.local, valueMask, values},
+		Args: []any{uint32(xid), valueMask, values},
 	})
 }
 
@@ -856,23 +854,23 @@ func (w *wasmX11Frontend) getLowestZIndex() int {
 	return lowest
 }
 func (w *wasmX11Frontend) CreateGC(xid xID, valueMask uint32, values wire.GC) {
-	debugf("X11: createGC id=%s gc=%+v", xid, values)
+	debugf("X11: createGC id=%d gc=%+v", xid, values)
 	w.gcs[xid] = values
 	w.recordOperation(CanvasOperation{
 		Type: "createGC",
-		Args: []any{xid.local, valueMask, values},
+		Args: []any{uint32(xid), valueMask, values},
 	})
 }
 
 func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc wire.GC) {
-	debugf("X11: changeGC id=%s valueMask=%d gc=%+v", xid, valueMask, gc)
+	debugf("X11: changeGC id=%d valueMask=%d gc=%+v", xid, valueMask, gc)
 	existingGC, ok := w.gcs[xid]
 	if !ok {
 		// This shouldn't happen, but if it does, treat it as a CreateGC
 		w.gcs[xid] = gc
 		w.recordOperation(CanvasOperation{
 			Type: "createGC",
-			Args: []any{xid.local},
+			Args: []any{uint32(xid)},
 		})
 		return
 	}
@@ -950,7 +948,7 @@ func (w *wasmX11Frontend) ChangeGC(xid xID, valueMask uint32, gc wire.GC) {
 	w.gcs[xid] = existingGC
 	w.recordOperation(CanvasOperation{
 		Type: "changeGC",
-		Args: []any{xid.local, valueMask},
+		Args: []any{uint32(xid), valueMask},
 	})
 }
 
@@ -962,30 +960,30 @@ func (w *wasmX11Frontend) SetWindowTitle(xid xID, title string) {
 		if !winInfo.windowTitle.IsUndefined() {
 			winInfo.windowTitle.Set("textContent", title)
 		}
-		debugf("X11: Window %s title set to: %s", xid, title)
+		debugf("X11: Window %d title set to: %s", xid, title)
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "setWindowTitle",
-		Args: []any{xid.local, title},
+		Args: []any{uint32(xid), title},
 	})
 }
 
 func (w *wasmX11Frontend) SetInputFocus(focus xID, revertTo byte) {
-	debugf("X11: setInputFocus focus=%s revertTo=%d", focus, revertTo)
+	debugf("X11: setInputFocus focus=%d revertTo=%d", focus, revertTo)
 	if winInfo, ok := w.windows[focus]; ok {
 		winInfo.div.Call("focus")
 		w.focusedWindowID = focus
-	} else if focus.local == 0 { // Revert to root
-		if w.focusedWindowID.local != 0 {
+	} else if uint32(focus) == 0 { // Revert to root
+		if w.focusedWindowID != 0 {
 			if focusedWin, ok := w.windows[w.focusedWindowID]; ok {
 				focusedWin.div.Call("blur")
 			}
 		}
-		w.focusedWindowID = xID{}
+		w.focusedWindowID = 0
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "setInputFocus",
-		Args: []any{focus.local, revertTo},
+		Args: []any{uint32(focus), revertTo},
 	})
 }
 
@@ -997,11 +995,11 @@ func (w *wasmX11Frontend) ComposeWindow(xid xID) {
 		if !ok {
 			return
 		}
-		if win.parent == w.server.rootWindowID() {
+		if uint32(win.parent) == w.server.rootWindowID() {
 			break
 		}
 		// Assuming same client for parent
-		currentID = xID{currentID.client, win.parent}
+		currentID = win.parent
 	}
 	// currentID is now the top-level window
 	w.redrawWindow(currentID)
@@ -1031,8 +1029,8 @@ func (w *wasmX11Frontend) drawTree(ctx js.Value, xid xID, x, y int) {
 	// Iterate children
 	// Use server's window hierarchy
 	if win, ok := w.server.windows[xid]; ok {
-		for _, childLocalID := range win.children {
-			childXID := xID{xid.client, childLocalID}
+		for _, childID := range win.children {
+			childXID := xID(childID)
 			if childWin, ok := w.server.windows[childXID]; ok {
 				if childWin.mapped {
 					w.drawTree(ctx, childXID, x+int(childWin.x), y+int(childWin.y))
@@ -1047,7 +1045,7 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	if !ok {
 		return
 	}
-	debugf("X11: putImage drawable=%s gc=%v format=%d width=%d height=%d dstX=%d dstY=%d leftPad=%d depth=%d data length=%d first 16 bytes of data: %x", drawable, gc, format, width, height, dstX, dstY, leftPad, depth, len(imgData), imgData[:min(len(imgData), 16)])
+	debugf("X11: putImage drawable=%d gc=%v format=%d width=%d height=%d dstX=%d dstY=%d leftPad=%d depth=%d data length=%d first 16 bytes of data: %x", drawable, gc, format, width, height, dstX, dstY, leftPad, depth, len(imgData), imgData[:min(len(imgData), 16)])
 
 	var currentColormap xID
 	var ctx js.Value
@@ -1058,9 +1056,9 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		ctx = pixmapInfo.context
 		// For pixmaps, use the default colormap of the screen
-		currentColormap = xID{0, w.server.defaultColormap}
+		currentColormap = xID(w.server.defaultColormap)
 	} else {
-		debugf("X11: PutImage on unknown drawable %s", drawable)
+		debugf("X11: PutImage on unknown drawable %d", drawable)
 		return
 	}
 
@@ -1150,7 +1148,7 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 
 	w.recordOperation(CanvasOperation{
 		Type: "putImage",
-		Args: []any{drawable.local, gc, dstX, dstY, width, height, leftPad, format, len(imgData)},
+		Args: []any{uint32(drawable), gc, dstX, dstY, width, height, leftPad, format, len(imgData)},
 	})
 }
 
@@ -1188,12 +1186,12 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 	case wire.FillStyleSolid:
 		ctx.Set("fillStyle", color)
 	case wire.FillStyleTiled:
-		if tilePixmap, ok := w.pixmaps[xID{client: clientID, local: gc.Tile}]; ok {
+		if tilePixmap, ok := w.pixmaps[xID(gc.Tile)]; ok {
 			pattern := ctx.Call("createPattern", tilePixmap.canvas, "repeat")
 			ctx.Set("fillStyle", pattern)
 		}
 	case wire.FillStyleStippled:
-		if stipplePixmap, ok := w.pixmaps[xID{client: clientID, local: gc.Stipple}]; ok {
+		if stipplePixmap, ok := w.pixmaps[xID(gc.Stipple)]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
 			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
 			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height"))
@@ -1208,7 +1206,7 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 			ctx.Set("fillStyle", pattern)
 		}
 	case wire.FillStyleOpaqueStippled:
-		if stipplePixmap, ok := w.pixmaps[xID{client: clientID, local: gc.Stipple}]; ok {
+		if stipplePixmap, ok := w.pixmaps[xID(gc.Stipple)]; ok {
 			stippleCanvas := w.document.Call("createElement", "canvas")
 			stippleCanvas.Set("width", stipplePixmap.canvas.Get("width"))
 			stippleCanvas.Set("height", stipplePixmap.canvas.Get("height"))
@@ -1230,7 +1228,7 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 	}
 
 	if gc.Font != 0 {
-		if font, ok := w.fonts[xID{client: clientID, local: gc.Font}]; ok {
+		if font, ok := w.fonts[xID(gc.Font)]; ok {
 			debugf("applyGCState: setting font to %q for gc.Font=%d", font.cssFont, gc.Font)
 			ctx.Set("font", font.cssFont)
 		} else {
@@ -1255,10 +1253,10 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 }
 
 func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), opBounds image.Rectangle) {
-	debugf("applyGC: start drawable=%s gcID=%s", drawable, gcID)
+	debugf("applyGC: start drawable=%d gcID=%d", drawable, gcID)
 	gc, ok := w.gcs[gcID]
 	if !ok {
-		debugf("applyGC: gcID %s not found", gcID)
+		debugf("applyGC: gcID %d not found", gcID)
 		return
 	}
 
@@ -1270,9 +1268,9 @@ func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), o
 		colormap = winInfo.colormap
 	} else if pixmapInfo, ok := w.pixmaps[drawable]; ok {
 		destCtx = pixmapInfo.context
-		colormap = xID{local: w.server.defaultColormap}
+		colormap = xID(w.server.defaultColormap)
 	} else {
-		debugf("applyGC: drawable %s not found", drawable)
+		debugf("applyGC: drawable %d not found", drawable)
 		return
 	}
 
@@ -1299,7 +1297,7 @@ func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), o
 	if !useSoftwareEmulation {
 		debugf("applyGC: using native path")
 		destCtx.Call("save")
-		w.applyGCState(destCtx, colormap, gc, gcID.client)
+		w.applyGCState(destCtx, colormap, gc, (uint32(gcID)>>resourceIDShift)&clientIDMask)
 		destCtx.Set("globalCompositeOperation", nativeOp)
 		draw(destCtx)
 		destCtx.Call("restore")
@@ -1336,7 +1334,7 @@ func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), o
 
 	debugf("applyGC: drawing to temporary canvas")
 	tempCtx.Call("save")
-	w.applyGCState(tempCtx, colormap, gc, gcID.client)
+	w.applyGCState(tempCtx, colormap, gc, (uint32(gcID)>>resourceIDShift)&clientIDMask)
 	draw(tempCtx)
 	tempCtx.Call("restore")
 	debugf("applyGC: finished drawing to temporary canvas")
@@ -1413,7 +1411,7 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 	if !ok {
 		return
 	}
-	debugf("X11: polyLine drawable=%s gc=%v points=%v", drawable, gc, points)
+	debugf("X11: polyLine drawable=%d gc=%v points=%v", drawable, gc, points)
 
 	var opBounds image.Rectangle
 	if len(points) >= 2 {
@@ -1424,7 +1422,7 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 		opBounds = opBounds.Inset(-int(gc.LineWidth))
 	}
 
-	color := w.getForegroundColor(xID{}, gc) // Colormap ignored for logging color
+	color := w.getForegroundColor(0, gc) // Colormap ignored for logging color
 
 	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		targetCtx.Call("beginPath")
@@ -1439,7 +1437,7 @@ func (w *wasmX11Frontend) PolyLine(drawable xID, gcID xID, points []uint32) {
 
 	w.recordOperation(CanvasOperation{
 		Type:        "polyLine",
-		Args:        []any{drawable.local, gc, points},
+		Args:        []any{uint32(drawable), gc, points},
 		StrokeStyle: color,
 	})
 }
@@ -1449,7 +1447,7 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 	if !ok {
 		return
 	}
-	debugf("X11: polyFillRectangle drawable=%s gc=%v rects=%v GCFunction=%d", drawable, gc, rects, gc.Function)
+	debugf("X11: polyFillRectangle drawable=%d gc=%v rects=%v GCFunction=%d", drawable, gc, rects, gc.Function)
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(rects); i += 4 {
@@ -1461,7 +1459,7 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 		}
 	}
 
-	color := w.getForegroundColor(xID{}, gc)
+	color := w.getForegroundColor(0, gc)
 
 	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(rects); i += 4 {
@@ -1471,7 +1469,7 @@ func (w *wasmX11Frontend) PolyFillRectangle(drawable xID, gcID xID, rects []uint
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyFillRectangle",
-		Args:      []any{drawable.local, gc, rects},
+		Args:      []any{uint32(drawable), gc, rects},
 		FillStyle: color,
 	})
 }
@@ -1481,7 +1479,7 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 	if !ok {
 		return
 	}
-	debugf("X11: fillPoly drawable=%s gc=%v points=%v", drawable, gc, points)
+	debugf("X11: fillPoly drawable=%d gc=%v points=%v", drawable, gc, points)
 
 	var opBounds image.Rectangle
 	if len(points) >= 2 {
@@ -1491,7 +1489,7 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 		}
 	}
 
-	color := w.getForegroundColor(xID{}, gc)
+	color := w.getForegroundColor(0, gc)
 	fillRule := "nonzero"
 	if gc.FillRule == 0 {
 		fillRule = "evenodd"
@@ -1511,7 +1509,7 @@ func (w *wasmX11Frontend) FillPoly(drawable xID, gcID xID, points []uint32) {
 
 	w.recordOperation(CanvasOperation{
 		Type:      "fillPoly",
-		Args:      []any{drawable.local, gc, points},
+		Args:      []any{uint32(drawable), gc, points},
 		FillStyle: color,
 	})
 }
@@ -1521,7 +1519,7 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 	if !ok {
 		return
 	}
-	debugf("X11: polySegment drawable=%s gc=%v segments=%v", drawable, gc, segments)
+	debugf("X11: polySegment drawable=%d gc=%v segments=%v", drawable, gc, segments)
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(segments); i += 4 {
@@ -1534,7 +1532,7 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 	}
 	opBounds = opBounds.Inset(-int(gc.LineWidth))
 
-	color := w.getForegroundColor(xID{}, gc)
+	color := w.getForegroundColor(0, gc)
 
 	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(segments); i += 4 {
@@ -1547,7 +1545,7 @@ func (w *wasmX11Frontend) PolySegment(drawable xID, gcID xID, segments []uint32)
 
 	w.recordOperation(CanvasOperation{
 		Type:        "polySegment",
-		Args:        []any{drawable.local, gc, segments},
+		Args:        []any{uint32(drawable), gc, segments},
 		StrokeStyle: color,
 	})
 }
@@ -1557,7 +1555,7 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 	if !ok {
 		return
 	}
-	debugf("X11: polyPoint drawable=%s gc=%v points=%v", drawable, gc, points)
+	debugf("X11: polyPoint drawable=%d gc=%v points=%v", drawable, gc, points)
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(points); i += 2 {
@@ -1569,7 +1567,7 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 		}
 	}
 
-	color := w.getForegroundColor(xID{}, gc)
+	color := w.getForegroundColor(0, gc)
 
 	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(points); i += 2 {
@@ -1579,7 +1577,7 @@ func (w *wasmX11Frontend) PolyPoint(drawable xID, gcID xID, points []uint32) {
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyPoint",
-		Args:      []any{drawable.local, gc, points},
+		Args:      []any{uint32(drawable), gc, points},
 		FillStyle: color,
 	})
 }
@@ -1589,7 +1587,7 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 	if !ok {
 		return
 	}
-	debugf("X11: polyRectangle drawable=%s gc=%v rects=%v", drawable, gc, rects)
+	debugf("X11: polyRectangle drawable=%d gc=%v rects=%v", drawable, gc, rects)
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(rects); i += 4 {
@@ -1602,7 +1600,7 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 	}
 	opBounds = opBounds.Inset(-int(gc.LineWidth))
 
-	color := w.getForegroundColor(xID{}, gc)
+	color := w.getForegroundColor(0, gc)
 
 	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(rects); i += 4 {
@@ -1612,7 +1610,7 @@ func (w *wasmX11Frontend) PolyRectangle(drawable xID, gcID xID, rects []uint32) 
 
 	w.recordOperation(CanvasOperation{
 		Type:        "polyRectangle",
-		Args:        []any{drawable.local, gc, rects},
+		Args:        []any{uint32(drawable), gc, rects},
 		StrokeStyle: color,
 	})
 }
@@ -1622,7 +1620,7 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 	if !ok {
 		return
 	}
-	debugf("X11: polyArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
+	debugf("X11: polyArc drawable=%d gc=%v arcs=%v", drawable, gc, arcs)
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(arcs); i += 6 {
@@ -1635,7 +1633,7 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 	}
 	opBounds = opBounds.Inset(-int(gc.LineWidth))
 
-	color := w.getForegroundColor(xID{}, gc)
+	color := w.getForegroundColor(0, gc)
 
 	w.applyGC(drawable, gcID, func(targetCtx js.Value) {
 		for i := 0; i < len(arcs); i += 6 {
@@ -1656,7 +1654,7 @@ func (w *wasmX11Frontend) PolyArc(drawable xID, gcID xID, arcs []uint32) {
 
 	w.recordOperation(CanvasOperation{
 		Type:        "polyArc",
-		Args:        []any{drawable.local, gc, arcs},
+		Args:        []any{uint32(drawable), gc, arcs},
 		StrokeStyle: color,
 	})
 }
@@ -1666,7 +1664,7 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 	if !ok {
 		return
 	}
-	debugf("X11: polyFillArc drawable=%s gc=%v arcs=%v", drawable, gc, arcs)
+	debugf("X11: polyFillArc drawable=%d gc=%v arcs=%v", drawable, gc, arcs)
 
 	var opBounds image.Rectangle
 	for i := 0; i < len(arcs); i += 6 {
@@ -1678,7 +1676,7 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 		}
 	}
 
-	color := w.getForegroundColor(xID{}, gc)
+	color := w.getForegroundColor(0, gc)
 	fillRule := "nonzero"
 	if gc.FillRule == 0 {
 		fillRule = "evenodd"
@@ -1704,7 +1702,7 @@ func (w *wasmX11Frontend) PolyFillArc(drawable xID, gcID xID, arcs []uint32) {
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyFillArc",
-		Args:      []any{drawable.local, gc, arcs},
+		Args:      []any{uint32(drawable), gc, arcs},
 		FillStyle: color,
 	})
 }
@@ -1716,7 +1714,7 @@ func (w *wasmX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 	if height == 0 {
 		height = int32(w.server.windows[drawable].height) - y
 	}
-	debugf("X11: clearArea drawable=%s x=%d y=%d width=%d height=%d", drawable, x, y, width, height)
+	debugf("X11: clearArea drawable=%d x=%d y=%d width=%d height=%d", drawable, x, y, width, height)
 	if winInfo, ok := w.windows[drawable]; ok {
 		if !winInfo.canvas.IsNull() {
 			// Clear the area with the window's background color
@@ -1734,7 +1732,7 @@ func (w *wasmX11Frontend) ClearArea(drawable xID, x, y, width, height int32) {
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "clearArea",
-		Args: []any{drawable.local, x, y, width, height},
+		Args: []any{uint32(drawable), x, y, width, height},
 	})
 }
 
@@ -1743,7 +1741,7 @@ func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX,
 	if !ok {
 		return
 	}
-	debugf("X11: copyArea src=%s dst=%s gc=%v srcX=%d srcY=%d dstX=%d dstY=%d width=%d height=%d", srcDrawable, dstDrawable, gc, srcX, srcY, dstX, dstY, width, height)
+	debugf("X11: copyArea src=%d dst=%d gc=%v srcX=%d srcY=%d dstX=%d dstY=%d width=%d height=%d", srcDrawable, dstDrawable, gc, srcX, srcY, dstX, dstY, width, height)
 	var srcCanvas js.Value
 	srcWinInfo, srcIsWindow := w.windows[srcDrawable]
 	srcPixmapInfo, srcIsPixmap := w.pixmaps[srcDrawable]
@@ -1769,7 +1767,7 @@ func (w *wasmX11Frontend) CopyArea(srcDrawable, dstDrawable xID, gcID xID, srcX,
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyArea",
-		Args: []any{srcDrawable.local, dstDrawable.local, gc, srcX, srcY, dstX, dstY, width, height},
+		Args: []any{uint32(srcDrawable), uint32(dstDrawable), gc, srcX, srcY, dstX, dstY, width, height},
 	})
 }
 
@@ -1778,7 +1776,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 	if !ok {
 		return
 	}
-	debugf("X11: copyPlane src=%s dst=%s gc=%v srcX=%d srcY=%d dstX=%d dstY=%d width=%d height=%d bitPlane=%d", srcDrawable, dstDrawable, gc, srcX, srcY, dstX, dstY, width, height, bitPlane)
+	debugf("X11: copyPlane src=%d dst=%d gc=%v srcX=%d srcY=%d dstX=%d dstY=%d width=%d height=%d bitPlane=%d", srcDrawable, dstDrawable, gc, srcX, srcY, dstX, dstY, width, height, bitPlane)
 	var srcCanvas js.Value
 	srcWinInfo, srcIsWindow := w.windows[srcDrawable]
 	srcPixmapInfo, srcIsPixmap := w.pixmaps[srcDrawable]
@@ -1802,7 +1800,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 		currentColormap = dstWinInfo.colormap
 	} else if dstIsPixmap {
 		dstCtx = dstPixmapInfo.context
-		currentColormap = xID{0, w.server.defaultColormap}
+		currentColormap = xID(w.server.defaultColormap)
 	} else {
 		debugf("X11: CopyPlane destination drawable %d not found", dstDrawable)
 		return
@@ -1858,7 +1856,7 @@ func (w *wasmX11Frontend) CopyPlane(srcDrawable, dstDrawable xID, gcID xID, srcX
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyPlane",
-		Args: []any{srcDrawable.local, dstDrawable.local, gc, srcX, srcY, dstX, dstY, width, height, bitPlane},
+		Args: []any{uint32(srcDrawable), uint32(dstDrawable), gc, srcX, srcY, dstX, dstY, width, height, bitPlane},
 	})
 }
 
@@ -1882,7 +1880,7 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 	}
 	decodedTextForLog := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(text)).String()
 	decodedTextForLog = strings.ReplaceAll(decodedTextForLog, "\x00", "") // Trim null terminators
-	debugf("X11: imageText8 drawable=%s gc=%v x=%d y=%d text=%s", drawable, gc, x, y, decodedTextForLog)
+	debugf("X11: imageText8 drawable=%d gc=%v x=%d y=%d text=%s", drawable, gc, x, y, decodedTextForLog)
 
 	var ctx js.Value
 	var colormap xID
@@ -1902,7 +1900,7 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 	decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
 
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc, gcID.client)
+	w.applyGCState(ctx, colormap, gc, (uint32(gcID)>>resourceIDShift)&clientIDMask)
 	metrics := ctx.Call("measureText", decodedText)
 	ctx.Call("restore")
 
@@ -1943,7 +1941,7 @@ func (w *wasmX11Frontend) ImageText8(drawable xID, gcID xID, x, y int32, text []
 
 	w.recordOperation(CanvasOperation{
 		Type:      "imageText8",
-		Args:      []any{drawable.local, gc, x, y, decodedTextForLog},
+		Args:      []any{uint32(drawable), gc, x, y, decodedTextForLog},
 		FillStyle: color,
 	})
 }
@@ -1960,7 +1958,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	}
 	decodedTextForLog := js.Global().Get("TextDecoder").New().Call("decode", jsutil.Uint8ArrayFromBytes(textBytes)).String()
 	decodedTextForLog = strings.ReplaceAll(decodedTextForLog, "\x00", "") // Trim null terminators
-	debugf("X11: imageText16 drawable=%s gc=%v x=%d y=%d text=%s", drawable, gc, x, y, decodedTextForLog)
+	debugf("X11: imageText16 drawable=%d gc=%v x=%d y=%d text=%s", drawable, gc, x, y, decodedTextForLog)
 
 	var ctx js.Value
 	var colormap xID
@@ -1980,7 +1978,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 	decodedText = strings.ReplaceAll(decodedText, "\x00", "") // Trim null terminators
 
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc, gcID.client)
+	w.applyGCState(ctx, colormap, gc, (uint32(gcID)>>resourceIDShift)&clientIDMask)
 	metrics := ctx.Call("measureText", decodedText)
 	ctx.Call("restore")
 
@@ -2019,7 +2017,7 @@ func (w *wasmX11Frontend) ImageText16(drawable xID, gcID xID, x, y int32, text [
 
 	w.recordOperation(CanvasOperation{
 		Type:      "imageText16",
-		Args:      []any{drawable.local, gc, x, y, decodedTextForLog},
+		Args:      []any{uint32(drawable), gc, x, y, decodedTextForLog},
 		FillStyle: color,
 	})
 }
@@ -2029,7 +2027,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 	if !ok {
 		return
 	}
-	debugf("X11: polyText8 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
+	debugf("X11: polyText8 drawable=%d gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
 
 	var ctx js.Value
 	var colormap xID
@@ -2048,7 +2046,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 	var opBounds image.Rectangle
 	currentX := x
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc, gcID.client)
+	w.applyGCState(ctx, colormap, gc, (uint32(gcID)>>resourceIDShift)&clientIDMask)
 
 	for _, item := range items {
 		switch it := item.(type) {
@@ -2068,7 +2066,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 				opBounds = opBounds.Union(itemBounds)
 			}
 		case wire.PolyTextFont:
-			if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
+			if font, ok := w.fonts[xID(it.Font)]; ok {
 				ctx.Set("font", font.cssFont)
 			}
 		}
@@ -2090,7 +2088,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 				targetCtx.Call("fillText", decodedText, currentX, y)
 				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
 			case wire.PolyTextFont:
-				if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
+				if font, ok := w.fonts[xID(it.Font)]; ok {
 					targetCtx.Set("font", font.cssFont)
 					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
 				}
@@ -2100,7 +2098,7 @@ func (w *wasmX11Frontend) PolyText8(drawable xID, gcID xID, x, y int32, items []
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyText8",
-		Args:      []any{drawable.local, gc, x, y, recordedItems},
+		Args:      []any{uint32(drawable), gc, x, y, recordedItems},
 		FillStyle: color,
 	})
 }
@@ -2110,7 +2108,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 	if !ok {
 		return
 	}
-	debugf("X11: polyText16 drawable=%s gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
+	debugf("X11: polyText16 drawable=%d gc=%v x=%d y=%d items=%v", drawable, gc, x, y, items)
 
 	var ctx js.Value
 	var colormap xID
@@ -2129,7 +2127,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 	var opBounds image.Rectangle
 	currentX := x
 	ctx.Call("save")
-	w.applyGCState(ctx, colormap, gc, gcID.client)
+	w.applyGCState(ctx, colormap, gc, (uint32(gcID)>>resourceIDShift)&clientIDMask)
 
 	for _, item := range items {
 		switch it := item.(type) {
@@ -2153,7 +2151,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 				opBounds = opBounds.Union(itemBounds)
 			}
 		case wire.PolyTextFont:
-			if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
+			if font, ok := w.fonts[xID(it.Font)]; ok {
 				ctx.Set("font", font.cssFont)
 			}
 		}
@@ -2179,7 +2177,7 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 				targetCtx.Call("fillText", decodedText, currentX, y)
 				recordedItems = append(recordedItems, map[string]any{"delta": it.Delta, "text": decodedText})
 			case wire.PolyTextFont:
-				if font, ok := w.fonts[xID{gcID.client, uint32(it.Font)}]; ok {
+				if font, ok := w.fonts[xID(it.Font)]; ok {
 					targetCtx.Set("font", font.cssFont)
 					recordedItems = append(recordedItems, map[string]any{"font": it.Font})
 				}
@@ -2189,13 +2187,13 @@ func (w *wasmX11Frontend) PolyText16(drawable xID, gcID xID, x, y int32, items [
 
 	w.recordOperation(CanvasOperation{
 		Type:      "polyText16",
-		Args:      []any{drawable.local, gc, x, y, recordedItems},
+		Args:      []any{uint32(drawable), gc, x, y, recordedItems},
 		FillStyle: color,
 	})
 }
 
 func (w *wasmX11Frontend) SetDashes(gcID xID, dashOffset uint16, dashes []byte) {
-	debugf("X11: setDashes gc=%s dashOffset=%d dashes=%v", gcID, dashOffset, dashes)
+	debugf("X11: setDashes gc=%d dashOffset=%d dashes=%v", gcID, dashOffset, dashes)
 	if gc, ok := w.gcs[gcID]; ok {
 		gc.DashOffset = uint32(dashOffset)
 		gc.DashPattern = dashes
@@ -2203,12 +2201,12 @@ func (w *wasmX11Frontend) SetDashes(gcID xID, dashOffset uint16, dashes []byte) 
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "setDashes",
-		Args: []any{gcID.local, dashOffset, dashes},
+		Args: []any{uint32(gcID), dashOffset, dashes},
 	})
 }
 
 func (w *wasmX11Frontend) SetClipRectangles(gcID xID, clippingX, clippingY int16, rectangles []wire.Rectangle, ordering byte) {
-	debugf("X11: setClipRectangles gc=%s clippingX=%d clippingY=%d rectangles=%v ordering=%d", gcID, clippingX, clippingY, rectangles, ordering)
+	debugf("X11: setClipRectangles gc=%d clippingX=%d clippingY=%d rectangles=%v ordering=%d", gcID, clippingX, clippingY, rectangles, ordering)
 	if gc, ok := w.gcs[gcID]; ok {
 		gc.ClipXOrigin = int32(clippingX)
 		gc.ClipYOrigin = int32(clippingY)
@@ -2217,13 +2215,13 @@ func (w *wasmX11Frontend) SetClipRectangles(gcID xID, clippingX, clippingY int16
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "setClipRectangles",
-		Args: []any{gcID.local, clippingX, clippingY, rectangles, ordering},
+		Args: []any{uint32(gcID), clippingX, clippingY, rectangles, ordering},
 	})
 }
 
 func (w *wasmX11Frontend) RecolorCursor(cursorID xID, foreColor, backColor [3]uint16) {
-	debugf("X11: RecolorCursor id=%s", cursorID)
-	cursor, ok := w.cursorStyles[cursorID.local]
+	debugf("X11: RecolorCursor id=%d", cursorID)
+	cursor, ok := w.cursorStyles[uint32(cursorID)]
 	if !ok {
 		debugf("X11: RecolorCursor cursor %d not found", cursorID)
 		return
@@ -2232,7 +2230,7 @@ func (w *wasmX11Frontend) RecolorCursor(cursorID xID, foreColor, backColor [3]ui
 	w.CreateCursor(cursorID, cursor.source, cursor.mask, foreColor, backColor, cursor.x, cursor.y)
 	w.recordOperation(CanvasOperation{
 		Type: "recolorCursor",
-		Args: []any{cursorID.local},
+		Args: []any{uint32(cursorID)},
 	})
 }
 
@@ -2595,8 +2593,18 @@ func (f *wasmX11Frontend) QueryDeviceState(deviceID byte) []wire.InputClassInfo 
 	return infos
 }
 
+func (w *wasmX11Frontend) QueryBestSize(class byte, drawable xID, width, height uint16) (rwidth, rheight uint16) {
+	debugf("X11: QueryBestSize class=%d drawable=%d width=%d height=%d", class, drawable, width, height)
+	w.recordOperation(CanvasOperation{
+		Type: "queryBestSize",
+		Args: []any{class, uint32(drawable), width, height},
+	})
+	// For now, just return the requested size. This is a simplification.
+	return width, height
+}
+
 func (w *wasmX11Frontend) CreatePixmap(xid, drawable xID, width, height, depth uint32) {
-	debugf("X11: createPixmap id=%s drawable=%s width=%d height=%d depth=%d", xid, drawable, width, height, depth)
+	debugf("X11: createPixmap id=%d drawable=%d width=%d height=%d depth=%d", xid, drawable, width, height, depth)
 	canvas := w.document.Call("createElement", "canvas")
 	canvas.Set("width", width)
 	canvas.Set("height", height)
@@ -2607,21 +2615,21 @@ func (w *wasmX11Frontend) CreatePixmap(xid, drawable xID, width, height, depth u
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "createPixmap",
-		Args: []any{xid.local, drawable.local, width, height, depth},
+		Args: []any{uint32(xid), uint32(drawable), width, height, depth},
 	})
 }
 
 func (w *wasmX11Frontend) FreePixmap(xid xID) {
-	debugf("X11: freePixmap id=%s", xid)
+	debugf("X11: freePixmap id=%d", xid)
 	delete(w.pixmaps, xid)
 	w.recordOperation(CanvasOperation{
 		Type: "freePixmap",
-		Args: []any{xid.local},
+		Args: []any{uint32(xid)},
 	})
 }
 
 func (w *wasmX11Frontend) CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, height, dstX, dstY uint32) {
-	debugf("X11: copyPixmap src=%s dst=%s gc=%s srcX=%d srcY=%d width=%d height=%d dstX=%d dstY=%d", srcID, dstID, gcID, srcX, srcY, width, height, dstX, dstY)
+	debugf("X11: copyPixmap src=%d dst=%d gc=%d srcX=%d srcY=%d width=%d height=%d dstX=%d dstY=%d", srcID, dstID, gcID, srcX, srcY, width, height, dstX, dstY)
 	srcPixmap, srcOk := w.pixmaps[srcID]
 	dstWin, dstOk := w.windows[dstID]
 	if !srcOk || !dstOk {
@@ -2633,7 +2641,7 @@ func (w *wasmX11Frontend) CopyPixmap(srcID, dstID, gcID xID, srcX, srcY, width, 
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyPixmap",
-		Args: []any{srcID.local, dstID.local, gcID.local, srcX, srcY, width, height, dstX, dstY},
+		Args: []any{uint32(srcID), uint32(dstID), uint32(gcID), srcX, srcY, width, height, dstX, dstY},
 	})
 }
 
@@ -2647,17 +2655,17 @@ func (w *wasmX11Frontend) WarpPointer(x, y int16) {
 }
 
 func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor, backColor [3]uint16, x, y uint16) {
-	debugf("X11: CreateCursor id=%s source=%s mask=%s", cursorID, source, mask)
+	debugf("X11: CreateCursor id=%d source=%d mask=%d", cursorID, source, mask)
 
 	sourcePixmap, sourceOk := w.pixmaps[source]
 	if !sourceOk {
-		debugf("X11: CreateCursor source pixmap %s not found", source)
+		debugf("X11: CreateCursor source pixmap %d not found", source)
 		return
 	}
 
 	maskPixmap, maskOk := w.pixmaps[mask]
-	if !maskOk && mask.local != 0 {
-		debugf("X11: CreateCursor mask pixmap %s not found", mask)
+	if !maskOk && uint32(mask) != 0 {
+		debugf("X11: CreateCursor mask pixmap %d not found", mask)
 		return
 	}
 
@@ -2680,7 +2688,7 @@ func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor
 	js.CopyBytesToGo(sourceBytes, sourceJSData)
 
 	var maskBytes []byte
-	if mask.local != 0 {
+	if uint32(mask) != 0 {
 		maskJSData := maskPixmap.context.Call("getImageData", 0, 0, width, height).Get("data")
 		maskBytes = make([]byte, maskJSData.Length())
 		js.CopyBytesToGo(maskBytes, maskJSData)
@@ -2699,7 +2707,7 @@ func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor
 		idx := i * 4
 
 		maskBitOn := true
-		if mask.local != 0 {
+		if uint32(mask) != 0 {
 			maskBitOn = maskBytes[idx+3] > 0
 		}
 
@@ -2735,7 +2743,7 @@ func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor
 	dataURL := tempCanvas.Call("toDataURL").String()
 	cursorStyle := fmt.Sprintf("url(%s) %d %d, auto", dataURL, x, y)
 
-	w.cursorStyles[cursorID.local] = &cursorInfo{
+	w.cursorStyles[uint32(cursorID)] = &cursorInfo{
 		style:  cursorStyle,
 		source: source,
 		mask:   mask,
@@ -2745,7 +2753,7 @@ func (w *wasmX11Frontend) CreateCursor(cursorID xID, source, mask xID, foreColor
 
 	w.recordOperation(CanvasOperation{
 		Type: "createCursor",
-		Args: []any{cursorID.local, source.local, mask.local, x, y},
+		Args: []any{uint32(cursorID), uint32(source), uint32(mask), x, y},
 	})
 }
 
@@ -2781,9 +2789,9 @@ func (w *wasmX11Frontend) CreateCursorFromGlyph(cursorID uint32, glyphID uint16)
 }
 
 func (w *wasmX11Frontend) SetWindowCursor(windowID xID, cursorID xID) {
-	debugf("X11: setWindowCursor window=%s cursor=%s", windowID, cursorID)
+	debugf("X11: setWindowCursor window=%d cursor=%d", windowID, cursorID)
 	if winInfo, ok := w.windows[windowID]; ok {
-		if cursor, ok := w.cursorStyles[cursorID.local]; ok {
+		if cursor, ok := w.cursorStyles[uint32(cursorID)]; ok {
 			winInfo.canvas.Get("style").Set("cursor", cursor.style)
 		} else {
 			winInfo.canvas.Get("style").Set("cursor", "default")
@@ -2791,40 +2799,40 @@ func (w *wasmX11Frontend) SetWindowCursor(windowID xID, cursorID xID) {
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "setWindowCursor",
-		Args: []any{windowID.local, cursorID.local},
+		Args: []any{uint32(windowID), uint32(cursorID)},
 	})
 }
 
 func (w *wasmX11Frontend) CopyGC(srcGCID, dstGCID xID) {
-	debugf("X11: copyGC src=%s dst=%s", srcGCID, dstGCID)
+	debugf("X11: copyGC src=%d dst=%d", srcGCID, dstGCID)
 	if srcGC, ok := w.gcs[srcGCID]; ok {
 		newGC := srcGC
 		w.gcs[dstGCID] = newGC
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "copyGC",
-		Args: []any{srcGCID.local, dstGCID.local},
+		Args: []any{uint32(srcGCID), uint32(dstGCID)},
 	})
 }
 
 func (w *wasmX11Frontend) FreeGC(gcID xID) {
-	debugf("X11: freeGC id=%s", gcID)
+	debugf("X11: freeGC id=%d", gcID)
 	delete(w.gcs, gcID)
 	w.recordOperation(CanvasOperation{
 		Type: "freeGC",
-		Args: []any{gcID.local},
+		Args: []any{uint32(gcID)},
 	})
 }
 
 func (w *wasmX11Frontend) FreeCursor(cursorID xID) {
-	debugf("X11: freeCursor id=%s", cursorID)
+	debugf("X11: freeCursor id=%d", cursorID)
 	// In the wasm frontend, we only store the CSS style mapping.
 	// We don't need to "free" a DOM element for a cursor.
 	// We just remove it from our internal map.
-	delete(w.cursorStyles, cursorID.local) // Note: cursorStyles map uses uint32 as key
+	delete(w.cursorStyles, uint32(cursorID)) // Note: cursorStyles map uses uint32 as key
 	w.recordOperation(CanvasOperation{
 		Type: "freeCursor",
-		Args: []any{cursorID.local},
+		Args: []any{uint32(cursorID)},
 	})
 }
 
@@ -2840,10 +2848,10 @@ func (w *wasmX11Frontend) SendEvent(eventData messageEncoder) {
 }
 
 func (w *wasmX11Frontend) GetFocusWindow(clientID uint32) xID {
-	if w.focusedWindowID.client == clientID {
+	if (uint32(w.focusedWindowID)>>resourceIDShift)&clientIDMask == clientID {
 		return w.focusedWindowID
 	}
-	return xID{}
+	return 0
 }
 
 func (w *wasmX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
@@ -2885,7 +2893,7 @@ func (w *wasmX11Frontend) initDefaultCursors() {
 }
 
 func (w *wasmX11Frontend) SetCursor(windowID xID, cursorID uint32) {
-	debugf("X11: setCursor window=%s cursor=%d", windowID, cursorID)
+	debugf("X11: setCursor window=%d cursor=%d", windowID, cursorID)
 	if winInfo, ok := w.windows[windowID]; ok {
 		if style, ok := w.cursorStyles[cursorID]; ok {
 			winInfo.canvas.Get("style").Set("cursor", style)
@@ -2895,7 +2903,7 @@ func (w *wasmX11Frontend) SetCursor(windowID xID, cursorID uint32) {
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "setCursor",
-		Args: []any{windowID.local, cursorID},
+		Args: []any{uint32(windowID), cursorID},
 	})
 }
 
@@ -2925,7 +2933,7 @@ func (w *wasmX11Frontend) GetRGBColor(colormap xID, pixel uint32) (r, g, b uint8
 }
 
 func (w *wasmX11Frontend) OpenFont(fid xID, name string) {
-	debugf("X11: OpenFont fid=%s name=%s", fid, name)
+	debugf("X11: OpenFont fid=%d name=%s", fid, name)
 	debugf("X11: OpenFont received font name: %s", name)
 
 	_, _, _, _, cssFont := MapX11FontToCSS(name)
@@ -2937,16 +2945,16 @@ func (w *wasmX11Frontend) OpenFont(fid xID, name string) {
 
 	w.recordOperation(CanvasOperation{
 		Type: "openFont",
-		Args: []any{fid.local, name},
+		Args: []any{uint32(fid), name},
 	})
 }
 
 func (w *wasmX11Frontend) CloseFont(fid xID) {
-	debugf("X11: CloseFont fid=%s", fid)
+	debugf("X11: CloseFont fid=%d", fid)
 	delete(w.fonts, fid)
 	w.recordOperation(CanvasOperation{
 		Type: "closeFont",
-		Args: []any{fid.local},
+		Args: []any{uint32(fid)},
 	})
 }
 
@@ -2963,7 +2971,7 @@ func (w *wasmX11Frontend) SendConfigureAndExposeEvent(windowID xID, x, y int16, 
 	w.server.sendExposeEvent(windowID, 0, 0, width, height) // Send expose for the entire window
 	if win, ok := w.server.windows[windowID]; ok {
 		for _, childID := range win.children {
-			childXID := xID{client: windowID.client, local: childID}
+			childXID := xID(childID)
 			if childWin, ok := w.server.windows[childXID]; ok {
 				w.server.sendExposeEvent(childXID, 0, 0, childWin.width, childWin.height)
 			}
@@ -3060,13 +3068,13 @@ func (w *wasmX11Frontend) mouseEventHandler(xid xID, eventType string) js.Func {
 			detailUp := (stateUp << 16) | button
 			w.server.SendMouseEvent(xid, "mouseup", offsetX, offsetY, int32(detailUp))
 
-			debugf("Mouse wheel event: window=%s, x=%d, y=%d, button=%d, state=%d", xid, offsetX, offsetY, button, state)
+			debugf("Mouse wheel event: window=%d, x=%d, y=%d, button=%d, state=%d", xid, offsetX, offsetY, button, state)
 		} else {
 			// Pack button and state into a single int32
 			// Use top 16 bits for state, bottom 16 for button
 			detail := (state << 16) | button
 			w.server.SendMouseEvent(xid, eventType, offsetX, offsetY, int32(detail))
-			debugf("Mouse event: window=%s, type=%s, x=%d, y=%d, button=%d, state=%d (packed_detail=%d)", xid, eventType, offsetX, offsetY, button, state, detail)
+			debugf("Mouse event: window=%d, type=%s, x=%d, y=%d, button=%d, state=%d (packed_detail=%d)", xid, eventType, offsetX, offsetY, button, state, detail)
 		}
 
 		if eventType == "mousemove" {
@@ -3117,7 +3125,7 @@ func (w *wasmX11Frontend) pointerCrossingEventHandler(xid xID, isEnter bool) js.
 		detail := byte(0) // Not used for crossing events
 
 		w.server.SendPointerCrossingEvent(isEnter, xid, rootX, rootY, eventX, eventY, state, mode, detail)
-		debugf("Pointer crossing event: window=%s, isEnter=%t, rootX=%d, rootY=%d, eventX=%d, eventY=%d, state=%d", xid, isEnter, rootX, rootY, eventX, eventY, state)
+		debugf("Pointer crossing event: window=%d, isEnter=%t, rootX=%d, rootY=%d, eventX=%d, eventY=%d, state=%d", xid, isEnter, rootX, rootY, eventX, eventY, state)
 		return nil
 	})
 }
@@ -3136,7 +3144,7 @@ func (w *wasmX11Frontend) keyboardEventHandler(xid xID, eventType string) js.Fun
 		metaKey := event.Get("metaKey").Bool()
 
 		w.server.SendKeyboardEvent(w.focusedWindowID, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
-		debugf("Keyboard event: window=%s, type=%s, code=%s, alt=%t, ctrl=%t, shift=%t, meta=%t", w.focusedWindowID, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
+		debugf("Keyboard event: window=%d, type=%s, code=%s, alt=%t, ctrl=%t, shift=%t, meta=%t", w.focusedWindowID, eventType, code, altKey, ctrlKey, shiftKey, metaKey)
 		return nil
 	})
 }
@@ -3144,9 +3152,9 @@ func (w *wasmX11Frontend) keyboardEventHandler(xid xID, eventType string) js.Fun
 func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInfo, minCharOrByte2, maxCharOrByte2, defaultChar uint16, drawDirection uint8, minByte1, maxByte1 uint8, allCharsExist bool, fontAscent, fontDescent int16, charInfos []wire.XCharInfo, fontProps []wire.FontProp) {
 	w.recordOperation(CanvasOperation{
 		Type: "queryFont",
-		Args: []any{fid.local},
+		Args: []any{uint32(fid)},
 	})
-	debugf("X11: QueryFont fid=%s", fid)
+	debugf("X11: QueryFont fid=%d", fid)
 
 	fontDescent = 5
 
@@ -3337,7 +3345,7 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInf
 	// Release the temporary canvas element
 	canvas.Call("remove")
 
-	debugf("X11: QueryFont fid=%s reply: minBounds=%+v, maxBounds=%+v, minCharOrByte2=%d, maxCharOrByte2=%d, defaultChar=%d, drawDirection=%d, minByte1=%d, maxByte1=%d, allCharsExist=%t, fontAscent=%d, fontDescent=%d, len(charInfos)=%d", fid, minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, len(charInfos))
+	debugf("X11: QueryFont fid=%d reply: minBounds=%+v, maxBounds=%+v, minCharOrByte2=%d, maxCharOrByte2=%d, defaultChar=%d, drawDirection=%d, minByte1=%d, maxByte1=%d, allCharsExist=%t, fontAscent=%d, fontDescent=%d, len(charInfos)=%d", fid, minBounds, maxBounds, minCharOrByte2, maxCharOrByte2, defaultChar, drawDirection, minByte1, maxByte1, allCharsExist, fontAscent, fontDescent, len(charInfos))
 
 	return
 }
@@ -3345,9 +3353,9 @@ func (w *wasmX11Frontend) QueryFont(fid xID) (minBounds, maxBounds wire.XCharInf
 func (w *wasmX11Frontend) QueryTextExtents(font xID, text []uint16) (drawDirection uint8, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight int16) {
 	w.recordOperation(CanvasOperation{
 		Type: "queryTextExtents",
-		Args: []any{font.local, text},
+		Args: []any{uint32(font), text},
 	})
-	debugf("X11: QueryTextExtents font=%s", font)
+	debugf("X11: QueryTextExtents font=%d", font)
 
 	// Try to get font info from the opened fonts map
 	var cssFont string = "12px monospace" // Default fallback
@@ -3399,7 +3407,7 @@ func (w *wasmX11Frontend) QueryTextExtents(font xID, text []uint16) (drawDirecti
 	// Release the temporary canvas element
 	canvas.Call("remove")
 
-	debugf("X11: QueryTextExtents font=%s reply: fontAscent=%d, fontDescent=%d, overallAscent=%d, overallDescent=%d, overallWidth=%d, overallLeft=%d, overallRight=%d", font, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight)
+	debugf("X11: QueryTextExtents font=%d reply: fontAscent=%d, fontDescent=%d, overallAscent=%d, overallDescent=%d, overallWidth=%d, overallLeft=%d, overallRight=%d", font, fontAscent, fontDescent, overallAscent, overallDescent, overallWidth, overallLeft, overallRight)
 
 	return
 }
@@ -3436,7 +3444,7 @@ func (w *wasmX11Frontend) GetWindowAttributes(xid xID) wire.WindowAttributes {
 	// Not implemented for wasm
 	w.recordOperation(CanvasOperation{
 		Type: "getWindowAttributes",
-		Args: []any{xid.local},
+		Args: []any{uint32(xid)},
 	})
 	return wire.WindowAttributes{}
 }
@@ -3498,11 +3506,11 @@ func (w *wasmX11Frontend) watchWindowEvents(xid xID, values wire.WindowAttribute
 }
 
 func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values wire.WindowAttributes) {
-	debugf("X11: changeWindowAttributes id=%s valueMask=%d values=%+v", xid, valueMask, values)
+	debugf("X11: changeWindowAttributes id=%d valueMask=%d values=%+v", xid, valueMask, values)
 	if winInfo, ok := w.windows[xid]; ok {
 		style := winInfo.div.Get("style")
 		if valueMask&wire.CWColormap != 0 {
-			winInfo.colormap = xID{client: xid.client, local: uint32(values.Colormap)}
+			winInfo.colormap = xID(values.Colormap)
 		}
 		if valueMask&wire.CWBackPixel != 0 {
 			r, g, b := w.GetRGBColor(winInfo.colormap, values.BackgroundPixel)
@@ -3515,7 +3523,7 @@ func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, valu
 			style.Set("borderColor", borderColor)
 		}
 		if valueMask&wire.CWCursor != 0 {
-			w.SetWindowCursor(xid, xID{client: xid.client, local: uint32(values.Cursor)})
+			w.SetWindowCursor(xid, xID(values.Cursor))
 		}
 		if valueMask&wire.CWEventMask != 0 {
 			w.watchWindowEvents(xid, values)
@@ -3523,7 +3531,7 @@ func (w *wasmX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, valu
 	}
 	w.recordOperation(CanvasOperation{
 		Type: "changeWindowAttributes",
-		Args: []any{xid.local, valueMask},
+		Args: []any{uint32(xid), valueMask},
 	})
 }
 
@@ -3537,7 +3545,7 @@ func uint32SliceToAnySlice(s []uint32) []any {
 
 func (w *wasmX11Frontend) DestroyAllWindowsForClient(client uint32) {
 	for xid := range w.windows {
-		if xid.client == client {
+		if (uint32(xid)>>resourceIDShift)&clientIDMask == client {
 			w.destroyWindow(xid, false)
 		}
 	}
