@@ -191,7 +191,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 	debugf("X11: createWindow xid=%d parent=%d x=%d y=%d width=%d height=%d depth=%d values=%+v", xid, parent, x, y, width, height, depth, values)
 
 	windowDiv := w.document.Call("createElement", "div")
-	windowDiv.Set("id", js.ValueOf(fmt.Sprintf("x11-window-%d", xid)))
+	windowDiv.Set("id", js.ValueOf(fmt.Sprintf("x11-window-%s", xid)))
 	style := windowDiv.Get("style")
 	style.Set("position", "absolute")
 	style.Set("width", js.ValueOf(fmt.Sprintf("%dpx", width)))
@@ -201,7 +201,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 	// Create canvas first so it can be referenced in handlers, but don't append yet.
 	canvas := w.document.Call("createElement", "canvas")
-	canvas.Set("id", js.ValueOf(fmt.Sprintf("x11-canvas-%d", xid)))
+	canvas.Set("id", js.ValueOf(fmt.Sprintf("x11-canvas-%s", xid)))
 	canvas.Set("width", width)
 	canvas.Set("height", height)
 	canvas.Get("style").Set("display", "block")
@@ -230,7 +230,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 		// Title bar
 		titleBar = w.document.Call("createElement", "div")
-		titleBar.Set("id", js.ValueOf(fmt.Sprintf("x11-titlebar-%d", xid)))
+		titleBar.Set("id", js.ValueOf(fmt.Sprintf("x11-titlebar-%s", xid)))
 		titleBarStyle = titleBar.Get("style")
 		titleBarStyle.Set("height", "20px")
 		titleBarStyle.Set("backgroundColor", "#333")
@@ -245,7 +245,7 @@ func (w *wasmX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, dep
 
 		// Window title text
 		windowTitleSpan = w.document.Call("createElement", "span")
-		windowTitleSpan.Set("id", js.ValueOf(fmt.Sprintf("x11-window-title-%d", xid)))
+		windowTitleSpan.Set("id", js.ValueOf(fmt.Sprintf("x11-window-title-%s", xid)))
 		windowTitleSpan.Set("textContent", fmt.Sprintf("Window %d", xid)) // Default title
 		titleBar.Call("appendChild", windowTitleSpan)
 

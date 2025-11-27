@@ -30,6 +30,11 @@ func clearX11Operations() {
 	x11Operations = nil
 }
 
+func (s *sshServer) clientXID(id uint32) uint32 {
+	const clientID = 1
+	return (clientID << 20) | id
+}
+
 func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProtocol string, authCookie []byte) {
 	s.t.Log("Simulating X11 application (client-side)")
 

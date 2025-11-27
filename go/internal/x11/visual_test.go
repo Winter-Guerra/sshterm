@@ -79,9 +79,9 @@ func getWindowBounds(t *testing.T, winID xID) image.Rectangle {
 	if !doc.Truthy() {
 		t.Fatal("document not found")
 	}
-	div := doc.Call("querySelector", fmt.Sprintf("#x11-window-%d", winID))
+	div := doc.Call("querySelector", fmt.Sprintf("#x11-window-%s", winID))
 	if !div.Truthy() {
-		t.Fatalf("div #x11-window-%d not found", winID)
+		t.Fatalf("div #x11-window-%s not found", winID)
 	}
 	style := div.Get("style")
 	if !style.Truthy() {

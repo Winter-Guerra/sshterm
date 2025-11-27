@@ -5,6 +5,7 @@ package x11
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"runtime/debug"
@@ -17,9 +18,6 @@ import (
 )
 
 var errParseError = errors.New("x11: request parsing error")
-
-// xID is a resource identifier.
-type xID uint32
 
 const (
 	clientIDBits    = 12
@@ -38,6 +36,13 @@ var (
 
 func Enabled() bool {
 	return true
+}
+
+// xID is a resource identifier.
+type xID uint32
+
+func (xid xID) String() string {
+	return fmt.Sprintf("%d-%d", (xid>>localIDBits)&clientIDMask, xid&localIDMask)
 }
 
 // Logger is the interface for logging.
@@ -506,7 +511,6 @@ func (s *x11Server) getAbsoluteWindowCoords(xid xID) (int16, int16, bool) {
 	}
 	return absX, absY, true
 }
-
 
 func (s *x11Server) findChildWindowAt(parentXID xID, x, y int16) xID {
 	parent, ok := s.windows[parentXID]
