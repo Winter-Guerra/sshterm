@@ -50,6 +50,21 @@ func (s *sshServer) sendRequest(channel ssh.Channel, req EncodableRequest) (uint
 	return s.clientSequence, nil
 }
 
+func (s *sshServer) readReply(reply <-chan wire.ServerMessage) wire.ServerMessage {
+	s.t.Helper()
+	for {
+		select {
+		case r := <-reply:
+			if _, ok := r.(wire.Event); ok {
+				continue
+			}
+			return r
+		case <-time.After(5 * time.Second):
+			s.t.Fatal("timeout waiting for reply")
+		}
+	}
+}
+
 func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProtocol string, authCookie []byte) {
 	defer close(s.x11SimDone)
 	s.t.Log("Simulating X11 application (client-side)")
@@ -286,10 +301,10 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 		return
 	}
 
-	// if err := s.listFonts(x11Channel, 10, "*", replyChan); err != nil {
-	// 	s.t.Logf("Failed to list fonts: %v", err)
-	// 	return
-	// }
+	if err := s.listFonts(x11Channel, 10, "*", replyChan); err != nil {
+		s.t.Logf("Failed to list fonts: %v", err)
+		return
+	}
 
 	// Create a new GC with the font
 	fontGC := s.clientXID(106)
@@ -904,13 +919,7 @@ func (s *sshServer) queryFont(channel ssh.Channel, fid uint32, replyChan <-chan 
 		return fmt.Errorf("failed to write QueryFont request: %w", err)
 	}
 
-	var msg wire.ServerMessage
-	select {
-	case msg = <-replyChan:
-	case <-time.After(5 * time.Second):
-		return fmt.Errorf("timeout waiting for QueryFont reply")
-	}
-
+	msg := s.readReply(replyChan)
 	reply, ok := msg.(*wire.QueryFontReply)
 	if !ok {
 		if errReply, ok := msg.(wire.Error); ok {
@@ -972,7 +981,7 @@ func (s *sshServer) listFonts(channel ssh.Channel, maxNames uint16, pattern stri
 		return err
 	}
 	// We consume the reply but don't do much validation in original code other than receiving it
-	<-replyChan
+	s.readReply(replyChan)
 	return nil
 }
 
@@ -1056,13 +1065,7 @@ func (s *sshServer) allocNamedColor(channel ssh.Channel, cmap uint32, name strin
 		return 0, 0, 0, 0, err
 	}
 
-	var msg wire.ServerMessage
-	select {
-	case msg = <-replyChan:
-	case <-time.After(5 * time.Second):
-		return 0, 0, 0, 0, fmt.Errorf("timeout waiting for AllocNamedColor reply")
-	}
-
+	msg := s.readReply(replyChan)
 	reply, ok := msg.(*wire.AllocNamedColorReply)
 	if !ok {
 		if errReply, ok := msg.(wire.Error); ok {
@@ -1092,13 +1095,7 @@ func (s *sshServer) allocColor(channel ssh.Channel, cmap uint32, red, green, blu
 		return 0, 0, 0, 0, err
 	}
 
-	var msg wire.ServerMessage
-	select {
-	case msg = <-replyChan:
-	case <-time.After(5 * time.Second):
-		return 0, 0, 0, 0, fmt.Errorf("timeout waiting for AllocColor reply")
-	}
-
+	msg := s.readReply(replyChan)
 	reply, ok := msg.(*wire.AllocColorReply)
 	if !ok {
 		if errReply, ok := msg.(wire.Error); ok {
@@ -1126,13 +1123,7 @@ func (s *sshServer) queryColors(channel ssh.Channel, cmap uint32, pixels []uint3
 		return nil, err
 	}
 
-	var msg wire.ServerMessage
-	select {
-	case msg = <-replyChan:
-	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for QueryColors reply")
-	}
-
+	msg := s.readReply(replyChan)
 	reply, ok := msg.(*wire.QueryColorsReply)
 	if !ok {
 		if errReply, ok := msg.(wire.Error); ok {
@@ -1174,7 +1165,7 @@ func (s *sshServer) listInstalledColormaps(channel ssh.Channel, replyChan <-chan
 		return nil, err
 	}
 
-	msg := <-replyChan
+	msg := s.readReply(replyChan)
 	reply, ok := msg.(*wire.ListInstalledColormapsReply)
 	if !ok {
 		if errReply, ok := msg.(wire.Error); ok {

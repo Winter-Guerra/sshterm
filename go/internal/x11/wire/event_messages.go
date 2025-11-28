@@ -22,6 +22,9 @@ type KeyEvent struct {
 	SameScreen     bool   // True if event and root are on same screen
 }
 
+// EventCode returns the event code.
+func (e *KeyEvent) EventCode() uint8 { return e.Opcode }
+
 // EncodeMessage encodes the KeyEvent into a byte slice.
 func (e *KeyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -67,6 +70,9 @@ type GraphicsExposureEvent struct {
 	MajorOpcode   byte   // Major opcode of request causing event
 }
 
+// EventCode returns the event code.
+func (e *GraphicsExposureEvent) EventCode() uint8 { return 13 }
+
 // EncodeMessage encodes the GraphicsExposureEvent into a byte slice.
 func (e *GraphicsExposureEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -93,6 +99,9 @@ type NoExposureEvent struct {
 	MajorOpcode byte   // Major opcode
 }
 
+// EventCode returns the event code.
+func (e *NoExposureEvent) EventCode() uint8 { return 14 }
+
 // EncodeMessage encodes the NoExposureEvent into a byte slice.
 func (e *NoExposureEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -112,6 +121,9 @@ type VisibilityNotifyEvent struct {
 	Window   uint32 // Window ID
 	State    byte   // Visibility state (Unobscured, PartiallyObscured, FullyObscured)
 }
+
+// EventCode returns the event code.
+func (e *VisibilityNotifyEvent) EventCode() uint8 { return 15 }
 
 // EncodeMessage encodes the VisibilityNotifyEvent into a byte slice.
 func (e *VisibilityNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -135,6 +147,9 @@ type CreateNotifyEvent struct {
 	BorderWidth      uint16 // Border width
 	OverrideRedirect bool   // Override-redirect flag
 }
+
+// EventCode returns the event code.
+func (e *CreateNotifyEvent) EventCode() uint8 { return 16 }
 
 // EncodeMessage encodes the CreateNotifyEvent into a byte slice.
 func (e *CreateNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -161,6 +176,9 @@ type DestroyNotifyEvent struct {
 	Window   uint32 // Destroyed window ID
 }
 
+// EventCode returns the event code.
+func (e *DestroyNotifyEvent) EventCode() uint8 { return 17 }
+
 // EncodeMessage encodes the DestroyNotifyEvent into a byte slice.
 func (e *DestroyNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -180,6 +198,9 @@ type UnmapNotifyEvent struct {
 	Window        uint32 // Unmapped window ID
 	FromConfigure bool   // True if unmap was result of a resize
 }
+
+// EventCode returns the event code.
+func (e *UnmapNotifyEvent) EventCode() uint8 { return 18 }
 
 // EncodeMessage encodes the UnmapNotifyEvent into a byte slice.
 func (e *UnmapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -202,6 +223,9 @@ type MapNotifyEvent struct {
 	OverrideRedirect bool   // Override-redirect flag
 }
 
+// EventCode returns the event code.
+func (e *MapNotifyEvent) EventCode() uint8 { return 19 }
+
 // EncodeMessage encodes the MapNotifyEvent into a byte slice.
 func (e *MapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -221,6 +245,9 @@ type MapRequestEvent struct {
 	Parent   uint32 // Parent window ID
 	Window   uint32 // Window ID requested to be mapped
 }
+
+// EventCode returns the event code.
+func (e *MapRequestEvent) EventCode() uint8 { return 20 }
 
 // EncodeMessage encodes the MapRequestEvent into a byte slice.
 func (e *MapRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -243,6 +270,9 @@ type ReparentNotifyEvent struct {
 	X, Y             int16  // Coordinates relative to new parent
 	OverrideRedirect bool   // Override-redirect flag
 }
+
+// EventCode returns the event code.
+func (e *ReparentNotifyEvent) EventCode() uint8 { return 21 }
 
 // EncodeMessage encodes the ReparentNotifyEvent into a byte slice.
 func (e *ReparentNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -273,6 +303,9 @@ type ConfigureRequestEvent struct {
 	ValueMask     uint16 // Mask indicating which values are requested
 }
 
+// EventCode returns the event code.
+func (e *ConfigureRequestEvent) EventCode() uint8 { return 23 }
+
 // EncodeMessage encodes the ConfigureRequestEvent into a byte slice.
 func (e *ConfigureRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -300,6 +333,9 @@ type GravityNotifyEvent struct {
 	X, Y     int16  // New coordinates
 }
 
+// EventCode returns the event code.
+func (e *GravityNotifyEvent) EventCode() uint8 { return 24 }
+
 // EncodeMessage encodes the GravityNotifyEvent into a byte slice.
 func (e *GravityNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -320,6 +356,9 @@ type ResizeRequestEvent struct {
 	Window        uint32 // Window ID
 	Width, Height uint16 // Requested dimensions
 }
+
+// EventCode returns the event code.
+func (e *ResizeRequestEvent) EventCode() uint8 { return 25 }
 
 // EncodeMessage encodes the ResizeRequestEvent into a byte slice.
 func (e *ResizeRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -342,6 +381,9 @@ type CirculateNotifyEvent struct {
 	Place    byte   // Place (PlaceOnTop, PlaceOnBottom)
 }
 
+// EventCode returns the event code.
+func (e *CirculateNotifyEvent) EventCode() uint8 { return 26 }
+
 // EncodeMessage encodes the CirculateNotifyEvent into a byte slice.
 func (e *CirculateNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -362,6 +404,9 @@ type CirculateRequestEvent struct {
 	Window   uint32 // Window ID
 	Place    byte   // Place (PlaceOnTop, PlaceOnBottom)
 }
+
+// EventCode returns the event code.
+func (e *CirculateRequestEvent) EventCode() uint8 { return 27 }
 
 // EncodeMessage encodes the CirculateRequestEvent into a byte slice.
 func (e *CirculateRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -385,6 +430,9 @@ type PropertyNotifyEvent struct {
 	State    byte   // State (PropertyNewValue, PropertyDelete)
 }
 
+// EventCode returns the event code.
+func (e *PropertyNotifyEvent) EventCode() uint8 { return 28 }
+
 // EncodeMessage encodes the PropertyNotifyEvent into a byte slice.
 func (e *PropertyNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -406,6 +454,9 @@ type SelectionClearEvent struct {
 	Selection uint32 // Selection atom
 	Time      uint32 // Last change time
 }
+
+// EventCode returns the event code.
+func (e *SelectionClearEvent) EventCode() uint8 { return 29 }
 
 // EncodeMessage encodes the SelectionClearEvent into a byte slice.
 func (e *SelectionClearEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -431,6 +482,9 @@ type SelectionRequestEvent struct {
 	Time      uint32 // Request time
 }
 
+// EventCode returns the event code.
+func (e *SelectionRequestEvent) EventCode() uint8 { return 30 }
+
 // EncodeMessage encodes the SelectionRequestEvent into a byte slice.
 func (e *SelectionRequestEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -454,6 +508,9 @@ type MappingNotifyEvent struct {
 	Count        byte   // Number of keycodes changed
 }
 
+// EventCode returns the event code.
+func (e *MappingNotifyEvent) EventCode() uint8 { return 34 }
+
 // EncodeMessage encodes the MappingNotifyEvent into a byte slice.
 func (e *MappingNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -475,6 +532,9 @@ type GenericEventData struct {
 	Length    uint32 // Length of event data
 	EventData []byte // Raw event data
 }
+
+// EventCode returns the event code.
+func (e *GenericEventData) EventCode() uint8 { return 35 }
 
 // EncodeMessage encodes the GenericEventData into a byte slice.
 func (e *GenericEventData) EncodeMessage(order binary.ByteOrder) []byte {
@@ -508,6 +568,9 @@ func (e *DeviceMotionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	return buf
 }
 
+// EventCode returns the event code.
+func (e *DeviceMotionNotifyEvent) EventCode() uint8 { return byte(XInputOpcode) }
+
 // EncodeMessage encodes the ProximityInEvent into a byte slice.
 func (e *ProximityInEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
@@ -527,6 +590,9 @@ func (e *ProximityInEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf[31] = e.Detail
 	return buf
 }
+
+// EventCode returns the event code.
+func (e *ProximityInEvent) EventCode() uint8 { return byte(XInputOpcode) }
 
 // EncodeMessage encodes the ProximityOutEvent into a byte slice.
 func (e *ProximityOutEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -1065,6 +1131,7 @@ func ParseProximityOutEvent(buf []byte, order binary.ByteOrder) (*ProximityOutEv
 
 // Event is an interface that all X11 events implement.
 type Event interface {
+	EventCode() uint8
 	// EncodeMessage encodes the event into a byte slice.
 	EncodeMessage(order binary.ByteOrder) []byte
 }
@@ -1176,6 +1243,9 @@ func (e *DeviceButtonReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte 
 	return buf
 }
 
+// EventCode returns the event code.
+func (e *ButtonPressEvent) EventCode() uint8 { return 4 }
+
 // EncodeMessage encodes the ButtonPressEvent into a byte slice.
 func (e *ButtonPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -1210,6 +1280,9 @@ type ButtonReleaseEvent struct {
 	SameScreen     bool   // Same screen flag
 }
 
+// EventCode returns the event code.
+func (e *ButtonReleaseEvent) EventCode() uint8 { return 5 }
+
 // EncodeMessage encodes the ButtonReleaseEvent into a byte slice.
 func (e *ButtonReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -1243,6 +1316,9 @@ type MotionNotifyEvent struct {
 	State          uint16 // Key/Button state mask
 	SameScreen     bool   // Same screen flag
 }
+
+// EventCode returns the event code.
+func (e *MotionNotifyEvent) EventCode() uint8 { return 6 }
 
 // EncodeMessage encodes the MotionNotifyEvent into a byte slice.
 func (e *MotionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -1279,6 +1355,9 @@ type EnterNotifyEvent struct {
 	SameScreen     bool   // Same screen flag
 	Focus          bool   // Focus flag
 }
+
+// EventCode returns the event code.
+func (e *EnterNotifyEvent) EventCode() uint8 { return 7 }
 
 // EncodeMessage encodes the EnterNotifyEvent into a byte slice.
 func (e *EnterNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -1323,6 +1402,9 @@ type LeaveNotifyEvent struct {
 	Focus          bool   // Focus flag
 }
 
+// EventCode returns the event code.
+func (e *LeaveNotifyEvent) EventCode() uint8 { return 8 }
+
 // EncodeMessage encodes the LeaveNotifyEvent into a byte slice.
 func (e *LeaveNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -1359,6 +1441,9 @@ type ExposeEvent struct {
 	Count         uint16 // Number of subsequent Expose events
 }
 
+// EventCode returns the event code.
+func (e *ExposeEvent) EventCode() uint8 { return 12 }
+
 // EncodeMessage encodes the ExposeEvent into a byte slice.
 func (e *ExposeEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -1386,6 +1471,9 @@ type ConfigureNotifyEvent struct {
 	BorderWidth      uint16 // Border width
 	OverrideRedirect bool   // Override-redirect flag
 }
+
+// EventCode returns the event code.
+func (e *ConfigureNotifyEvent) EventCode() uint8 { return 22 }
 
 // EncodeMessage encodes the ConfigureNotifyEvent into a byte slice.
 func (e *ConfigureNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -1416,6 +1504,9 @@ type SelectionNotifyEvent struct {
 	Time      uint32 // Time
 }
 
+// EventCode returns the event code.
+func (e *SelectionNotifyEvent) EventCode() uint8 { return 31 }
+
 // EncodeMessage encodes the SelectionNotifyEvent into a byte slice.
 func (e *SelectionNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -1440,6 +1531,9 @@ type ColormapNotifyEvent struct {
 	State    byte   // State (ColormapInstalled, ColormapUninstalled)
 }
 
+// EventCode returns the event code.
+func (e *ColormapNotifyEvent) EventCode() uint8 { return ColormapNotifyCode }
+
 // EncodeMessage encodes the ColormapNotifyEvent into a byte slice.
 func (e *ColormapNotifyEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -1463,6 +1557,9 @@ type ClientMessageEvent struct {
 	Data        [20]byte // Data
 }
 
+// EventCode returns the event code.
+func (e *ClientMessageEvent) EventCode() uint8 { return 33 }
+
 // EncodeMessage encodes the ClientMessageEvent into a byte slice.
 func (e *ClientMessageEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	event := make([]byte, 32)
@@ -1479,6 +1576,9 @@ func (e *ClientMessageEvent) EncodeMessage(order binary.ByteOrder) []byte {
 type X11RawEvent struct {
 	Data []byte
 }
+
+// EventCode returns the event code.
+func (e *X11RawEvent) EventCode() uint8 { return e.Data[0] }
 
 // EncodeMessage encodes the X11RawEvent into a byte slice.
 func (e *X11RawEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -1501,6 +1601,9 @@ type DeviceKeyPressEvent struct {
 	SameScreen bool   // Same screen flag
 	KeyCode    byte   // Keycode
 }
+
+// EventCode returns the event code.
+func (e *DeviceKeyPressEvent) EventCode() uint8 { return byte(XInputOpcode) }
 
 // EncodeMessage encodes the DeviceKeyPressEvent into a byte slice.
 func (e *DeviceKeyPressEvent) EncodeMessage(order binary.ByteOrder) []byte {
@@ -1539,6 +1642,9 @@ type DeviceKeyReleaseEvent struct {
 	KeyCode    byte   // Keycode
 }
 
+// EventCode returns the event code.
+func (e *DeviceKeyReleaseEvent) EventCode() uint8 { return byte(XInputOpcode) }
+
 // EncodeMessage encodes the DeviceKeyReleaseEvent into a byte slice.
 func (e *DeviceKeyReleaseEvent) EncodeMessage(order binary.ByteOrder) []byte {
 	buf := make([]byte, 32)
@@ -1575,6 +1681,9 @@ type DeviceButtonPressEvent struct {
 	SameScreen bool   // Same screen flag
 	Detail     byte   // Button
 }
+
+// EventCode returns the event code.
+func (e *DeviceButtonPressEvent) EventCode() uint8 { return byte(XInputOpcode) }
 
 // SetSequence sets the sequence number for the DeviceButtonPressEvent.
 func (e *DeviceButtonPressEvent) SetSequence(seq uint16) {
@@ -1617,6 +1726,9 @@ type DeviceButtonReleaseEvent struct {
 	State      uint16 // Modifier state
 	SameScreen bool   // Same screen flag
 }
+
+// EventCode returns the event code.
+func (e *DeviceButtonReleaseEvent) EventCode() uint8 { return byte(XInputOpcode) }
 
 // DeviceMotionNotifyEvent represents an XInput motion event.
 type DeviceMotionNotifyEvent struct {
@@ -1668,3 +1780,6 @@ type ProximityOutEvent struct {
 	State      uint16 // Modifier state
 	SameScreen bool   // Same screen flag
 }
+
+// EventCode returns the event code.
+func (e *ProximityOutEvent) EventCode() uint8 { return byte(XInputOpcode) }
