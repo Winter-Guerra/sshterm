@@ -241,10 +241,10 @@ func ParseRequest(order binary.ByteOrder, raw []byte, seq uint16, bigRequestsEna
 		return ParseCopyAreaRequest(order, body, seq)
 
 	case PolyPoint:
-		return ParsePolyPointRequest(order, body, seq)
+		return ParsePolyPointRequest(order, data, body, seq)
 
 	case PolyLine:
-		return ParsePolyLineRequest(order, body, seq)
+		return ParsePolyLineRequest(order, data, body, seq)
 
 	case PolySegment:
 		return ParsePolySegmentRequest(order, body, seq)
@@ -3019,18 +3019,35 @@ PolyPoint
 4n    LISTofPOINT                     points
 */
 type PolyPointRequest struct {
-	Drawable    Drawable
-	Gc          GContext
-	Coordinates []uint32
+	CoordinateMode byte
+	Drawable       Drawable
+	Gc             GContext
+	Coordinates    []uint32
+}
+
+func (r *PolyPointRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.CoordinateMode)
+	n := len(r.Coordinates)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	for _, c := range r.Coordinates {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
 }
 
 func (PolyPointRequest) OpCode() ReqCode { return PolyPoint }
 
-func ParsePolyPointRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyPointRequest, error) {
+func ParsePolyPointRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*PolyPointRequest, error) {
 	if len(requestBody) < 8 || (len(requestBody)-8)%4 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: PolyPoint, Minor: 0})
 	}
 	req := &PolyPointRequest{}
+	req.CoordinateMode = data
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
 	req.Gc = GContext(order.Uint32(requestBody[4:8]))
 	numPoints := (len(requestBody) - 8) / 4
@@ -3054,18 +3071,35 @@ PolyLine
 4n    LISTofPOINT                     points
 */
 type PolyLineRequest struct {
-	Drawable    Drawable
-	Gc          GContext
-	Coordinates []uint32
+	CoordinateMode byte
+	Drawable       Drawable
+	Gc             GContext
+	Coordinates    []uint32
+}
+
+func (r *PolyLineRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.CoordinateMode)
+	n := len(r.Coordinates)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	for _, c := range r.Coordinates {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
 }
 
 func (PolyLineRequest) OpCode() ReqCode { return PolyLine }
 
-func ParsePolyLineRequest(order binary.ByteOrder, requestBody []byte, seq uint16) (*PolyLineRequest, error) {
+func ParsePolyLineRequest(order binary.ByteOrder, data byte, requestBody []byte, seq uint16) (*PolyLineRequest, error) {
 	if len(requestBody) < 8 || (len(requestBody)-8)%4 != 0 {
 		return nil, NewError(LengthErrorCode, seq, 0, Opcodes{Major: PolyLine, Minor: 0})
 	}
 	req := &PolyLineRequest{}
+	req.CoordinateMode = data
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
 	req.Gc = GContext(order.Uint32(requestBody[4:8]))
 	numPoints := (len(requestBody) - 8) / 4
@@ -3205,10 +3239,29 @@ FillPoly
 4n    LISTofPOINT                     points
 */
 type FillPolyRequest struct {
-	Drawable    Drawable
-	Gc          GContext
-	Shape       byte
-	Coordinates []uint32
+	Drawable       Drawable
+	Gc             GContext
+	Shape          byte
+	CoordinateMode byte
+	Coordinates    []uint32
+}
+
+func (r *FillPolyRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Coordinates)
+	length := uint16(4 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	buf.WriteByte(r.Shape)
+	buf.WriteByte(r.CoordinateMode)
+	buf.Write([]byte{0, 0})
+	for _, c := range r.Coordinates {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
 }
 
 func (FillPolyRequest) OpCode() ReqCode { return FillPoly }
@@ -3220,6 +3273,8 @@ func ParseFillPolyRequest(order binary.ByteOrder, requestBody []byte, seq uint16
 	req := &FillPolyRequest{}
 	req.Drawable = Drawable(order.Uint32(requestBody[0:4]))
 	req.Gc = GContext(order.Uint32(requestBody[4:8]))
+	req.Shape = requestBody[8]
+	req.CoordinateMode = requestBody[9]
 	numPoints := (len(requestBody) - 12) / 4
 	for i := 0; i < numPoints; i++ {
 		offset := 12 + i*4
@@ -5377,4 +5432,314 @@ func ParseChangePointerControlRequest(order binary.ByteOrder, body []byte, seq u
 	req.DoAcceleration = body[6] != 0
 	req.DoThreshold = body[7] != 0
 	return req, nil
+}
+
+func (gc *GC) encode(order binary.ByteOrder, mask uint32) []byte {
+	buf := new(bytes.Buffer)
+	if mask&GCFunction != 0 {
+		binary.Write(buf, order, gc.Function)
+	}
+	if mask&GCPlaneMask != 0 {
+		binary.Write(buf, order, gc.PlaneMask)
+	}
+	if mask&GCForeground != 0 {
+		binary.Write(buf, order, gc.Foreground)
+	}
+	if mask&GCBackground != 0 {
+		binary.Write(buf, order, gc.Background)
+	}
+	if mask&GCLineWidth != 0 {
+		binary.Write(buf, order, gc.LineWidth)
+	}
+	if mask&GCLineStyle != 0 {
+		binary.Write(buf, order, gc.LineStyle)
+	}
+	if mask&GCCapStyle != 0 {
+		binary.Write(buf, order, gc.CapStyle)
+	}
+	if mask&GCJoinStyle != 0 {
+		binary.Write(buf, order, gc.JoinStyle)
+	}
+	if mask&GCFillStyle != 0 {
+		binary.Write(buf, order, gc.FillStyle)
+	}
+	if mask&GCFillRule != 0 {
+		binary.Write(buf, order, gc.FillRule)
+	}
+	if mask&GCTile != 0 {
+		binary.Write(buf, order, gc.Tile)
+	}
+	if mask&GCStipple != 0 {
+		binary.Write(buf, order, gc.Stipple)
+	}
+	if mask&GCTileStipXOrigin != 0 {
+		binary.Write(buf, order, gc.TileStipXOrigin)
+	}
+	if mask&GCTileStipYOrigin != 0 {
+		binary.Write(buf, order, gc.TileStipYOrigin)
+	}
+	if mask&GCFont != 0 {
+		binary.Write(buf, order, gc.Font)
+	}
+	if mask&GCSubwindowMode != 0 {
+		binary.Write(buf, order, gc.SubwindowMode)
+	}
+	if mask&GCGraphicsExposures != 0 {
+		binary.Write(buf, order, gc.GraphicsExposures)
+	}
+	if mask&GCClipXOrigin != 0 {
+		binary.Write(buf, order, int32(gc.ClipXOrigin))
+	}
+	if mask&GCClipYOrigin != 0 {
+		binary.Write(buf, order, int32(gc.ClipYOrigin))
+	}
+	if mask&GCClipMask != 0 {
+		binary.Write(buf, order, gc.ClipMask)
+	}
+	if mask&GCDashOffset != 0 {
+		binary.Write(buf, order, gc.DashOffset)
+	}
+	if mask&GCDashes != 0 {
+		binary.Write(buf, order, gc.Dashes)
+	}
+	if mask&GCArcMode != 0 {
+		binary.Write(buf, order, gc.ArcMode)
+	}
+	return buf.Bytes()
+}
+
+func (r *CreateColormapRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Alloc)
+	binary.Write(buf, order, uint16(4))
+	binary.Write(buf, order, r.Mid)
+	binary.Write(buf, order, r.Window)
+	binary.Write(buf, order, r.Visual)
+	return buf.Bytes()
+}
+
+func (r *CreateGCRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+
+	valuesBytes := r.Values.encode(order, r.ValueMask)
+	length := uint16(4 + len(valuesBytes)/4)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Cid)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.ValueMask)
+	buf.Write(valuesBytes)
+	return buf.Bytes()
+}
+
+func (r *FreeColormapRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2))
+	binary.Write(buf, order, r.Cmap)
+	return buf.Bytes()
+}
+
+func (r *AllocNamedColorRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Name)
+	pad := PadLen(n)
+	length := uint16(3 + (n+pad)/4)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Cmap)
+	binary.Write(buf, order, uint16(n))
+	buf.Write([]byte{0, 0})
+	buf.Write(r.Name)
+	buf.Write(make([]byte, pad))
+	return buf.Bytes()
+}
+
+func (r *AllocColorRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(4))
+	binary.Write(buf, order, r.Cmap)
+	binary.Write(buf, order, r.Red)
+	binary.Write(buf, order, r.Green)
+	binary.Write(buf, order, r.Blue)
+	buf.Write([]byte{0, 0})
+	return buf.Bytes()
+}
+
+func (r *QueryColorsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Pixels)
+	length := uint16(2 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Cmap)
+	for _, p := range r.Pixels {
+		binary.Write(buf, order, p)
+	}
+	return buf.Bytes()
+}
+
+func (r *InstallColormapRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2))
+	binary.Write(buf, order, r.Cmap)
+	return buf.Bytes()
+}
+
+func (r *ListInstalledColormapsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	binary.Write(buf, order, uint16(2))
+	binary.Write(buf, order, r.Window)
+	return buf.Bytes()
+}
+
+func (r *FreeColorsRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Pixels)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Cmap)
+	binary.Write(buf, order, r.PlaneMask)
+	for _, p := range r.Pixels {
+		binary.Write(buf, order, p)
+	}
+	return buf.Bytes()
+}
+
+func (r *SetDashesRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Dashes)
+	pad := PadLen(n)
+	length := uint16(3 + (n+pad)/4)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.GC)
+	binary.Write(buf, order, r.DashOffset)
+	binary.Write(buf, order, uint16(n))
+	buf.Write(r.Dashes)
+	buf.Write(make([]byte, pad))
+	return buf.Bytes()
+}
+
+func (r *CreatePixmapRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Depth)
+	binary.Write(buf, order, uint16(4))
+	binary.Write(buf, order, r.Pid)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Width)
+	binary.Write(buf, order, r.Height)
+	return buf.Bytes()
+}
+
+func (r *PutImageRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(r.Format)
+	n := len(r.Data)
+	pad := PadLen(n)
+	length := uint16(6 + (n+pad)/4)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	binary.Write(buf, order, r.Width)
+	binary.Write(buf, order, r.Height)
+	binary.Write(buf, order, r.DstX)
+	binary.Write(buf, order, r.DstY)
+	buf.WriteByte(r.LeftPad)
+	buf.WriteByte(r.Depth)
+	buf.Write([]byte{0, 0})
+	buf.Write(r.Data)
+	buf.Write(make([]byte, pad))
+	return buf.Bytes()
+}
+
+func (r *PolySegmentRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Segments)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	for _, c := range r.Segments {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
+}
+
+func (r *PolyRectangleRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Rectangles)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	for _, c := range r.Rectangles {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
+}
+
+func (r *PolyArcRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Arcs)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	for _, c := range r.Arcs {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
+}
+
+func (r *PolyFillRectangleRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Rectangles)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	for _, c := range r.Rectangles {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
+}
+
+func (r *PolyFillArcRequest) EncodeMessage(order binary.ByteOrder) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, order, r.OpCode())
+	buf.WriteByte(0)
+	n := len(r.Arcs)
+	length := uint16(3 + n)
+	binary.Write(buf, order, length)
+	binary.Write(buf, order, r.Drawable)
+	binary.Write(buf, order, r.Gc)
+	for _, c := range r.Arcs {
+		binary.Write(buf, order, c)
+	}
+	return buf.Bytes()
 }

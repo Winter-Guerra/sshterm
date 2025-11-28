@@ -11,7 +11,7 @@ export CGO_ENABLED=0
 (cd go && go test -tags x11 ./...)
 
 ./build.sh -x11 -debug
-(cd go && go test -tags docker -c -o ../testserver ./internal/testserver/)
+(cd go && go test -tags docker,x11,debug -c -o ../testserver ./internal/testserver/)
 
 docker build -f tests/Dockerfile -t sshterm-testserver .
 rm -f testserver

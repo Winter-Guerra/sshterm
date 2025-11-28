@@ -954,11 +954,12 @@ func TestParsePolyPointRequest(t *testing.T) {
 	order.PutUint16(reqBody[12:14], 30)
 	order.PutUint16(reqBody[14:16], 40)
 
-	p, err := ParsePolyPointRequest(order, reqBody, 1)
+	p, err := ParsePolyPointRequest(order, 0, reqBody, 1)
 	assert.NoError(t, err, "ParsePolyPointRequest should not return an error")
 	assert.Equal(t, Drawable(123), p.Drawable, "Drawable should be parsed correctly")
 	assert.Equal(t, GContext(456), p.Gc, "Gc should be parsed correctly")
 	assert.Equal(t, []uint32{10, 20, 30, 40}, p.Coordinates, "Coordinates should be parsed correctly")
+	assert.Equal(t, byte(0), p.CoordinateMode, "CoordinateMode should be parsed correctly")
 }
 
 func TestParsePolyRectangleRequest(t *testing.T) {
