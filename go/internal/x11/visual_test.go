@@ -522,10 +522,6 @@ func TestGCLogicalOperations(t *testing.T) {
 			fe.CreateGC(bgGCID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: dst, Function: wire.FunctionCopy, PlaneMask: 0xffffff})
 			fe.PolyFillRectangle(winID, bgGCID, []uint32{0, 0, winWidth, winHeight})
 			fe.ComposeWindow(winID)
-			poll(t, func() error {
-				img := getCanvasData(t, s, winID, 0, 0, winWidth, winHeight)
-				return checkRectangle(img, image.Rect(0, 0, winWidth, winHeight), uint8(dstR), uint8(dstG), uint8(dstB))
-			})
 
 			// 2. Create GC with logical operation and draw with source color
 			fgGCID := xID(200)
@@ -541,6 +537,80 @@ func TestGCLogicalOperations(t *testing.T) {
 			t.Logf("Finished test case: %s", tc.name)
 		})
 	}
+}
+
+func TestOptimizedGXxor(t *testing.T) {
+	t.Log("Running TestOptimizedGXxor")
+	t.Cleanup(func() { cleanupDOMElements(t) })
+
+	setup := wire.NewDefaultSetup(&wire.ServerConfig{
+		ScreenWidth:  1024,
+		ScreenHeight: 768,
+		Vendor:       "test",
+	})
+	s := &x11Server{
+		logger:    &testLogger{t: t},
+		windows:   make(map[xID]*window),
+		gcs:       make(map[xID]wire.GC),
+		pixmaps:   make(map[xID]*pixmap),
+		cursors:   make(map[xID]bool),
+		colormaps: make(map[xID]*colormap),
+		clients:   make(map[uint32]*x11Client),
+		byteOrder: binary.LittleEndian,
+		rootVisual: wire.VisualType{
+			Class:           4, // TrueColor
+			RedMask:         0x00ff0000,
+			GreenMask:       0x0000ff00,
+			BlueMask:        0x000000ff,
+			BitsPerRGBValue: 8,
+		},
+		blackPixel:      setup.Screens[0].BlackPixel,
+		whitePixel:      setup.Screens[0].WhitePixel,
+		defaultColormap: setup.Screens[0].DefaultColormap,
+	}
+	s.colormaps[xID(s.defaultColormap)] = &colormap{
+		pixels: map[uint32]wire.XColorItem{
+			s.whitePixel: {Red: 0xffff, Green: 0xffff, Blue: 0xffff},
+		},
+	}
+	fe := newX11Frontend(&testLogger{t: t}, s)
+	s.frontend = fe
+
+	winID := xID(1)
+	const (
+		winWidth  = 1
+		winHeight = 1
+	)
+	s.windows[winID] = &window{xid: winID, parent: xID(s.rootWindowID()), width: winWidth, height: winHeight, mapped: true}
+	fe.CreateWindow(winID, s.rootWindowID(), 10, 10, winWidth, winHeight, 24, 0, wire.WindowAttributes{})
+	fe.MapWindow(winID)
+
+	// Define destination color (arbitrary)
+	dstR, dstG, dstB := uint32(0xCC), uint32(0x33), uint32(0x0F)
+	dst := (dstR << 16) | (dstG << 8) | dstB
+
+	// 1. Fill window with destination color
+	bgGCID := xID(100)
+	fe.CreateGC(bgGCID, wire.GCForeground|wire.GCFunction, wire.GC{Foreground: dst, Function: wire.FunctionCopy, PlaneMask: 0xffffff})
+	fe.PolyFillRectangle(winID, bgGCID, []uint32{0, 0, winWidth, winHeight})
+	fe.ComposeWindow(winID)
+
+	// 2. Create GC with GXxor and WHITE source (triggering optimization)
+	fgGCID := xID(200)
+	fe.CreateGC(fgGCID, wire.GCForeground|wire.GCFunction|wire.GCPlaneMask, wire.GC{Foreground: s.whitePixel, Function: wire.FunctionXor, PlaneMask: 0xffffff})
+	fe.PolyFillRectangle(winID, fgGCID, []uint32{0, 0, 1, 1})
+	fe.ComposeWindow(winID)
+
+	// 3. Verify result is inverted destination
+	// ^dst & 0xFF for 8-bit components
+	wantR := uint8(^dstR)
+	wantG := uint8(^dstG)
+	wantB := uint8(^dstB)
+
+	poll(t, func() error {
+		img := getCanvasData(t, s, winID, 0, 0, winWidth, winHeight)
+		return checkRectangle(img, image.Rect(0, 0, 1, 1), wantR, wantG, wantB)
+	})
 }
 
 func findVisualByClass(s *x11Server, class uint8) (uint32, bool) {

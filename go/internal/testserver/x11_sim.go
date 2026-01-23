@@ -326,6 +326,7 @@ func (s *sshServer) simulateX11Application(serverConn *ssh.ServerConn, authProto
 
 	s.simulateXEyes(x11Channel)
 	s.simulateColorOperations(x11Channel, replyChan)
+	s.simulateGrabOperations(x11Channel)
 	s.simulateGCOperations(x11Channel)
 
 	s.t.Log("All drawing commands sent successfully")
@@ -1502,4 +1503,53 @@ func (s *sshServer) simulateGCOperations(channel ssh.Channel) {
 	s.polyFillArc(channel, gcWindowID, gcArcFont, []int16{120, 130, 100, 100, 0, 90 * 64})
 	s.imageText8(channel, gcWindowID, gcArcFont, 120, 250, []byte("Arc"))
 	s.closeFont(channel, fontID)
+}
+
+func (s *sshServer) grabPointer(channel ssh.Channel, grabWindow uint32, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo, cursor uint32, time uint32) error {
+	x11Operations = append(x11Operations, X11Operation{
+		Type: "grabPointer",
+		Args: []any{grabWindow, ownerEvents, eventMask, pointerMode, keyboardMode, confineTo, cursor, time},
+	})
+
+	req := &wire.GrabPointerRequest{
+		OwnerEvents:  ownerEvents,
+		GrabWindow:   wire.Window(grabWindow),
+		EventMask:    eventMask,
+		PointerMode:  pointerMode,
+		KeyboardMode: keyboardMode,
+		ConfineTo:    wire.Window(confineTo),
+		Cursor:       wire.Cursor(cursor),
+		Time:         wire.Timestamp(time),
+	}
+
+	_, err := s.sendRequest(channel, req)
+	return err
+}
+
+func (s *sshServer) ungrabPointer(channel ssh.Channel, time uint32) error {
+	x11Operations = append(x11Operations, X11Operation{
+		Type: "ungrabPointer",
+		Args: []any{time},
+	})
+
+	req := &wire.UngrabPointerRequest{
+		Time: wire.Timestamp(time),
+	}
+
+	_, err := s.sendRequest(channel, req)
+	return err
+}
+
+func (s *sshServer) simulateGrabOperations(channel ssh.Channel) {
+	s.t.Log("Simulating Grab operations")
+	grabWindowID := s.clientXID(1)
+	if err := s.grabPointer(channel, grabWindowID, false, wire.ButtonPressMask|wire.ButtonReleaseMask, 1, 1, 0, 0, 0); err != nil {
+		s.t.Errorf("Failed to grab pointer: %v", err)
+		return
+	}
+	time.Sleep(100 * time.Millisecond)
+	if err := s.ungrabPointer(channel, 0); err != nil {
+		s.t.Errorf("Failed to ungrab pointer: %v", err)
+		return
+	}
 }

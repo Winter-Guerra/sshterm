@@ -927,6 +927,18 @@ func (s *x11Server) handleGrabPointer(client *x11Client, req wire.Request, seq u
 		s.frontend.SetWindowCursor(grabWindow, s.pointerGrabCursor)
 	}
 
+	if status := s.frontend.GrabPointer(grabWindow, p.OwnerEvents, p.EventMask, p.PointerMode, p.KeyboardMode, uint32(p.ConfineTo), uint32(p.Cursor), uint32(p.Time)); status != 0 {
+		// If frontend fails, rollback? Or just return success as X11 server state is updated?
+		// Usually frontend should mirror server state.
+		// For now, we assume success if server state is updated, but ideally we should respect frontend status.
+		// However, GrabPointer return type in X11 is specific.
+		// Let's assume frontend logic mirrors X11 logic and returns 0 on success.
+		if status != wire.GrabSuccess {
+			s.pointerGrabWindow = 0
+			return &wire.GrabPointerReply{Sequence: seq, Status: status}
+		}
+	}
+
 	return &wire.GrabPointerReply{
 		Sequence: seq,
 		Status:   wire.GrabSuccess,
@@ -948,6 +960,7 @@ func (s *x11Server) handleUngrabPointer(client *x11Client, req wire.Request, seq
 	s.keyboardGrabMode = 0
 	s.pointerGrabConfineTo = 0
 	s.pointerGrabCursor = 0
+	s.frontend.UngrabPointer(uint32(p.Time))
 	return nil
 }
 

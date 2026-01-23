@@ -1279,7 +1279,15 @@ func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), o
 	}
 
 	var nativeOp string
+	var forceColor string
 	useSoftwareEmulation := false
+
+	// PlaneMask check: Canvas operations affect all channels.
+	// If PlaneMask doesn't cover all visual bits (usually lower 24 bits for TrueColor),
+	// we must fallback to software.
+	// We assume 24-bit depth for simplicity here; if strict adherence is needed
+	// for other depths, this check needs to be smarter.
+	isFullPlaneMask := (gc.PlaneMask & 0xffffff) == 0xffffff
 
 	switch gc.Function {
 	case wire.FunctionClear:
@@ -1289,6 +1297,26 @@ func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), o
 	case wire.FunctionNoOp:
 		debugf("applyGC: NoOp, returning")
 		return
+	case wire.FunctionInvert:
+		if isFullPlaneMask {
+			nativeOp = "difference"
+			forceColor = "#ffffff"
+		} else {
+			useSoftwareEmulation = true
+		}
+	case wire.FunctionXor:
+		// Optimization: If drawing with White and PlaneMask is full,
+		// XOR is equivalent to Difference (Invert).
+		if isFullPlaneMask {
+			r, g, b := w.GetRGBColor(colormap, gc.Foreground)
+			if r == 255 && g == 255 && b == 255 {
+				nativeOp = "difference"
+			} else {
+				useSoftwareEmulation = true
+			}
+		} else {
+			useSoftwareEmulation = true
+		}
 	default:
 		useSoftwareEmulation = true
 	}
@@ -1298,6 +1326,10 @@ func (w *wasmX11Frontend) applyGC(drawable xID, gcID xID, draw func(js.Value), o
 		debugf("applyGC: using native path")
 		destCtx.Call("save")
 		w.applyGCState(destCtx, colormap, gc, (uint32(gcID)>>resourceIDShift)&clientIDMask)
+		if forceColor != "" {
+			destCtx.Set("strokeStyle", forceColor)
+			destCtx.Set("fillStyle", forceColor)
+		}
 		destCtx.Set("globalCompositeOperation", nativeOp)
 		draw(destCtx)
 		destCtx.Call("restore")
@@ -2855,12 +2887,53 @@ func (w *wasmX11Frontend) GetFocusWindow(clientID uint32) xID {
 }
 
 func (w *wasmX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
-	debugf("X11: GrabPointer (not implemented)")
-	return 0 // Success
+	debugf("X11: GrabPointer window=%d owner=%t mask=%d", grabWindow, ownerEvents, eventMask)
+	w.recordOperation(CanvasOperation{
+		Type: "grabPointer",
+		Args: []any{uint32(grabWindow), ownerEvents, eventMask, pointerMode, keyboardMode, confineTo, cursor, time},
+	})
+
+	if winInfo, ok := w.windows[grabWindow]; ok {
+		// Use setPointerCapture to redirect all mouse events to this window
+		// We use the canvas element for capture.
+		// We wrap this in a recover block because it might fail if the browser
+		// doesn't support it or if the pointer ID is invalid.
+		defer func() {
+			if r := recover(); r != nil {
+				debugf("Warn: setPointerCapture failed: %v", r)
+			}
+		}()
+		winInfo.canvas.Call("setPointerCapture", 1) // 1 is usually the mouse pointer ID
+
+		// If a cursor is specified, set it
+		if cursor != 0 {
+			w.SetWindowCursor(grabWindow, xID(cursor))
+		}
+
+		return 0 // Success
+	}
+	return 1 // AlreadyGrabbed (or other error)
 }
 
 func (w *wasmX11Frontend) UngrabPointer(time uint32) {
-	debugf("X11: UngrabPointer (not implemented)")
+	debugf("X11: UngrabPointer time=%d", time)
+	w.recordOperation(CanvasOperation{
+		Type: "ungrabPointer",
+		Args: []any{time},
+	})
+
+	// We rely on the server's tracked grab window to release capture.
+	grabWindow := w.server.pointerGrabWindow
+	if grabWindow != 0 {
+		if winInfo, ok := w.windows[grabWindow]; ok {
+			defer func() {
+				if r := recover(); r != nil {
+					debugf("Warn: releasePointerCapture failed: %v", r)
+				}
+			}()
+			winInfo.canvas.Call("releasePointerCapture", 1)
+		}
+	}
 }
 
 func (w *wasmX11Frontend) GrabKeyboard(grabWindow xID, ownerEvents bool, time uint32, pointerMode, keyboardMode byte) byte {
@@ -2981,11 +3054,21 @@ func (w *wasmX11Frontend) SendConfigureAndExposeEvent(windowID xID, x, y int16, 
 
 // mouseEventHandler creates a js.Func for mouse events.
 func (w *wasmX11Frontend) mouseEventHandler(xid xID, eventType string) js.Func {
+	var lastMoveTime float64
 	return js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if _, ok := w.windows[xid]; !ok {
 			return nil
 		}
 		event := args[0]
+
+		if eventType == "mousemove" {
+			now := js.Global().Get("Date").Call("now").Float()
+			if now-lastMoveTime < 16 { // Throttle to ~60fps
+				return nil
+			}
+			lastMoveTime = now
+		}
+
 		offsetX := int32(event.Get("offsetX").Int())
 		offsetY := int32(event.Get("offsetY").Int())
 
