@@ -1073,7 +1073,7 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 		r, g, b = w.GetRGBColor(currentColormap, gc.Background)
 		bgR, bgG, bgB := r, g, b
 
-		jsImgData := js.Global().Get("Uint8ClampedArray").New(int(width * height * 4))
+		rgbaData := make([]byte, int(width*height*4))
 		dataIndex := 0
 		scanlineStride := (int(width) + int(leftPad) + 7) / 8
 
@@ -1085,23 +1085,24 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 				bitIndex := bitPos % 8
 
 				if (imgData[byteIndex]>>(bitIndex))&1 == 1 {
-					jsImgData.SetIndex(dataIndex, int(fgR))
-					jsImgData.SetIndex(dataIndex+1, int(fgG))
-					jsImgData.SetIndex(dataIndex+2, int(fgB))
+					rgbaData[dataIndex] = fgR
+					rgbaData[dataIndex+1] = fgG
+					rgbaData[dataIndex+2] = fgB
 				} else {
-					jsImgData.SetIndex(dataIndex, int(bgR))
-					jsImgData.SetIndex(dataIndex+1, int(bgG))
-					jsImgData.SetIndex(dataIndex+2, int(bgB))
+					rgbaData[dataIndex] = bgR
+					rgbaData[dataIndex+1] = bgG
+					rgbaData[dataIndex+2] = bgB
 				}
-				jsImgData.SetIndex(dataIndex+3, 255) // Alpha
+				rgbaData[dataIndex+3] = 255 // Alpha
 				dataIndex += 4
 			}
 		}
+		jsImgData := jsutil.Uint8ClampedArrayFromBytes(rgbaData)
 		imageData := js.Global().Get("ImageData").New(jsImgData, width, height)
 		ctx.Call("putImageData", imageData, dstX, dstY)
 
 	case 1: // XYPixmap
-		jsImgData := js.Global().Get("Uint8ClampedArray").New(int(width * height * 4))
+		rgbaData := make([]byte, int(width*height*4))
 		pixelValues := make([]uint32, width*height)
 		scanlineStride := (int(width) + 7) / 8
 
@@ -1120,26 +1121,29 @@ func (w *wasmX11Frontend) PutImage(drawable xID, gcID xID, format uint8, width, 
 
 		for i, pixel := range pixelValues {
 			r, g, b := w.GetRGBColor(currentColormap, pixel)
-			jsImgData.SetIndex(i*4+0, int(r))
-			jsImgData.SetIndex(i*4+1, int(g))
-			jsImgData.SetIndex(i*4+2, int(b))
-			jsImgData.SetIndex(i*4+3, 255)
+			rgbaData[i*4+0] = r
+			rgbaData[i*4+1] = g
+			rgbaData[i*4+2] = b
+			rgbaData[i*4+3] = 255
 		}
 
+		jsImgData := jsutil.Uint8ClampedArrayFromBytes(rgbaData)
 		imageData := js.Global().Get("ImageData").New(jsImgData, width, height)
 		ctx.Call("putImageData", imageData, dstX, dstY)
 
 	case 2: // ZPixmap
-		jsImgData := js.Global().Get("Uint8ClampedArray").New(int(width * height * 4))
 		// Assuming depth 24, 32bpp, BGRX byte order
+		length := int(width * height * 4)
+		rgbaData := make([]byte, length)
 		for i := 0; i < int(width*height); i++ {
 			if (i*4 + 2) < len(imgData) {
-				jsImgData.SetIndex(i*4+0, int(imgData[i*4+2])) // R
-				jsImgData.SetIndex(i*4+1, int(imgData[i*4+1])) // G
-				jsImgData.SetIndex(i*4+2, int(imgData[i*4+0])) // B
-				jsImgData.SetIndex(i*4+3, 255)                 // A
+				rgbaData[i*4+0] = imgData[i*4+2] // R
+				rgbaData[i*4+1] = imgData[i*4+1] // G
+				rgbaData[i*4+2] = imgData[i*4+0] // B
+				rgbaData[i*4+3] = 255            // A
 			}
 		}
+		jsImgData := jsutil.Uint8ClampedArrayFromBytes(rgbaData)
 		imageData := js.Global().Get("ImageData").New(jsImgData, width, height)
 		ctx.Call("putImageData", imageData, dstX, dstY)
 	}
@@ -1247,6 +1251,12 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 		for i, v := range gc.DashPattern {
 			jsDashes.SetIndex(i, js.ValueOf(v))
 		}
+		ctx.Call("setLineDash", jsDashes)
+		ctx.Set("lineDashOffset", gc.DashOffset)
+	} else if (gc.LineStyle == wire.LineStyleOnOffDash || gc.LineStyle == wire.LineStyleDoubleDash) && gc.Dashes > 0 {
+		jsDashes := js.Global().Get("Array").New(2)
+		jsDashes.SetIndex(0, js.ValueOf(gc.Dashes))
+		jsDashes.SetIndex(1, js.ValueOf(gc.Dashes))
 		ctx.Call("setLineDash", jsDashes)
 		ctx.Set("lineDashOffset", gc.DashOffset)
 	}

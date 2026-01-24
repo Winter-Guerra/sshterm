@@ -13,7 +13,7 @@ import (
 func MapX11FontToCSS(x11FontName string) (size, family, weight, slant, cssFont string) {
 	// Default values
 	size = "12px"
-	family = "DejaVu Sans Mono" // Use a more robust default font
+	family = "monospace"
 	weight = "normal"
 	slant = "normal"
 
@@ -21,7 +21,7 @@ func MapX11FontToCSS(x11FontName string) (size, family, weight, slant, cssFont s
 	switch strings.ToLower(x11FontName) {
 	case "fixed", "cursor":
 		size = "12px"
-		family = "DejaVu Sans Mono" // Use a more robust font for "fixed"
+		family = "monospace"
 		weight = "normal"
 		slant = "normal"
 	case "5x7", "5x8", "6x9", "6x10", "6x12", "6x13", "7x13", "7x14", "8x13", "8x16", "9x15", "9x18", "10x20", "12x24":
@@ -128,17 +128,24 @@ func MapX11FontToCSS(x11FontName string) (size, family, weight, slant, cssFont s
 		// Family (Field 2)
 		if len(parts[2]) > 0 && parts[2] != "*" {
 			switch strings.ToLower(parts[2]) {
-			case "helvetica", "arial", "lucida", "sans", "lucidasans":
-				family = "sans-serif"
-			case "times", "serif", "charter", "new century schoolbook", "utopia":
-				family = "serif"
+			case "helvetica", "arial", "sans":
+				family = "Arial, Helvetica, sans-serif"
+			case "lucida", "lucidasans":
+				family = "\"Lucida Sans\", \"Lucida Sans Unicode\", sans-serif"
+			case "times", "serif", "new century schoolbook", "utopia":
+				family = "\"Times New Roman\", Times, serif"
+			case "charter":
+				family = "Charter, serif"
 			case "courier", "typewriter", "lucidatypewriter", "mono", "fixed", "clean", "terminal":
-				family = "monospace"
+				family = "\"Courier New\", Courier, monospace"
 			default:
-				family = strings.ToLower(parts[2])
+				// Fallback to the name itself, plus generic family
+				// Try to guess if it's monospace or serif based on name? Hard.
+				// Just use the name as a candidate.
+				family = fmt.Sprintf("%q, monospace", parts[2])
 			}
 		} else {
-			family = "sans-serif"
+			family = "monospace"
 		}
 
 		// Weight (Field 3)

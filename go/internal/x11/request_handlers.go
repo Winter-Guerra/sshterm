@@ -1625,7 +1625,6 @@ func (s *x11Server) handleClearArea(client *x11Client, req wire.Request, seq uin
 		return err
 	}
 	s.frontend.ClearArea(drawable, int32(p.X), int32(p.Y), int32(p.Width), int32(p.Height))
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1644,7 +1643,6 @@ func (s *x11Server) handleCopyArea(client *x11Client, req wire.Request, seq uint
 		return err
 	}
 	s.frontend.CopyArea(srcDrawable, dstDrawable, gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height))
-	s.dirtyDrawables[dstDrawable] = true
 	return nil
 }
 
@@ -1663,7 +1661,6 @@ func (s *x11Server) handleCopyPlane(client *x11Client, req wire.Request, seq uin
 		return err
 	}
 	s.frontend.CopyPlane(srcDrawable, dstDrawable, gcID, int32(p.SrcX), int32(p.SrcY), int32(p.DstX), int32(p.DstY), int32(p.Width), int32(p.Height), int32(p.PlaneMask))
-	s.dirtyDrawables[dstDrawable] = true
 	return nil
 }
 
@@ -1678,7 +1675,6 @@ func (s *x11Server) handlePolyPoint(client *x11Client, req wire.Request, seq uin
 		return err
 	}
 	s.frontend.PolyPoint(drawable, gcID, p.Coordinates)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1693,7 +1689,6 @@ func (s *x11Server) handlePolyLine(client *x11Client, req wire.Request, seq uint
 		return err
 	}
 	s.frontend.PolyLine(drawable, gcID, p.Coordinates)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1708,7 +1703,6 @@ func (s *x11Server) handlePolySegment(client *x11Client, req wire.Request, seq u
 		return err
 	}
 	s.frontend.PolySegment(drawable, gcID, p.Segments)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1723,7 +1717,6 @@ func (s *x11Server) handlePolyRectangle(client *x11Client, req wire.Request, seq
 		return err
 	}
 	s.frontend.PolyRectangle(drawable, gcID, p.Rectangles)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1738,7 +1731,6 @@ func (s *x11Server) handlePolyArc(client *x11Client, req wire.Request, seq uint1
 		return err
 	}
 	s.frontend.PolyArc(drawable, gcID, p.Arcs)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1753,7 +1745,6 @@ func (s *x11Server) handleFillPoly(client *x11Client, req wire.Request, seq uint
 		return err
 	}
 	s.frontend.FillPoly(drawable, gcID, p.Coordinates)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1768,7 +1759,6 @@ func (s *x11Server) handlePolyFillRectangle(client *x11Client, req wire.Request,
 		return err
 	}
 	s.frontend.PolyFillRectangle(drawable, gcID, p.Rectangles)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1783,7 +1773,6 @@ func (s *x11Server) handlePolyFillArc(client *x11Client, req wire.Request, seq u
 		return err
 	}
 	s.frontend.PolyFillArc(drawable, gcID, p.Arcs)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1798,7 +1787,6 @@ func (s *x11Server) handlePutImage(client *x11Client, req wire.Request, seq uint
 		return err
 	}
 	s.frontend.PutImage(drawable, gcID, p.Format, p.Width, p.Height, p.DstX, p.DstY, p.LeftPad, p.Depth, p.Data)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1837,7 +1825,6 @@ func (s *x11Server) handlePolyText8(client *x11Client, req wire.Request, seq uin
 		return err
 	}
 	s.frontend.PolyText8(drawable, gcID, int32(p.X), int32(p.Y), p.Items)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1852,7 +1839,6 @@ func (s *x11Server) handlePolyText16(client *x11Client, req wire.Request, seq ui
 		return err
 	}
 	s.frontend.PolyText16(drawable, gcID, int32(p.X), int32(p.Y), p.Items)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1867,7 +1853,6 @@ func (s *x11Server) handleImageText8(client *x11Client, req wire.Request, seq ui
 		return err
 	}
 	s.frontend.ImageText8(drawable, gcID, int32(p.X), int32(p.Y), p.Text)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 
@@ -1882,7 +1867,6 @@ func (s *x11Server) handleImageText16(client *x11Client, req wire.Request, seq u
 		return err
 	}
 	s.frontend.ImageText16(drawable, gcID, int32(p.X), int32(p.Y), p.Text)
-	s.dirtyDrawables[drawable] = true
 	return nil
 }
 

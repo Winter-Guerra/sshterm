@@ -131,17 +131,17 @@ To test Grabs and Input without a user:
     -   [ ] Add `mousemove` throttling.
     -   [ ] **Test:** Add `TestX11_Grab` to `main_test.go` using `chromedp` click injection.
 2.  **Performance Core:**
-    -   [ ] Optimize `PutImage` (bulk copy).
-    -   [ ] Implement native `globalCompositeOperation` mappings.
-    -   [ ] **Test:** Add `TestX11_Benchmark` to assert rendering speed.
+    -   [x] Optimize `PutImage` (bulk copy).
+    -   [x] Implement native `globalCompositeOperation` mappings.
+    -   [x] **Test:** Add `TestX11_Benchmark` to assert rendering speed.
 3.  **Visuals:**
-    -   [ ] Implement Dashed Lines & Stipples.
-    -   [ ] Improve Font Mapping.
+    -   [x] Implement Dashed Lines & Stipples.
+    -   [x] Improve Font Mapping.
     -   [ ] **Test:** Add `TestX11_Visuals` with Golden Image comparison for dashes/stipples.
 4.  **Protocol Completion:**
     -   [ ] Implement `AllowEvents`.
     -   [ ] Implement `GetWindowAttributes` (WASM side).
     -   [ ] **Test:** Verify `AllowEvents` unblocks input queue in `TestX11_Grab`.
 5.  **Final Polish:**
-    -   [ ] Dirty region optimization.
+    -   [x] Dirty region optimization.
     -   [ ] Full regression testing suite run.
