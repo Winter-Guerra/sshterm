@@ -2107,6 +2107,9 @@ func (s *x11Server) handshake(client *x11Client) {
 		}
 	}
 	s.rootVisual, _ = s.visuals[s.visualID]
+	if cm, ok := s.colormaps[xID(s.defaultColormap)]; ok {
+		cm.visual = s.rootVisual
+	}
 	s.blackPixel = setup.Screens[0].BlackPixel
 	s.whitePixel = setup.Screens[0].WhitePixel
 }

@@ -127,6 +127,7 @@ To test Grabs and Input without a user:
 ## Step-by-Step Execution Plan
 
 1.  **Stopgap Fixes:**
+    -   [x] Fix initialization of default colormap visual (fixes xterm/xeyes startup).
     -   [ ] Implement `GrabPointer`/`UngrabPointer` in WASM frontend.
     -   [ ] Add `mousemove` throttling.
     -   [ ] **Test:** Add `TestX11_Grab` to `main_test.go` using `chromedp` click injection.

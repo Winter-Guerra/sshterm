@@ -1247,16 +1247,14 @@ func (w *wasmX11Frontend) applyGCState(ctx js.Value, colormap xID, gc wire.GC, c
 		ctx.Call("clip")
 	}
 	if gc.DashPattern != nil && len(gc.DashPattern) > 0 {
-		jsDashes := js.Global().Get("Array").New(len(gc.DashPattern))
+		jsDashes := make([]interface{}, len(gc.DashPattern))
 		for i, v := range gc.DashPattern {
-			jsDashes.SetIndex(i, js.ValueOf(v))
+			jsDashes[i] = v
 		}
 		ctx.Call("setLineDash", jsDashes)
 		ctx.Set("lineDashOffset", gc.DashOffset)
 	} else if (gc.LineStyle == wire.LineStyleOnOffDash || gc.LineStyle == wire.LineStyleDoubleDash) && gc.Dashes > 0 {
-		jsDashes := js.Global().Get("Array").New(2)
-		jsDashes.SetIndex(0, js.ValueOf(gc.Dashes))
-		jsDashes.SetIndex(1, js.ValueOf(gc.Dashes))
+		jsDashes := []interface{}{gc.Dashes, gc.Dashes}
 		ctx.Call("setLineDash", jsDashes)
 		ctx.Set("lineDashOffset", gc.DashOffset)
 	}
