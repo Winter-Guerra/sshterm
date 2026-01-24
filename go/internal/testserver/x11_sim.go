@@ -1540,16 +1540,3 @@ func (s *sshServer) ungrabPointer(channel ssh.Channel, time uint32) error {
 	return err
 }
 
-func (s *sshServer) simulateGrabOperations(channel ssh.Channel) {
-	s.t.Log("Simulating Grab operations")
-	grabWindowID := s.clientXID(1)
-	if err := s.grabPointer(channel, grabWindowID, false, wire.ButtonPressMask|wire.ButtonReleaseMask, 1, 1, 0, 0, 0); err != nil {
-		s.t.Errorf("Failed to grab pointer: %v", err)
-		return
-	}
-	time.Sleep(100 * time.Millisecond)
-	if err := s.ungrabPointer(channel, 0); err != nil {
-		s.t.Errorf("Failed to ungrab pointer: %v", err)
-		return
-	}
-}

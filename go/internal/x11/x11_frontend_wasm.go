@@ -77,6 +77,8 @@ type wasmX11Frontend struct {
 	deviceModifierMaps map[byte][]byte
 	deviceButtonMaps   map[byte][]byte
 	deviceKeymaps      map[byte]map[byte][]uint32
+	lastPointerID      int
+	grabbedWindowID    xID
 
 	// ScreenSaver state
 	screenSaverTimeout     int16
@@ -2894,55 +2896,9 @@ func (w *wasmX11Frontend) GetFocusWindow(clientID uint32) xID {
 	return 0
 }
 
-func (w *wasmX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
-	debugf("X11: GrabPointer window=%d owner=%t mask=%d", grabWindow, ownerEvents, eventMask)
-	w.recordOperation(CanvasOperation{
-		Type: "grabPointer",
-		Args: []any{uint32(grabWindow), ownerEvents, eventMask, pointerMode, keyboardMode, confineTo, cursor, time},
-	})
 
-	if winInfo, ok := w.windows[grabWindow]; ok {
-		// Use setPointerCapture to redirect all mouse events to this window
-		// We use the canvas element for capture.
-		// We wrap this in a recover block because it might fail if the browser
-		// doesn't support it or if the pointer ID is invalid.
-		defer func() {
-			if r := recover(); r != nil {
-				debugf("Warn: setPointerCapture failed: %v", r)
-			}
-		}()
-		winInfo.canvas.Call("setPointerCapture", 1) // 1 is usually the mouse pointer ID
 
-		// If a cursor is specified, set it
-		if cursor != 0 {
-			w.SetWindowCursor(grabWindow, xID(cursor))
-		}
 
-		return 0 // Success
-	}
-	return 1 // AlreadyGrabbed (or other error)
-}
-
-func (w *wasmX11Frontend) UngrabPointer(time uint32) {
-	debugf("X11: UngrabPointer time=%d", time)
-	w.recordOperation(CanvasOperation{
-		Type: "ungrabPointer",
-		Args: []any{time},
-	})
-
-	// We rely on the server's tracked grab window to release capture.
-	grabWindow := w.server.pointerGrabWindow
-	if grabWindow != 0 {
-		if winInfo, ok := w.windows[grabWindow]; ok {
-			defer func() {
-				if r := recover(); r != nil {
-					debugf("Warn: releasePointerCapture failed: %v", r)
-				}
-			}()
-			winInfo.canvas.Call("releasePointerCapture", 1)
-		}
-	}
-}
 
 func (w *wasmX11Frontend) GrabKeyboard(grabWindow xID, ownerEvents bool, time uint32, pointerMode, keyboardMode byte) byte {
 	debugf("X11: GrabKeyboard (not implemented)")
@@ -3047,6 +3003,37 @@ func (w *wasmX11Frontend) AllowEvents(clientID uint32, mode byte, time uint32) {
 	})
 }
 
+func (w *wasmX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
+	debugf("X11: GrabPointer window=%d", grabWindow)
+	if winInfo, ok := w.windows[grabWindow]; ok {
+		if w.lastPointerID != 0 {
+			winInfo.div.Call("setPointerCapture", w.lastPointerID)
+			w.grabbedWindowID = grabWindow
+		}
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "grabPointer",
+		Args: []any{uint32(grabWindow), ownerEvents, eventMask, pointerMode, keyboardMode, confineTo, cursor, time},
+	})
+	return 0 // Success
+}
+
+func (w *wasmX11Frontend) UngrabPointer(time uint32) {
+	debugf("X11: UngrabPointer")
+	if w.grabbedWindowID != 0 {
+		if winInfo, ok := w.windows[w.grabbedWindowID]; ok {
+			if w.lastPointerID != 0 {
+				winInfo.div.Call("releasePointerCapture", w.lastPointerID)
+			}
+		}
+		w.grabbedWindowID = 0
+	}
+	w.recordOperation(CanvasOperation{
+		Type: "ungrabPointer",
+		Args: []any{time},
+	})
+}
+
 func (w *wasmX11Frontend) SendConfigureAndExposeEvent(windowID xID, x, y int16, width, height uint16) {
 	w.server.sendConfigureNotifyEvent(windowID, x, y, width, height)
 	w.server.sendExposeEvent(windowID, 0, 0, width, height) // Send expose for the entire window
@@ -3075,6 +3062,12 @@ func (w *wasmX11Frontend) mouseEventHandler(xid xID, eventType string) js.Func {
 				return nil
 			}
 			lastMoveTime = now
+		}
+
+		// Save the pointer ID for GrabPointer
+		pid := event.Get("pointerId")
+		if !pid.IsUndefined() {
+			w.lastPointerID = pid.Int()
 		}
 
 		offsetX := int32(event.Get("offsetX").Int())

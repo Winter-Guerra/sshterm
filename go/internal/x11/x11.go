@@ -1417,10 +1417,15 @@ func (s *x11Server) SendKeyboardEvent(xid xID, eventType string, code string, al
 	}
 
 	// No active grab, send to interested clients
-	if w, ok := s.windows[s.inputFocus]; ok {
-		if client, ok := s.clients[((uint32(s.inputFocus) >> resourceIDShift) & clientIDMask)]; ok {
+	focusID := s.inputFocus
+	if focusID == 1 { // PointerRoot
+		focusID = xid
+	}
+
+	if w, ok := s.windows[focusID]; ok {
+		if client, ok := s.clients[((uint32(focusID) >> resourceIDShift) & clientIDMask)]; ok {
 			if w.attributes.EventMask&eventMask != 0 {
-				s.sendCoreKeyboardEvent(client, eventType, keycode, uint32(s.inputFocus), state)
+				s.sendCoreKeyboardEvent(client, eventType, keycode, uint32(focusID), state)
 			}
 		}
 	}

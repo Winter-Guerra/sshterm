@@ -333,6 +333,12 @@ const (
 	AnyModifier = 1 << 15 // Match any modifier.
 )
 
+// Grab Modes
+const (
+	GrabModeSync  byte = 0 // Synchronous grab mode.
+	GrabModeAsync byte = 1 // Asynchronous grab mode.
+)
+
 // Grab Status Codes
 const (
 	GrabSuccess     byte = 0 // Grab successful.

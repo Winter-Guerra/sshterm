@@ -373,6 +373,7 @@ func TestSSHTerm(t *testing.T) {
 		if err := chromedp.Run(ctx,
 			chromedp.Navigate("https://devtest.local:8443/tests.html?x11"),
 			chromedp.WaitVisible(`div[id^="x11-window-"]`), // Wait for the X11 window to appear
+			chromedp.MouseClickXY(100, 100),                 // Set lastPointerID
 		); err != nil {
 			t.Fatalf("Failed to run chromedp actions: %v", err)
 		}

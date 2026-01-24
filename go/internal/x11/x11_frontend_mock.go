@@ -190,6 +190,19 @@ type MockX11Frontend struct {
 	ComposeWindowCount              int
 	AllowEventsCalls                [][]any
 	ChangePointerControlCalls       [][]any
+	GrabPointerCalls                []*grabPointerCall
+	UngrabPointerCalls              []uint32
+}
+
+type grabPointerCall struct {
+	grabWindow   xID
+	ownerEvents  bool
+	eventMask    uint16
+	pointerMode  byte
+	keyboardMode byte
+	confineTo    uint32
+	cursor       uint32
+	time         uint32
 }
 
 func (m *MockX11Frontend) ComposeWindow(xid xID) {
@@ -284,8 +297,16 @@ type polyText16Call struct {
 }
 
 func (m *MockX11Frontend) CreateWindow(xid xID, parent, x, y, width, height, depth, valueMask uint32, values wire.WindowAttributes) {
-	// For mock, we can just log the call or do nothing.
-	// No internal state to clean up for windows in the mock.
+	m.CreateWindowCalls = append(m.CreateWindowCalls, &window{
+		xid:        xid,
+		parent:     xID(parent),
+		x:          int16(x),
+		y:          int16(y),
+		width:      uint16(width),
+		height:     uint16(height),
+		depth:      byte(depth),
+		attributes: values,
+	})
 }
 
 func (m *MockX11Frontend) ChangeWindowAttributes(xid xID, valueMask uint32, values wire.WindowAttributes) {
@@ -429,10 +450,22 @@ func (m *MockX11Frontend) SetWindowTitle(xid xID, title string) {
 }
 
 func (m *MockX11Frontend) GrabPointer(grabWindow xID, ownerEvents bool, eventMask uint16, pointerMode, keyboardMode byte, confineTo uint32, cursor uint32, time uint32) byte {
+	m.GrabPointerCalls = append(m.GrabPointerCalls, &grabPointerCall{
+		grabWindow:   grabWindow,
+		ownerEvents:  ownerEvents,
+		eventMask:    eventMask,
+		pointerMode:  pointerMode,
+		keyboardMode: keyboardMode,
+		confineTo:    confineTo,
+		cursor:       cursor,
+		time:         time,
+	})
 	return 0
 }
 
-func (m *MockX11Frontend) UngrabPointer(time uint32) {}
+func (m *MockX11Frontend) UngrabPointer(time uint32) {
+	m.UngrabPointerCalls = append(m.UngrabPointerCalls, time)
+}
 
 func (m *MockX11Frontend) GrabKeyboard(grabWindow xID, ownerEvents bool, time uint32, pointerMode, keyboardMode byte) byte {
 	return 0
