@@ -71,6 +71,15 @@ type Config struct {
 		AddToAgent       bool   `json:"addToAgent,omitempty"`
 	} `json:"generateKeys,omitempty"`
 
+	// Keys allows importing existing SSH keys at startup.
+	// For Ed25519 keys, provide the 32-byte seed as base64-encoded PrivateSeed.
+	Keys []struct {
+		Name        string `json:"name"`
+		Type        string `json:"type"`        // "ed25519"
+		PrivateSeed string `json:"privateSeed"` // base64-encoded 32-byte seed
+		AddToAgent  bool   `json:"addToAgent,omitempty"`
+	} `json:"keys,omitempty"`
+
 	// AutoConnect, if set, instructs the app to open an SSH connection
 	// immediately after it starts. All normal interactive commands are
 	// disabled.

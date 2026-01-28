@@ -27,6 +27,8 @@ package app
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"runtime/debug"
@@ -38,6 +40,7 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v2"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/c2FmZQ/sshterm/config"
@@ -195,6 +198,29 @@ func (a *App) initPresetConfig() error {
 			}
 			if err := globalAgent.(*keyRing).AddSigner(signer, k.Name); err != nil {
 				return fmt.Errorf("generateKeys[%d]: %w", i, err)
+			}
+		}
+	}
+	// Import existing keys from config
+	for i, k := range a.cfg.Keys {
+		if k.Type != "ed25519" {
+			return fmt.Errorf("keys[%d]: unsupported key type %q, only ed25519 is supported", i, k.Type)
+		}
+		seed, err := base64.StdEncoding.DecodeString(k.PrivateSeed)
+		if err != nil {
+			return fmt.Errorf("keys[%d]: invalid base64 in privateSeed: %w", i, err)
+		}
+		if len(seed) != ed25519.SeedSize {
+			return fmt.Errorf("keys[%d]: privateSeed must be %d bytes, got %d", i, ed25519.SeedSize, len(seed))
+		}
+		privKey := ed25519.NewKeyFromSeed(seed)
+		signer, err := ssh.NewSignerFromKey(privKey)
+		if err != nil {
+			return fmt.Errorf("keys[%d]: ssh.NewSignerFromKey: %w", i, err)
+		}
+		if k.AddToAgent {
+			if err := globalAgent.(*keyRing).AddSigner(signer, k.Name); err != nil {
+				return fmt.Errorf("keys[%d]: AddSigner: %w", i, err)
 			}
 		}
 	}
