@@ -67,13 +67,7 @@ func Start(this js.Value, args []js.Value) (result any) {
 	}
 
 	cfg.Term = term
-	cfg.Term.Call("writeln", "\x1b[32m╔════════════════════════════════════╗\x1b[0m")
-	cfg.Term.Call("writeln", "\x1b[32m║ SSH TERM \x1b[4;34mgithub.com/c2FmZQ/sshterm\x1b[0;32m ║\x1b[0m")
-	cfg.Term.Call("writeln", "\x1b[32m╚════════════════════════════════════╝\x1b[0m")
-	if cfg.AutoConnect == nil {
-		cfg.Term.Call("writeln", "\x1b[32mWelcome! Type \x1b[1mhelp\x1b[0;32m for a list of commands\x1b[0m")
-	}
-	cfg.Term.Call("writeln", "")
+	// Banner removed for airlift
 
 	return jsutil.NewPromise(func() (any, error) {
 		a, err := app.New(&cfg)
