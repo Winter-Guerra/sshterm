@@ -75,47 +75,93 @@ func New(ctx context.Context, t js.Value) *Terminal {
 
 		// iOS dictation buffering: detect dictation by absence of keydown events
 		// Dictation sends cumulative text without triggering keydown events.
-		// We buffer dictation input and only send when Enter is pressed or
-		// regular typing (with keydown) resumes.
+		// We buffer dictation input and send after 3s of inactivity for feedback,
+		// but keep tracking for deduplication until Enter is pressed.
 		now := time.Now().UnixMilli()
 		timeSinceKeydown := now - tt.tw.lastKeydownTime
 		keyLen := len(key)
 
-		// Check if this is an Enter key - flush buffer and send
+		// Helper to cancel any pending flush timer
+		cancelFlushTimer := func() {
+			if tt.tw.dictationFlushStop != nil {
+				close(tt.tw.dictationFlushStop)
+				tt.tw.dictationFlushStop = nil
+			}
+		}
+
+		// Helper to start a new flush timer (3 seconds)
+		startFlushTimer := func() {
+			cancelFlushTimer()
+			tt.tw.dictationFlushStop = make(chan struct{})
+			stopCh := tt.tw.dictationFlushStop
+			go func() {
+				select {
+				case <-time.After(3 * time.Second):
+					tt.tw.mu.Lock()
+					// Send any unsent portion of the buffer
+					if tt.tw.inDictationMode && len(tt.tw.dictationBuffer) > tt.tw.dictationSentLen {
+						delta := tt.tw.dictationBuffer[tt.tw.dictationSentLen:]
+						tt.tw.dictationSentLen = len(tt.tw.dictationBuffer)
+						tt.tw.mu.Unlock()
+						select {
+						case <-tt.tw.ctx.Done():
+						case <-tt.tw.closeCh:
+						case tt.tw.dataCh <- []byte(delta):
+						default:
+						}
+					} else {
+						tt.tw.mu.Unlock()
+					}
+				case <-stopCh:
+					// Timer cancelled
+				case <-tt.tw.ctx.Done():
+				}
+			}()
+		}
+
+		// Helper to fully reset dictation state
+		resetDictation := func() {
+			cancelFlushTimer()
+			tt.tw.dictationBuffer = ""
+			tt.tw.dictationSentLen = 0
+			tt.tw.inDictationMode = false
+		}
+
+		// Check if this is an Enter key - flush remaining and fully reset
 		if key == "\r" || key == "\n" || key == "\r\n" {
-			if tt.tw.dictationBuffer != "" {
-				// Flush buffered dictation first
+			if tt.tw.dictationBuffer != "" && len(tt.tw.dictationBuffer) > tt.tw.dictationSentLen {
+				// Send any unsent portion
+				delta := tt.tw.dictationBuffer[tt.tw.dictationSentLen:]
 				tt.tw.mu.Unlock()
 				select {
 				case <-tt.tw.ctx.Done():
 					return tt.tw.Close()
 				case <-tt.tw.closeCh:
-				case tt.tw.dataCh <- []byte(tt.tw.dictationBuffer):
+				case tt.tw.dataCh <- []byte(delta):
 				default:
 					fmt.Fprintf(os.Stderr, "input buffer full\n")
 				}
 				tt.tw.mu.Lock()
-				tt.tw.dictationBuffer = ""
-				tt.tw.inDictationMode = false
 			}
+			resetDictation()
 			// Continue to send the Enter key below
 		} else if timeSinceKeydown < 100 && keyLen == 1 {
 			// Recent keydown + single char = regular typing
-			// Flush any buffered dictation first
-			if tt.tw.dictationBuffer != "" {
+			// Flush any unsent dictation first
+			if tt.tw.dictationBuffer != "" && len(tt.tw.dictationBuffer) > tt.tw.dictationSentLen {
+				delta := tt.tw.dictationBuffer[tt.tw.dictationSentLen:]
 				tt.tw.mu.Unlock()
 				select {
 				case <-tt.tw.ctx.Done():
 					return tt.tw.Close()
 				case <-tt.tw.closeCh:
-				case tt.tw.dataCh <- []byte(tt.tw.dictationBuffer):
+				case tt.tw.dataCh <- []byte(delta):
 				default:
 					fmt.Fprintf(os.Stderr, "input buffer full\n")
 				}
 				tt.tw.mu.Lock()
-				tt.tw.dictationBuffer = ""
-				tt.tw.inDictationMode = false
 			}
+			resetDictation()
 			// Continue to send the typed character below
 		} else if keyLen > 1 || tt.tw.inDictationMode {
 			// Multi-char input without keydown OR already in dictation mode
@@ -136,29 +182,38 @@ func New(ctx context.Context, t js.Value) *Terminal {
 				if keyLen >= len(tt.tw.dictationBuffer) {
 					// Continuation - update buffer with latest (which includes corrections)
 					tt.tw.dictationBuffer = key
+					// Start/reset the flush timer
+					startFlushTimer()
 					tt.tw.mu.Unlock()
 					return nil
 				}
 
 				// Shorter input that's not word explosion - might be new dictation session
-				// Flush current buffer and start new one
-				tt.tw.mu.Unlock()
-				select {
-				case <-tt.tw.ctx.Done():
-					return tt.tw.Close()
-				case <-tt.tw.closeCh:
-				case tt.tw.dataCh <- []byte(tt.tw.dictationBuffer):
-				default:
-					fmt.Fprintf(os.Stderr, "input buffer full\n")
+				// Send any unsent portion and start new buffer
+				if len(tt.tw.dictationBuffer) > tt.tw.dictationSentLen {
+					delta := tt.tw.dictationBuffer[tt.tw.dictationSentLen:]
+					tt.tw.mu.Unlock()
+					select {
+					case <-tt.tw.ctx.Done():
+						return tt.tw.Close()
+					case <-tt.tw.closeCh:
+					case tt.tw.dataCh <- []byte(delta):
+					default:
+						fmt.Fprintf(os.Stderr, "input buffer full\n")
+					}
+					tt.tw.mu.Lock()
 				}
-				tt.tw.mu.Lock()
 				tt.tw.dictationBuffer = key
+				tt.tw.dictationSentLen = 0
+				startFlushTimer()
 				tt.tw.mu.Unlock()
 				return nil
 			} else {
 				// Start dictation mode
 				tt.tw.inDictationMode = true
 				tt.tw.dictationBuffer = key
+				tt.tw.dictationSentLen = 0
+				startFlushTimer()
 				tt.tw.mu.Unlock()
 				return nil
 			}
@@ -339,9 +394,11 @@ type termWrapper struct {
 
 	// iOS dictation buffering: detect dictation by absence of keydown events
 	// and buffer until Enter or regular typing resumes
-	lastKeydownTime  int64  // timestamp of last keydown event (ms)
-	dictationBuffer  string // current buffered dictation text
-	inDictationMode  bool   // are we currently buffering dictation?
+	lastKeydownTime    int64       // timestamp of last keydown event (ms)
+	dictationBuffer    string      // current buffered dictation text
+	dictationSentLen   int         // how much of buffer we've already sent (for delta)
+	inDictationMode    bool        // are we currently buffering dictation?
+	dictationFlushStop chan struct{} // channel to cancel pending flush timer
 }
 
 func (t *termWrapper) isClosed() bool {
