@@ -73,38 +73,95 @@ func New(ctx context.Context, t js.Value) *Terminal {
 			}
 		}
 
-		// iOS dictation deduplication: detect cumulative text pattern
-		// iOS dictation sends "this", then "this is", then "this is an" etc.
-		// We detect this and only send the delta.
-		// Reset happens on Enter key (newline) only - no time-based windowing.
-		originalKey := key
-		originalLen := len(key)
+		// iOS dictation buffering: detect dictation by absence of keydown events
+		// Dictation sends cumulative text without triggering keydown events.
+		// We buffer dictation input and only send when Enter is pressed or
+		// regular typing (with keydown) resumes.
+		now := time.Now().UnixMilli()
+		timeSinceKeydown := now - tt.tw.lastKeydownTime
+		keyLen := len(key)
 
-		// Reset dictation buffer on Enter key (command submitted)
+		// Check if this is an Enter key - flush buffer and send
 		if key == "\r" || key == "\n" || key == "\r\n" {
-			tt.tw.lastDictation = ""
-		} else if tt.tw.lastDictation != "" {
-			if key == tt.tw.lastDictation {
-				// Exact match - duplicate of what we just sent, skip
+			if tt.tw.dictationBuffer != "" {
+				// Flush buffered dictation first
 				tt.tw.mu.Unlock()
-				return nil
-			} else if strings.HasPrefix(key, tt.tw.lastDictation) && originalLen > len(tt.tw.lastDictation) {
-				// Cumulative dictation detected - only send the new part
-				key = key[len(tt.tw.lastDictation):]
-				tt.tw.lastDictation = originalKey
-			} else if originalLen < len(tt.tw.lastDictation) && (strings.Contains(tt.tw.lastDictation, key) || strings.Contains(tt.tw.lastDictation, strings.TrimSpace(key))) {
-				// Word explosion: input is shorter than lastDictation and is a substring of it
-				// This happens when dictation ends and browser re-sends text word-by-word
-				// Skip to avoid re-sending text
+				select {
+				case <-tt.tw.ctx.Done():
+					return tt.tw.Close()
+				case <-tt.tw.closeCh:
+				case tt.tw.dataCh <- []byte(tt.tw.dictationBuffer):
+				default:
+					fmt.Fprintf(os.Stderr, "input buffer full\n")
+				}
+				tt.tw.mu.Lock()
+				tt.tw.dictationBuffer = ""
+				tt.tw.inDictationMode = false
+			}
+			// Continue to send the Enter key below
+		} else if timeSinceKeydown < 100 && keyLen == 1 {
+			// Recent keydown + single char = regular typing
+			// Flush any buffered dictation first
+			if tt.tw.dictationBuffer != "" {
+				tt.tw.mu.Unlock()
+				select {
+				case <-tt.tw.ctx.Done():
+					return tt.tw.Close()
+				case <-tt.tw.closeCh:
+				case tt.tw.dataCh <- []byte(tt.tw.dictationBuffer):
+				default:
+					fmt.Fprintf(os.Stderr, "input buffer full\n")
+				}
+				tt.tw.mu.Lock()
+				tt.tw.dictationBuffer = ""
+				tt.tw.inDictationMode = false
+			}
+			// Continue to send the typed character below
+		} else if keyLen > 1 || tt.tw.inDictationMode {
+			// Multi-char input without keydown OR already in dictation mode
+			// This is dictation - buffer it
+
+			if tt.tw.inDictationMode {
+				// Check for word explosion: input is shorter and is substring of buffer
+				if keyLen < len(tt.tw.dictationBuffer) {
+					trimmed := strings.TrimSpace(key)
+					if strings.Contains(tt.tw.dictationBuffer, key) || strings.Contains(tt.tw.dictationBuffer, trimmed) {
+						// Word explosion - skip, we already have the full text
+						tt.tw.mu.Unlock()
+						return nil
+					}
+				}
+
+				// Check if this continues the dictation (longer or similar length)
+				if keyLen >= len(tt.tw.dictationBuffer) {
+					// Continuation - update buffer with latest (which includes corrections)
+					tt.tw.dictationBuffer = key
+					tt.tw.mu.Unlock()
+					return nil
+				}
+
+				// Shorter input that's not word explosion - might be new dictation session
+				// Flush current buffer and start new one
+				tt.tw.mu.Unlock()
+				select {
+				case <-tt.tw.ctx.Done():
+					return tt.tw.Close()
+				case <-tt.tw.closeCh:
+				case tt.tw.dataCh <- []byte(tt.tw.dictationBuffer):
+				default:
+					fmt.Fprintf(os.Stderr, "input buffer full\n")
+				}
+				tt.tw.mu.Lock()
+				tt.tw.dictationBuffer = key
 				tt.tw.mu.Unlock()
 				return nil
 			} else {
-				// New input that doesn't match previous pattern - start fresh
-				tt.tw.lastDictation = originalKey
+				// Start dictation mode
+				tt.tw.inDictationMode = true
+				tt.tw.dictationBuffer = key
+				tt.tw.mu.Unlock()
+				return nil
 			}
-		} else if originalLen > 1 {
-			// Start tracking input (> 1 char to avoid tracking single keystrokes)
-			tt.tw.lastDictation = originalKey
 		}
 
 		tt.tw.mu.Unlock()
@@ -141,6 +198,13 @@ func New(ctx context.Context, t js.Value) *Terminal {
 		domEvent := e.Get("domEvent")
 		keyName := domEvent.Get("key").String()
 		eventType := domEvent.Get("type").String()
+
+		// Track all keydown events for dictation detection
+		if eventType == "keydown" {
+			tt.tw.mu.Lock()
+			tt.tw.lastKeydownTime = time.Now().UnixMilli()
+			tt.tw.mu.Unlock()
+		}
 
 		if seq, ok := repeatKeys[keyName]; ok && eventType == "keydown" {
 			repeatMu.Lock()
@@ -273,8 +337,11 @@ type termWrapper struct {
 	onDataKeys  []int
 	onDataCount int
 
-	// iOS dictation deduplication
-	lastDictation string
+	// iOS dictation buffering: detect dictation by absence of keydown events
+	// and buffer until Enter or regular typing resumes
+	lastKeydownTime  int64  // timestamp of last keydown event (ms)
+	dictationBuffer  string // current buffered dictation text
+	inDictationMode  bool   // are we currently buffering dictation?
 }
 
 func (t *termWrapper) isClosed() bool {
