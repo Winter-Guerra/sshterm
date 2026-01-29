@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"syscall/js"
+	"time"
 
 	"golang.org/x/term"
 
@@ -71,6 +72,45 @@ func New(ctx context.Context, t js.Value) *Terminal {
 				key = r
 			}
 		}
+
+		// iOS dictation deduplication: detect cumulative text pattern
+		// iOS dictation sends "this", then "this is", then "this is an" etc.
+		// We detect this and only send the delta.
+		originalKey := key
+		originalLen := len(key)
+
+		// Reset dictation buffer on Enter key (command submitted)
+		now := time.Now().UnixMilli()
+		if key == "\r" || key == "\n" || key == "\r\n" {
+			tt.tw.lastDictation = ""
+			tt.tw.lastDictationTime = 0
+		} else if tt.tw.lastDictation != "" {
+			timeSinceLast := now - tt.tw.lastDictationTime
+			if key == tt.tw.lastDictation {
+				// Exact match - duplicate of what we just sent, skip
+				tt.tw.mu.Unlock()
+				return nil
+			} else if strings.HasPrefix(key, tt.tw.lastDictation) && originalLen > len(tt.tw.lastDictation) {
+				// Cumulative dictation detected - only send the new part
+				key = key[len(tt.tw.lastDictation):]
+				tt.tw.lastDictation = originalKey
+				tt.tw.lastDictationTime = now
+			} else if timeSinceLast < 2000 && (strings.Contains(tt.tw.lastDictation, key) || strings.Contains(tt.tw.lastDictation, strings.TrimSpace(key))) {
+				// Input is a substring of previous dictation within 2 seconds (word explosion after dictation ends)
+				// Skip to avoid re-sending text word by word
+				tt.tw.mu.Unlock()
+				return nil
+			} else {
+				// New input that doesn't match previous pattern - start fresh
+				tt.tw.lastDictation = originalKey
+				tt.tw.lastDictationTime = now
+			}
+		} else if originalLen > 1 {
+			// Start tracking input (> 1 char to avoid tracking single keystrokes)
+			tt.tw.lastDictation = originalKey
+			tt.tw.lastDictationTime = now
+		}
+
 		tt.tw.mu.Unlock()
 
 		select {
@@ -85,6 +125,95 @@ func New(ctx context.Context, t js.Value) *Terminal {
 		return nil
 	}))
 	tt.tw.dispose = append(tt.tw.dispose, disp)
+	// iOS key repeat fix: iOS Safari doesn't auto-repeat keys when held
+	// We implement manual key repeat for backspace and arrow keys
+	repeatKeys := map[string]string{
+		"Backspace":  "\x7f",     // DEL character
+		"ArrowLeft":  "\x1b[D",   // Left arrow escape sequence
+		"ArrowRight": "\x1b[C",   // Right arrow escape sequence
+		"ArrowUp":    "\x1b[A",   // Up arrow escape sequence
+		"ArrowDown":  "\x1b[B",   // Down arrow escape sequence
+	}
+
+	var repeatMu sync.Mutex
+	var repeatKey string
+	var repeatStop chan struct{}
+
+	// Listen to xterm's onKey event to detect key presses
+	disp = t.Call("onKey", js.FuncOf(func(this js.Value, args []js.Value) any {
+		e := args[0]
+		domEvent := e.Get("domEvent")
+		keyName := domEvent.Get("key").String()
+		eventType := domEvent.Get("type").String()
+
+		if seq, ok := repeatKeys[keyName]; ok && eventType == "keydown" {
+			repeatMu.Lock()
+			// If we're already repeating this key, don't restart
+			// This prevents native key repeat from interfering with our repeat
+			if repeatKey == keyName && repeatStop != nil {
+				repeatMu.Unlock()
+				return nil
+			}
+			// Stop any existing repeat for a DIFFERENT key
+			if repeatStop != nil {
+				close(repeatStop)
+			}
+			repeatKey = keyName
+			repeatStop = make(chan struct{})
+			stopCh := repeatStop
+			repeatMu.Unlock()
+
+			// Start key repeat goroutine
+			go func() {
+				// Initial delay before repeat starts
+				select {
+				case <-time.After(400 * time.Millisecond):
+				case <-stopCh:
+					return
+				case <-tt.tw.ctx.Done():
+					return
+				}
+
+				// Repeat at 50ms intervals
+				ticker := time.NewTicker(50 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ticker.C:
+						select {
+						case tt.tw.dataCh <- []byte(seq):
+						default:
+						}
+					case <-stopCh:
+						return
+					case <-tt.tw.ctx.Done():
+						return
+					}
+				}
+			}()
+		}
+		return nil
+	}))
+	tt.tw.dispose = append(tt.tw.dispose, disp)
+
+	// Listen for keyup events to stop key repeat
+	doc := js.Global().Get("document")
+	keyupHandler := js.FuncOf(func(this js.Value, args []js.Value) any {
+		e := args[0]
+		keyName := e.Get("key").String()
+
+		repeatMu.Lock()
+		if _, ok := repeatKeys[keyName]; ok && repeatKey == keyName && repeatStop != nil {
+			close(repeatStop)
+			repeatStop = nil
+			repeatKey = ""
+		}
+		repeatMu.Unlock()
+		return nil
+	})
+	doc.Call("addEventListener", "keyup", keyupHandler)
+	// Note: We don't dispose this listener as it's document-level
+
 	disp = t.Call("onResize", js.FuncOf(func(this js.Value, args []js.Value) any {
 		event := args[0]
 		select {
@@ -147,6 +276,10 @@ type termWrapper struct {
 	onData      map[int]func(k string) any
 	onDataKeys  []int
 	onDataCount int
+
+	// iOS dictation deduplication
+	lastDictation     string
+	lastDictationTime int64
 }
 
 func (t *termWrapper) isClosed() bool {
