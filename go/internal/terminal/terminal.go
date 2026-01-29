@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"syscall/js"
+	"time"
 
 	"golang.org/x/term"
 
@@ -71,6 +72,27 @@ func New(ctx context.Context, t js.Value) *Terminal {
 				key = r
 			}
 		}
+
+		// iOS dictation deduplication: detect cumulative text pattern
+		// iOS dictation sends "this", then "this is", then "this is an" etc.
+		// We detect this and only send the delta.
+		now := time.Now().UnixMilli()
+		if len(key) > 3 && tt.tw.lastDictation != "" &&
+			strings.HasPrefix(key, tt.tw.lastDictation) &&
+			len(key) > len(tt.tw.lastDictation) &&
+			(now-tt.tw.lastDictationTime) < 2000 {
+			// Cumulative dictation detected - only send the new part
+			key = key[len(tt.tw.lastDictation):]
+		}
+		// Track for next comparison (only for longer inputs that look like dictation)
+		if len(key) > 3 {
+			tt.tw.lastDictation = args[0].String() // Use original, not modified
+			tt.tw.lastDictationTime = now
+		} else if (now - tt.tw.lastDictationTime) > 2000 {
+			// Reset after 2 seconds of no dictation
+			tt.tw.lastDictation = ""
+		}
+
 		tt.tw.mu.Unlock()
 
 		select {
@@ -147,6 +169,10 @@ type termWrapper struct {
 	onData      map[int]func(k string) any
 	onDataKeys  []int
 	onDataCount int
+
+	// iOS dictation deduplication
+	lastDictation     string
+	lastDictationTime int64
 }
 
 func (t *termWrapper) isClosed() bool {
