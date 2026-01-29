@@ -76,16 +76,14 @@ func New(ctx context.Context, t js.Value) *Terminal {
 		// iOS dictation deduplication: detect cumulative text pattern
 		// iOS dictation sends "this", then "this is", then "this is an" etc.
 		// We detect this and only send the delta.
+		// Reset happens on Enter key (newline) only - no time-based windowing.
 		originalKey := key
 		originalLen := len(key)
 
 		// Reset dictation buffer on Enter key (command submitted)
-		now := time.Now().UnixMilli()
 		if key == "\r" || key == "\n" || key == "\r\n" {
 			tt.tw.lastDictation = ""
-			tt.tw.lastDictationTime = 0
 		} else if tt.tw.lastDictation != "" {
-			timeSinceLast := now - tt.tw.lastDictationTime
 			if key == tt.tw.lastDictation {
 				// Exact match - duplicate of what we just sent, skip
 				tt.tw.mu.Unlock()
@@ -94,21 +92,19 @@ func New(ctx context.Context, t js.Value) *Terminal {
 				// Cumulative dictation detected - only send the new part
 				key = key[len(tt.tw.lastDictation):]
 				tt.tw.lastDictation = originalKey
-				tt.tw.lastDictationTime = now
-			} else if timeSinceLast < 2000 && (strings.Contains(tt.tw.lastDictation, key) || strings.Contains(tt.tw.lastDictation, strings.TrimSpace(key))) {
-				// Input is a substring of previous dictation within 2 seconds (word explosion after dictation ends)
-				// Skip to avoid re-sending text word by word
+			} else if originalLen < len(tt.tw.lastDictation) && (strings.Contains(tt.tw.lastDictation, key) || strings.Contains(tt.tw.lastDictation, strings.TrimSpace(key))) {
+				// Word explosion: input is shorter than lastDictation and is a substring of it
+				// This happens when dictation ends and browser re-sends text word-by-word
+				// Skip to avoid re-sending text
 				tt.tw.mu.Unlock()
 				return nil
 			} else {
 				// New input that doesn't match previous pattern - start fresh
 				tt.tw.lastDictation = originalKey
-				tt.tw.lastDictationTime = now
 			}
 		} else if originalLen > 1 {
 			// Start tracking input (> 1 char to avoid tracking single keystrokes)
 			tt.tw.lastDictation = originalKey
-			tt.tw.lastDictationTime = now
 		}
 
 		tt.tw.mu.Unlock()
@@ -278,8 +274,7 @@ type termWrapper struct {
 	onDataCount int
 
 	// iOS dictation deduplication
-	lastDictation     string
-	lastDictationTime int64
+	lastDictation string
 }
 
 func (t *termWrapper) isClosed() bool {
