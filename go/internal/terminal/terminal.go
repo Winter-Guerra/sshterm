@@ -89,14 +89,14 @@ func New(ctx context.Context, t js.Value) *Terminal {
 			}
 		}
 
-		// Helper to start a new flush timer (3 seconds)
+		// Helper to start a new flush timer (1 second for snappy feedback)
 		startFlushTimer := func() {
 			cancelFlushTimer()
 			tt.tw.dictationFlushStop = make(chan struct{})
 			stopCh := tt.tw.dictationFlushStop
 			go func() {
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					tt.tw.mu.Lock()
 					// Send any unsent portion of the buffer
 					if tt.tw.inDictationMode && len(tt.tw.dictationBuffer) > tt.tw.dictationSentLen {
